@@ -138,6 +138,62 @@ func (c *Checker) addError(tok token.Token, msg, suggestion string) {
 
 // Check performs a full static type check of the program.
 func (c *Checker) Check(program *ast.Program) []*diag.SyntaxError {
+	c.initGlobal()
+	c.hoist(program.Statements, c.global)
+	c.stmts(program.Statements, c.global)
+	return c.errors
+}
+
+// CheckSnippet performs an incremental check of a REPL-style snippet. Unlike
+// Check it keeps the symbols, structs and functions declared by earlier
+// snippets, and reports only the diagnostics produced by this one. Callers
+// that reject a snippet should Restore a Snapshot taken before the call so the
+// checker stays in sync with the evaluated state.
+func (c *Checker) CheckSnippet(program *ast.Program) []*diag.SyntaxError {
+	c.errors = c.errors[:0]
+	if c.global == nil {
+		c.initGlobal()
+	}
+	c.hoist(program.Statements, c.global)
+	c.stmts(program.Statements, c.global)
+	return c.errors
+}
+
+// Snapshot captures the top-level declarations of the checker.
+type Snapshot struct {
+	syms    map[string]*symbol
+	structs map[string]*StructType
+}
+
+// Snapshot records the current top-level declarations so a failed
+// CheckSnippet can be rolled back with Restore.
+func (c *Checker) Snapshot() *Snapshot {
+	if c.global == nil {
+		c.initGlobal()
+	}
+	s := &Snapshot{
+		syms:    make(map[string]*symbol, len(c.global.syms)),
+		structs: make(map[string]*StructType, len(c.structs)),
+	}
+	for name, sym := range c.global.syms {
+		s.syms[name] = sym
+	}
+	for name, st := range c.structs {
+		cp := *st
+		cp.Fields = append([]Field(nil), st.Fields...)
+		s.structs[name] = &cp
+	}
+	return s
+}
+
+// Restore returns the checker to the state captured by Snapshot.
+func (c *Checker) Restore(s *Snapshot) {
+	c.global.syms = s.syms
+	c.structs = s.structs
+}
+
+// initGlobal installs the builtin symbols and the 'std' namespace.
+func (c *Checker) initGlobal() {
 	c.global = newScope(nil)
 	for name, t := range globalBuiltins() {
 		c.global.syms[name] = &symbol{kind: kBuiltin, typ: t}
@@ -146,10 +202,6 @@ func (c *Checker) Check(program *ast.Program) []*diag.SyntaxError {
 		c.global.syms[name] = &symbol{kind: kBuiltin, typ: &FuncType{Dynamic: true, Ret: JSON}}
 	}
 	c.global.syms["std"] = &symbol{kind: kModule, typ: stdNamespace()}
-
-	c.hoist(program.Statements, c.global)
-	c.stmts(program.Statements, c.global)
-	return c.errors
 }
 
 // hoist registers top-level structs and functions so they may be used before

@@ -216,13 +216,89 @@ func newInterpreter() *interpreter.Interpreter {
 	return interp
 }
 
+// replSession carries the persistent state of one interactive REPL session:
+// the interpreter environment and the static checker with the symbols declared
+// so far.
+type replSession struct {
+	interp  *interpreter.Interpreter
+	checker *typecheck.Checker
+}
+
+// newREPLSession creates a session with all standard libraries registered.
+func newREPLSession() *replSession {
+	return &replSession{
+		interp:  newInterpreter(),
+		checker: typecheck.NewChecker("<repl>", ""),
+	}
+}
+
+// eval parses, statically checks and executes one snippet of REPL input,
+// printing values and diagnostics. Declarations made by the snippet persist in
+// the interpreter and in the checker.
+func (r *replSession) eval(input string) {
+	l := lexer.New(input)
+	p := parser.New(l)
+	prog := p.ParseProgram()
+
+	if len(p.SyntaxErrors()) > 0 {
+		fmt.Print(p.DiagnosticReport("<repl>", input, isTerminal(os.Stdout)))
+		return
+	}
+
+	snap := r.checker.Snapshot()
+	typeErrs := r.checker.CheckSnippet(prog)
+	if len(typeErrs) > 0 {
+		r.checker.Restore(snap)
+		fmt.Fprint(os.Stderr, diag.FormatReport("<repl>", input, typeErrs, isTerminal(os.Stderr)))
+		return
+	}
+
+	// If a single expression statement was entered, evaluate and print result.
+	if len(prog.Statements) == 1 {
+		if exprStmt, ok := prog.Statements[0].(*ast.ExpressionStatement); ok {
+			isPrintCall := false
+			if call, ok := exprStmt.Expression.(*ast.CallExpression); ok {
+				if ident, ok := call.Function.(*ast.Identifier); ok {
+					if ident.Value == "print" || ident.Value == "println" {
+						isPrintCall = true
+					}
+				}
+			}
+
+			val := r.interp.Eval(exprStmt.Expression)
+			if val != nil && val.Type() != interpreter.NULL_VAL && !isPrintCall {
+				if errVal, ok := val.(*interpreter.ErrorValue); ok {
+					fmt.Fprint(os.Stderr, diag.FormatRuntimeError("<repl>", input, &diag.RuntimeError{
+						Filename: "<repl>",
+						Line:     1,
+						Column:   1,
+						Message:  errVal.Message,
+						Code:     errVal.Code,
+					}, isTerminal(os.Stderr)))
+				} else {
+					fmt.Println(val.Inspect())
+				}
+			}
+			return
+		}
+	}
+
+	// Execute multi-statement or non-expression script.
+	r.interp.SetFilename("<repl>")
+	r.interp.SetSource(input)
+	if err := r.interp.Execute(prog); err != nil {
+		fmt.Fprint(os.Stderr, diag.FormatRuntimeError("<repl>", input, err, isTerminal(os.Stderr)))
+	}
+}
+
 // startREPL runs the interactive Alca REPL session.
 func startREPL() {
 	fmt.Printf("Alca v%s REPL\n", Version)
-	fmt.Println("Type 'exit' or 'quit' to leave. End a line with ':' for multi-line block.")
+	fmt.Println("Every simple statement ends with ';'. A line ending with ':' starts a block;")
+	fmt.Println("finish the block with an empty line. Type 'exit' or 'quit' to leave.")
 
 	scanner := bufio.NewScanner(os.Stdin)
-	interp := newInterpreter()
+	session := newREPLSession()
 
 	for {
 		fmt.Print("alca> ")
@@ -258,53 +334,9 @@ func startREPL() {
 			}
 		}
 
-		input := inputBuilder.String()
-		l := lexer.New(input)
-		p := parser.New(l)
-		prog := p.ParseProgram()
-
-		if len(p.SyntaxErrors()) > 0 {
-			fmt.Print(p.DiagnosticReport("<repl>", input, isTerminal(os.Stdout)))
-			continue
-		}
-
-		// If a single expression statement was entered, evaluate and print result
-		if len(prog.Statements) == 1 {
-			if exprStmt, ok := prog.Statements[0].(*ast.ExpressionStatement); ok {
-				isPrintCall := false
-				if call, ok := exprStmt.Expression.(*ast.CallExpression); ok {
-					if ident, ok := call.Function.(*ast.Identifier); ok {
-						if ident.Value == "print" || ident.Value == "println" {
-							isPrintCall = true
-						}
-					}
-				}
-
-				val := interp.Eval(exprStmt.Expression)
-				if val != nil && val.Type() != interpreter.NULL_VAL && !isPrintCall {
-					if errVal, ok := val.(*interpreter.ErrorValue); ok {
-						fmt.Fprint(os.Stderr, diag.FormatRuntimeError("<repl>", input, &diag.RuntimeError{
-							Filename: "<repl>",
-							Line:     1,
-							Column:   1,
-							Message:  errVal.Message,
-							Code:     errVal.Code,
-						}, isTerminal(os.Stderr)))
-					} else {
-						fmt.Println(val.Inspect())
-					}
-				}
-				continue
-			}
-		}
-
-		// Execute multi-statement or non-expression script
-		interp.SetFilename("<repl>")
-		interp.SetSource(input)
-		if err := interp.Execute(prog); err != nil {
-			fmt.Fprint(os.Stderr, diag.FormatRuntimeError("<repl>", input, err, isTerminal(os.Stderr)))
-		}
+		session.eval(inputBuilder.String())
 	}
+	fmt.Println()
 }
 
 // cmdFmt implements the 'alca fmt' command: it formats a source file, printing
