@@ -73,6 +73,16 @@
         "command": "alca.testFile",
         "title": "Alca: Run Tests",
         "category": "Alca"
+      },
+      {
+        "command": "alca.fmtFile",
+        "title": "Alca: Format File",
+        "category": "Alca"
+      },
+      {
+        "command": "alca.repl",
+        "title": "Alca: Start REPL",
+        "category": "Alca"
       }
     ],
     "menus": {
@@ -91,6 +101,11 @@
           "when": "resourceExtname == .al",
           "command": "alca.checkFile",
           "group": "alca_run@3"
+        },
+        {
+          "when": "resourceExtname == .al",
+          "command": "alca.fmtFile",
+          "group": "alca_run@4"
         }
       ]
     }

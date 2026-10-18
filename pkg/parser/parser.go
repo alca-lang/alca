@@ -756,46 +756,74 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 		p.nextToken()
 	}
 
-	if !p.curTokenIs(token.INDENT) && p.peekTokenIs(token.NEWLINE) {
-		p.nextToken()
-	}
-	p.skipNewlines()
+	// A body written on the same physical line as the ':' forms a single-line
+	// block. Otherwise the body is either indented (an INDENT token) or empty:
+	// comment lines are invisible to the lexer, so a comment-only body emits
+	// no INDENT at all. An unindented token after the header line (e.g. else:)
+	// is never treated as this block's body.
+	if p.curTokenIs(token.INDENT) || p.curTokenIs(token.NEWLINE) ||
+		p.curTokenIs(token.DEDENT) || p.curTokenIs(token.EOF) || p.peekTokenIs(token.NEWLINE) {
+		if !p.curTokenIs(token.INDENT) && p.peekTokenIs(token.NEWLINE) {
+			p.nextToken()
+		}
+		p.skipNewlines()
 
-	if p.curTokenIs(token.INDENT) {
-		p.nextToken() // enter block
+		if p.curTokenIs(token.INDENT) {
+			p.nextToken() // enter block
 
-		for !p.curTokenIs(token.DEDENT) && !p.curTokenIs(token.EOF) {
-			prevTok := p.curToken
-			p.skipNewlines()
-			if p.curTokenIs(token.DEDENT) || p.curTokenIs(token.EOF) {
-				break
-			}
-
-			stmt := p.parseStatement()
-			if stmt != nil {
-				block.Statements = append(block.Statements, stmt)
-			} else {
-				p.nextToken()
-			}
-
-			p.skipNewlines()
-			if p.curToken == prevTok {
-				p.nextToken()
+			for !p.curTokenIs(token.DEDENT) && !p.curTokenIs(token.EOF) {
+				prevTok := p.curToken
 				p.skipNewlines()
+				if p.curTokenIs(token.DEDENT) || p.curTokenIs(token.EOF) {
+					break
+				}
+
+				stmt := p.parseStatement()
+				if stmt != nil {
+					block.Statements = append(block.Statements, stmt)
+				} else {
+					p.nextToken()
+				}
+
+				p.skipNewlines()
+				if p.curToken == prevTok {
+					p.nextToken()
+					p.skipNewlines()
+				}
 			}
+
+			if p.curTokenIs(token.DEDENT) {
+				p.nextToken() // consume DEDENT
+			}
+			return block
 		}
 
-		if p.curTokenIs(token.DEDENT) {
-			p.nextToken() // consume DEDENT
+		// No INDENT token follows: the body is empty. A comment-only body is
+		// legitimate (comments emit no tokens), but a real statement at the
+		// header's indentation level is not part of this block, and the
+		// continuation keywords belong to the enclosing statement.
+		switch p.curToken.Type {
+		case token.DEDENT, token.EOF, token.ELIF, token.ELSE, token.CASE:
+			return block
 		}
-	} else {
-		// Single-line block statement
-		if !p.curTokenIs(token.NEWLINE) && !p.curTokenIs(token.EOF) {
-			stmt := p.parseStatement()
-			if stmt != nil {
-				block.Statements = append(block.Statements, stmt)
-			}
-		}
+
+		tok := block.Token
+		p.errors = append(p.errors, fmt.Sprintf("line %d, col %d: expected an indented block", tok.Line, tok.Column))
+		p.syntaxErrors = append(p.syntaxErrors, &diag.SyntaxError{
+			Line:       tok.Line,
+			Column:     tok.Column,
+			Message:    "expected an indented block",
+			Token:      tok.Literal,
+			Length:     len(tok.Literal),
+			Suggestion: "indent the block body by 4 spaces or 1 tab",
+		})
+		return block
+	}
+
+	// Single-line block statement
+	stmt := p.parseStatement()
+	if stmt != nil {
+		block.Statements = append(block.Statements, stmt)
 	}
 
 	return block

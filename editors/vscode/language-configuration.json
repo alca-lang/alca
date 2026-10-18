@@ -23,8 +23,8 @@
     ["'", "'"]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "^.*:\\s*(//.*)?$",
-    "decreaseIndentPattern": "^\\s*(elif|else|case\\s.*):\\s*$"
+    "increaseIndentPattern": "^\\s*(func|shfunc|struct|if|elif|else|while|for|loop|match|case|test|ba|threads|tx|watch|mock)\\b.*:\\s*(//.*)?$",
+    "decreaseIndentPattern": "^\\s*(elif|else|case[^:]*):\\s*(//.*)?$"
   },
   "folding": {
     "offSide": true,
@@ -35,7 +35,7 @@
   },
   "onEnterRules": [
     {
-      "beforeText": "^.*:\\s*(//.*)?$",
+      "beforeText": "^\\s*(func|shfunc|struct|if|elif|else|while|for|loop|match|case|test|ba|threads|tx|watch|mock)\\b.*:\\s*(//.*)?$",
       "action": {
         "indent": "indent"
       }

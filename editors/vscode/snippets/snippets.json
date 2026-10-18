@@ -1,19 +1,25 @@
 {
+  "Use Standard Module": {
+    "prefix": "use",
+    "body": [
+      "use std.${1|math,time,crypto,path,io,net,db,log,metrics,sys,env,regex,csv,http,json|};"
+    ],
+    "description": "Import a standard library module"
+  },
   "Function Declaration": {
     "prefix": "func",
     "body": [
-      "func ${1:name}(${2:params}) -> ${3:return_type}:",
-      "    ${0:// body}",
-      "    return ${4:null}"
+      "func ${1:name}(${2:value}: ${3:int}) -> ${4:int}:",
+      "    return ${5:0};"
     ],
     "description": "Declare a typed function in Alca"
   },
   "Shell Function Declaration": {
     "prefix": "shfunc",
     "body": [
-      "shfunc ${1:name}(${2:params}) -> bool:",
-      "    print(\"${3:echo command}\")",
-      "    return true"
+      "shfunc ${1:name}(${2:param}: ${3:string}) -> bool:",
+      "    ${0:// commands are executed by the shell}",
+      "    return true;"
     ],
     "description": "Declare a shell execution function in Alca"
   },
@@ -21,10 +27,31 @@
     "prefix": "struct",
     "body": [
       "struct ${1:Name}:",
-      "    ${2:field}: ${3:string}",
-      "    ${4:active}: bool = true"
+      "    ${2:field}: ${3:string};",
+      "    ${4:active}: bool = true;"
     ],
     "description": "Declare a structure with typed fields"
+  },
+  "Variable Declaration": {
+    "prefix": "var",
+    "body": [
+      "${1:name} := ${2:42};"
+    ],
+    "description": "Declare a variable with type inference (:=)"
+  },
+  "Typed Variable Declaration": {
+    "prefix": "vartype",
+    "body": [
+      "${1:name}: ${2:int} = ${3:0};"
+    ],
+    "description": "Declare a variable with an explicit type"
+  },
+  "Nullable Variable Declaration": {
+    "prefix": "varnull",
+    "body": [
+      "${1:name}: ${2:string} | null = null;"
+    ],
+    "description": "Declare a nullable variable (T | null)"
   },
   "If Statement": {
     "prefix": "if",
@@ -34,30 +61,32 @@
     ],
     "description": "If conditional block"
   },
-  "If-Else Statement": {
+  "If-Elif-Else Statement": {
     "prefix": "ifelse",
     "body": [
       "if ${1:condition}:",
       "    ${2:// consequence}",
+      "elif ${3:other_condition}:",
+      "    ${4:// other consequence}",
       "else:",
       "    ${0:// alternative}"
     ],
-    "description": "If-else conditional block"
+    "description": "If-elif-else conditional chain"
   },
   "While Loop": {
     "prefix": "while",
     "body": [
-      "int i = 0",
-      "while i < ${1:10}:",
+      "${1:i} := 0;",
+      "while ${1:i} < ${2:10}:",
       "    ${0:// body}",
-      "    i = i + 1"
+      "    ${1:i} = ${1:i} + 1;"
     ],
     "description": "While loop"
   },
   "For In Loop": {
     "prefix": "for",
     "body": [
-      "for ${1:item} in ${2:iterable}:",
+      "for ${1:item} in ${2:items}:",
       "    ${0:// body}"
     ],
     "description": "For-in iteration loop"
@@ -68,69 +97,106 @@
       "for ${1:i} in ${2:0}..${3:10}:",
       "    ${0:// body}"
     ],
-    "description": "Zero-allocation numeric range loop"
+    "description": "Numeric range loop (inclusive on both ends)"
   },
-  "Concurrent Baroutine": {
+  "Match Statement": {
+    "prefix": "match",
+    "body": [
+      "match ${1:value}:",
+      "    case ${2:1}:",
+      "        ${3:// first case}",
+      "    else:",
+      "        ${0:// fallback}"
+    ],
+    "description": "Match statement with case/else arms"
+  },
+  "Error Raise": {
+    "prefix": "err",
+    "body": [
+      "err(\"${1:message}\", code=${2:1});"
+    ],
+    "description": "Raise a runtime error with a code"
+  },
+  "Error Capture": {
+    "prefix": "errcatch",
+    "body": [
+      "${1:failure}: error | null = null;",
+      "${2:call_maybe_failing}() ?>>> ${1:failure};",
+      "if ${1:failure} != null:",
+      "    println(${1:failure}.msg);"
+    ],
+    "description": "Capture a runtime error into a variable (?>>>)"
+  },
+  "Concurrent Baroutine Block": {
     "prefix": "ba",
     "body": [
-      "ba ${1:task_function}() ~ ${2:5s} >> \"${3:output.log}\""
+      "ba(limit=${1:4}, timeout=${2:5s}):",
+      "    ${0:// concurrent work}"
     ],
-    "description": "Launch a concurrent baroutine with timeout"
+    "description": "Launch a concurrent baroutine block with limits"
   },
   "Limited Baroutine Pool": {
     "prefix": "bafor",
     "body": [
-      "ba for ${1:item} in ${2:items} (limit=${3:10}):",
+      "ba(limit=${1:4}) for ${2:item} in ${3:items}:",
       "    ${0:// process item}"
     ],
-    "description": "Parallel iteration with concurrency limit"
+    "description": "Parallel iteration with a concurrency limit"
   },
-  "SQLite Database": {
-    "prefix": "sqlite",
+  "Threads Block": {
+    "prefix": "threads",
     "body": [
-      "use std.sqlite",
-      "",
-      "db = sqlite.open(\"${1:app.db}\")",
-      "db.exec(\"CREATE TABLE IF NOT EXISTS ${2:items} (id INTEGER PRIMARY KEY, name TEXT)\")",
-      "db.exec(\"INSERT INTO ${2:items} (name) VALUES (?)\", \"${3:Example}\")",
-      "",
-      "rows = db.query(\"SELECT * FROM ${2:items}\")",
-      "for row in rows:",
-      "    print(row[\"name\"])",
-      "",
-      "db.close()"
+      "threads:",
+      "    ${0:// parallel statements}"
     ],
-    "description": "SQLite database setup and query"
-  },
-  "Prometheus Metrics": {
-    "prefix": "metrics",
-    "body": [
-      "use std.metrics",
-      "",
-      "${1:requests_total} = metrics.counter(\"${2:http_requests_total}\", \"${3:Total HTTP requests}\")",
-      "${1:requests_total}.inc()",
-      "",
-      "metrics.start_http_server(${4:9090}, \"/metrics\")"
-    ],
-    "description": "Prometheus metrics collector and HTTP server"
+    "description": "Run statements on parallel threads"
   },
   "Test Block": {
     "prefix": "test",
     "body": [
       "test \"${1:Feature description}\":",
-      "    ${2:int val = 10}",
-      "    assert ${3:val == 10}"
+      "    value: int = 10;",
+      "    assert ${2:value == 10};"
     ],
     "description": "Alca integration test block"
+  },
+  "SQLite Database": {
+    "prefix": "sqlite",
+    "body": [
+      "use std.db;",
+      "",
+      "conn := db.sqlite(\"${1:app.db}\");",
+      "conn.exec(\"CREATE TABLE IF NOT EXISTS ${2:items} (id INTEGER PRIMARY KEY, name TEXT);\");",
+      "conn.exec(\"INSERT INTO ${2:items} (name) VALUES (?);\", \"${3:Example}\");",
+      "",
+      "rows := conn.query(\"SELECT * FROM ${2:items};\");",
+      "for row in rows:",
+      "    println(row[\"name\"]);",
+      "",
+      "conn.close();"
+    ],
+    "description": "SQLite database setup and query via std.db"
+  },
+  "Prometheus Metrics": {
+    "prefix": "metrics",
+    "body": [
+      "use std.metrics;",
+      "",
+      "${1:requests} := metrics.counter(\"${2:http_requests_total}\", \"${3:Total HTTP requests}\");",
+      "${1:requests}.inc(1);",
+      "",
+      "println(string(metrics.export()));"
+    ],
+    "description": "Prometheus counter and OpenMetrics export"
   },
   "Structured Logger": {
     "prefix": "log",
     "body": [
-      "use std.log",
+      "use std.log;",
       "",
-      "log.set_format(\"json\")",
-      "log.info(\"${1:Service started}\", \"${2:port}\", ${3:8080})"
+      "log.set_format(\"json\");",
+      "log.info(\"${1:Service started}\", {\"${2:port}\": ${3:8080}});"
     ],
-    "description": "Structured JSON logging"
+    "description": "Structured JSON logging via std.log"
   }
 }

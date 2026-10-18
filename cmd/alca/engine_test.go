@@ -662,6 +662,27 @@ if e != null:
     println(e.code);
     println(e.msg);
 `, "400\nnegative exponent for integer power; use float operands\n"},
+
+	{"q24_comment_only_block_bodies", `
+x := 1;
+if x == 1:
+    // consequence is a comment only
+else:
+    println("no");
+elif_chain := 0;
+if x == 2:
+    // first arm empty
+elif x == 1:
+    // second arm empty
+else:
+    println("no");
+match x:
+    case 1:
+        // case body empty
+    else:
+        println("no");
+println("done");
+`, "done\n"},
 }
 
 func TestEnginesAgree(t *testing.T) {

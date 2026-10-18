@@ -4,16 +4,19 @@ Official Visual Studio Code and Cursor extension for the **Alca Programming Lang
 
 ## 🚀 Features
 
-- **Syntax Highlighting**: Comprehensive TextMate grammar highlighting keywords, stream operators (`>>`, `>!`, `>>>`, `<<`, `|>` etc.), decorators (`@model`), built-in types, durations (`500ms`, `2s`), sizes (`64KB`, `10MB`), and strings with `${interpolation}`.
-- **Auto-Indentation & Folding**: Python-like indentation behavior automatically indenting 4 spaces after lines ending with `:`.
-- **Live Diagnostics**: Automatically runs `alca check` on file save, highlighting syntax and static type errors with red squiggles directly in the editor.
-- **Code Snippets**: Quick templates for functions, structs, if-statements, while-loops, baroutines (`ba`), SQLite databases, Prometheus metrics, and test blocks.
+- **Syntax Highlighting**: TextMate grammar for the strict Alca syntax — keywords (`fn`, `foreach`, `match`, `case`, `ba`, …), stream operators (`>>`, `>!`, `>>>`, `?>>>`, `<<`, `|>`), declarations (`:=`, `->`, `T | null`), decorators (`@model`), built-in types (`int`, `list[T]`, `secret`, …), every standard module (`std.db`, `std.metrics`, …), built-in functions, durations (`500ms`, `2s`), sizes (`64KB`, `10MB`), and single/double/triple-quoted strings with escapes.
+- **Auto-Indentation & Folding**: Indents 4 spaces after block headers ending with `:`, outdents `elif`/`else`/`case`, and folds `// region` / `// endregion` markers.
+- **Live Diagnostics**: Runs `alca check` on the in-editor buffer (so unsaved edits are checked too) and highlights syntax and static type errors with red squiggles.
+- **Formatting**: `Format Document` and `Alca: Format File` run `alca fmt`; formatting is idempotent and never rewrites a file with syntax errors.
+- **Code Snippets**: Strict-syntax templates for functions, structs, variables (`:=`, `T | null`), if/elif/else, loops, `match`, baroutines (`ba`), errors (`err` / `?>>>`), threads, tests, SQLite (`std.db`), Prometheus metrics, and structured logging.
 - **One-Click Commands**:
-  - `Alca: Run Script`
-  - `Alca: Run on Bytecode VM` (High performance)
-  - `Alca: Build Standalone Native Binary (.exe)`
+  - `Alca: Run Script` (interpreter)
+  - `Alca: Run on Bytecode VM` (default engine, strict)
+  - `Alca: Build Standalone Native Binary`
   - `Alca: Check Syntax & Types`
   - `Alca: Run Tests`
+  - `Alca: Format File`
+  - `Alca: Start REPL`
 
 ## 📦 Installation
 
@@ -32,5 +35,8 @@ cp -r editors/vscode ~/.vscode/extensions/alca-lang
 
 Restart or reload VS Code (`Ctrl+Shift+P` -> `Developer: Reload Window`).
 
+The extension expects the `alca` CLI on your `PATH` (`alca version` to verify).
+
 ## 📄 License
+
 MIT License

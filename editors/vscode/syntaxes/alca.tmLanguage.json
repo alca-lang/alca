@@ -48,8 +48,15 @@
           "begin": "\"\"\"",
           "end": "\"\"\"",
           "patterns": [
-            { "include": "#string_escapes" },
-            { "include": "#string_interpolation" }
+            { "include": "#string_escapes" }
+          ]
+        },
+        {
+          "name": "string.quoted.triple.single.al",
+          "begin": "'''",
+          "end": "'''",
+          "patterns": [
+            { "include": "#string_escapes" }
           ]
         },
         {
@@ -57,8 +64,15 @@
           "begin": "\"",
           "end": "\"",
           "patterns": [
-            { "include": "#string_escapes" },
-            { "include": "#string_interpolation" }
+            { "include": "#string_escapes" }
+          ]
+        },
+        {
+          "name": "string.quoted.single.al",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            { "include": "#string_escapes" }
           ]
         }
       ]
@@ -67,25 +81,7 @@
       "patterns": [
         {
           "name": "constant.character.escape.al",
-          "match": "\\\\([nrtvfb\\\\\"'0]|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4})"
-        }
-      ]
-    },
-    "string_interpolation": {
-      "patterns": [
-        {
-          "name": "meta.interpolation.al",
-          "begin": "\\$\\{",
-          "end": "\\}",
-          "beginCaptures": {
-            "0": { "name": "punctuation.definition.template-expression.begin.al" }
-          },
-          "endCaptures": {
-            "0": { "name": "punctuation.definition.template-expression.end.al" }
-          },
-          "patterns": [
-            { "include": "$self" }
-          ]
+          "match": "\\\\([ntr\"'\\\\$])"
         }
       ]
     },
@@ -105,7 +101,7 @@
         },
         {
           "name": "keyword.other.declaration.al",
-          "match": "\\b(func|shfunc|struct|pub|use|as|ba|threads|wait|watch|test|mock|assert|tx|err|import)\\b"
+          "match": "\\b(func|fn|shfunc|struct|pub|use|as|import|ba|threads|wait|watch|test|mock|assert|tx|err)\\b"
         },
         {
           "name": "keyword.operator.logical.al",
@@ -121,7 +117,7 @@
       "patterns": [
         {
           "name": "support.type.primitive.al",
-          "match": "\\b(int|float|string|bool|list|map|blob|secret|json)\\b"
+          "match": "\\b(int|float|string|bool|list|map|blob|secret|json|any|error|void)\\b"
         }
       ]
     },
@@ -129,11 +125,11 @@
       "patterns": [
         {
           "name": "support.class.module.al",
-          "match": "\\bstd\\.(db|sqlite|postgres|metrics|log|crypto|gui|math|time|io|net|path|regex|re|archive|zip|formats|csv|ini|sys|process|env|cli)\\b"
+          "match": "\\bstd\\.(ai|archive|cli|crypto|csv|db|env|ffi|formats|gui|ini|io|log|math|metrics|net|path|process|re|regex|sys|time|zip)\\b"
         },
         {
           "name": "support.class.module.short.al",
-          "match": "\\b(sqlite|postgres|metrics|crypto|gui|math|time|io|net|path|re|archive|formats|process)\\.(?=[a-zA-Z_])"
+          "match": "\\b(ai|archive|cli|crypto|csv|db|env|ffi|formats|gui|ini|io|log|math|metrics|net|path|process|re|regex|sys|time|zip)\\.(?=[a-zA-Z_])"
         }
       ]
     },
@@ -141,7 +137,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.al",
-          "match": "\\b(print|println|len|type|typeof|int|float|string|bool|list|append|pop|push|keys|values|range|sleep|exit|input|json_encode|json_decode|abs|max|min|time_now|env|set_env|exec)\\b(?=\\s*\\()"
+          "match": "\\b(abs|add_path|add_system_path|add_user_path|all_env|append_file|bool|broadcast_env_change|check_access|chmod|copy_file|cpu_count|delete_file|dns_lookup|download_file|exec|exec_bg|exec_cmd|exit|expand_env|file_exists|file_info|file_size|float|get_env|get_path|get_pid|get_ppid|get_system_path|get_user_path|glob|gui_alert|gui_confirm|gui_height|gui_msgbox|gui_notify|gui_open_file|gui_prompt|gui_save_file|gui_screen_size|gui_screenshot|gui_webview|gui_width|gui_window|has_path|home_dir|hostname|http_get|http_post|input|int|is_linux|is_permission_error|is_windows|json_decode|json_encode|json_prettify|json_query|kill_process|list_dir|lock_file|make_dir|max|memory_usage|min|move_file|open|os_name|path_separator|permissions|persist_user_path|ping|prepend_path|print|println|process_exists|read_file|remove_path|remove_user_path|set_env|set_path|signal_process|sleep|str_contains|str_ends_with|str_lower|str_replace|str_split|str_starts_with|str_trim|str_upper|string|temp_dir|time_now|type|typeof|unlock_file|unset_env|uptime|username|which|working_dir|write_file)\\b(?=\\s*\\()"
         }
       ]
     },
@@ -175,6 +171,10 @@
     },
     "operators": {
       "patterns": [
+        {
+          "name": "keyword.operator.declaration.al",
+          "match": "(:=)"
+        },
         {
           "name": "keyword.operator.comparison.al",
           "match": "(==|!=|<=|>=|<|>)"

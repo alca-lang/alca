@@ -129,3 +129,70 @@ func TestStructAndMatch(t *testing.T) {
 		t.Fatalf("want StructDeclaration, got %T", prog.Statements[0])
 	}
 }
+
+// A block whose body is only comment lines produces no INDENT token (comments
+// are invisible to the lexer). It must parse as an empty block so that the
+// following else/elif/case still binds to the statement.
+func TestCommentOnlyBlockBodies(t *testing.T) {
+	t.Run("if-else", func(t *testing.T) {
+		src := "x := 1;\nif x == 1:\n    // only a comment\nelse:\n    println(\"no\");\n"
+		prog := mustParse(t, src)
+		stmt, ok := prog.Statements[1].(*ast.IfStatement)
+		if !ok {
+			t.Fatalf("statement 1: want IfStatement, got %T", prog.Statements[1])
+		}
+		if len(stmt.Consequence.Statements) != 0 {
+			t.Fatalf("consequence: want empty block, got %d statements", len(stmt.Consequence.Statements))
+		}
+		if stmt.ElseBlock == nil || len(stmt.ElseBlock.Statements) != 1 {
+			t.Fatalf("else block must hold the println, got %+v", stmt.ElseBlock)
+		}
+	})
+
+	t.Run("elif-chain", func(t *testing.T) {
+		src := "x := 1;\nif x == 1:\n    // c1\nelif x == 2:\n    // c2\nelse:\n    // c3\n"
+		prog := mustParse(t, src)
+		stmt := prog.Statements[1].(*ast.IfStatement)
+		if len(stmt.Alternatives) != 1 {
+			t.Fatalf("want 1 elif clause, got %d", len(stmt.Alternatives))
+		}
+		if stmt.ElseBlock == nil {
+			t.Fatalf("else block missing after comment-only elif body")
+		}
+	})
+
+	t.Run("match-case-default", func(t *testing.T) {
+		src := "value := 1;\nmatch value:\n    case 1:\n        // first case\n    else:\n        println(\"other\");\n"
+		prog := mustParse(t, src)
+		stmt := prog.Statements[1].(*ast.MatchStatement)
+		if len(stmt.Cases) != 1 {
+			t.Fatalf("want 1 case, got %d", len(stmt.Cases))
+		}
+		if stmt.Default == nil || len(stmt.Default.Statements) != 1 {
+			t.Fatalf("default block must hold the println, got %+v", stmt.Default)
+		}
+	})
+}
+
+// A statement written on the line after a block header without indentation is
+// not a valid body and must be rejected, never silently swallowed.
+func TestUnindentedStatementIsNotABlockBody(t *testing.T) {
+	src := "x := 1;\nif x == 1:\ny := 2;\n"
+	prog, errs := parse(src)
+	if len(errs) == 0 || !strings.Contains(errs[0], "expected an indented block") {
+		t.Fatalf("want 'expected an indented block', got %v", errs)
+	}
+	stmt, ok := prog.Statements[1].(*ast.IfStatement)
+	if !ok {
+		t.Fatalf("statement 1: want IfStatement, got %T", prog.Statements[1])
+	}
+	if len(stmt.Consequence.Statements) != 0 {
+		t.Fatalf("unindented statement was swallowed into the if body")
+	}
+	if len(prog.Statements) != 3 {
+		t.Fatalf("want 3 top-level statements, got %d", len(prog.Statements))
+	}
+	if _, ok := prog.Statements[2].(*ast.VarDeclaration); !ok {
+		t.Fatalf("statement 2: want VarDeclaration, got %T", prog.Statements[2])
+	}
+}
