@@ -3,12 +3,14 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/alca-lang/alca/pkg/ast"
 	"github.com/alca-lang/alca/pkg/diag"
+	"github.com/alca-lang/alca/pkg/format"
 	"github.com/alca-lang/alca/pkg/interpreter"
 	"github.com/alca-lang/alca/pkg/lexer"
 	"github.com/alca-lang/alca/pkg/lsp"
@@ -60,11 +62,7 @@ func main() {
 		startREPL()
 
 	case "fmt":
-		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "Usage: alca fmt <file.al>")
-			os.Exit(1)
-		}
-		os.Exit(formatFile(os.Args[2]))
+		os.Exit(cmdFmt(os.Args[2:]))
 
 	case "test":
 		if len(os.Args) < 3 {
@@ -122,7 +120,7 @@ func printUsage() {
 	fmt.Println("                              Build runtimes for cross-compilation (needs the Go toolchain)")
 	fmt.Println("  check <file.al>             Syntax + strict type check (CI friendly)")
 	fmt.Println("  test <file.al>              Run test blocks and report PASS/FAIL")
-	fmt.Println("  fmt <file.al>               Print the formatted program")
+	fmt.Println("  fmt [-w] <file.al>          Format the program (-w rewrites the file in place)")
 	fmt.Println("  repl                        Interactive session")
 	fmt.Println("  lsp                         Language Server Protocol daemon for editors")
 	fmt.Println("  version | help")
@@ -309,8 +307,28 @@ func startREPL() {
 	}
 }
 
-// formatFile parses a .al file and prints its formatted AST.
-func formatFile(filename string) int {
+// cmdFmt implements the 'alca fmt' command: it formats a source file, printing
+// the result to stdout, or rewriting the file in place when -w is given.
+func cmdFmt(args []string) int {
+	write := false
+	var files []string
+	for _, arg := range args {
+		switch arg {
+		case "-w", "--write":
+			write = true
+		default:
+			files = append(files, arg)
+		}
+	}
+	if len(files) != 1 {
+		fmt.Fprintln(os.Stderr, "Usage: alca fmt [-w] <file.al>")
+		return 1
+	}
+	return formatFile(files[0], write)
+}
+
+// formatFile reformats a .al file with the canonical formatter.
+func formatFile(filename string, write bool) int {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprint(os.Stderr, diag.FormatPanicReport(filename, r, isTerminal(os.Stderr)))
@@ -323,17 +341,30 @@ func formatFile(filename string) int {
 		return 1
 	}
 
-	content := string(data)
-	l := lexer.New(content)
-	p := parser.New(l)
-	prog := p.ParseProgram()
-
-	if len(p.SyntaxErrors()) > 0 {
-		fmt.Fprint(os.Stderr, p.DiagnosticReport(filename, content, isTerminal(os.Stderr)))
+	formatted, err := format.FormatSource(filename, string(data))
+	if err != nil {
+		var syntaxErr *format.SyntaxError
+		if errors.As(err, &syntaxErr) {
+			fmt.Fprint(os.Stderr, syntaxErr.Report)
+		} else {
+			fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		}
 		return 1
 	}
 
-	fmt.Print(prog.String())
+	if !write {
+		fmt.Print(formatted)
+		return 0
+	}
+
+	mode := os.FileMode(0o644)
+	if info, statErr := os.Stat(filename); statErr == nil {
+		mode = info.Mode().Perm()
+	}
+	if err := os.WriteFile(filename, []byte(formatted), mode); err != nil {
+		fmt.Fprint(os.Stderr, diag.FormatIOReport(filename, "write", filename, err, isTerminal(os.Stderr)))
+		return 1
+	}
 	return 0
 }
 
