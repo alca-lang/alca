@@ -106,12 +106,17 @@ func execute(filename, content string, prog *ast.Program, eng engine, quiet bool
 			}
 			return 0, true
 		}
-		if _, isUnsupported := err.(*vm.UnsupportedError); !isUnsupported || eng == engineVM {
+		if uerr, isUnsupported := err.(*vm.UnsupportedError); isUnsupported {
+			if eng == engineVM {
+				fmt.Fprint(os.Stderr, diag.FormatUnsupportedFeature(filename, uerr.Feature, uerr.Line, isTerminal(os.Stderr)))
+				return 1, false
+			}
+			if !quiet {
+				fmt.Fprintf(os.Stderr, "note: %v; running on the interpreter\n", err)
+			}
+		} else {
 			fmt.Fprint(os.Stderr, diag.FormatCompilerError(filename, err, isTerminal(os.Stderr)))
 			return 1, false
-		}
-		if !quiet {
-			fmt.Fprintf(os.Stderr, "note: %v; running on the interpreter\n", err)
 		}
 	}
 	interp := newInterpreter()
@@ -148,7 +153,11 @@ func testFile(filename string) int {
 	}
 	c := vm.NewCompiler()
 	if err := c.Compile(prog); err != nil {
-		fmt.Fprint(os.Stderr, diag.FormatCompilerError(filename, err, isTerminal(os.Stderr)))
+		if uerr, ok := err.(*vm.UnsupportedError); ok {
+			fmt.Fprint(os.Stderr, diag.FormatUnsupportedFeature(filename, uerr.Feature, uerr.Line, isTerminal(os.Stderr)))
+		} else {
+			fmt.Fprint(os.Stderr, diag.FormatCompilerError(filename, err, isTerminal(os.Stderr)))
+		}
 		return 1
 	}
 	interp := newInterpreter()

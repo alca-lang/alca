@@ -53,6 +53,9 @@ const (
 	OpGetLocal   // Load local variable by frame offset (1 byte index)
 	OpSetLocal   // Store local variable by frame offset (1 byte index)
 	OpGetBuiltin // Load builtin function or stdlib module (2 bytes index)
+	OpClosure    // Create a closure over a compiled function constant (2 bytes const index)
+	OpGetFree    // Load captured upvalue (1 byte upvalue index)
+	OpSetFree    // Store captured upvalue (1 byte upvalue index)
 
 	// Data Structures
 	OpList     // Construct list from N elements on stack (2 bytes count)
@@ -129,6 +132,9 @@ var definitions = map[Opcode]*Definition{
 	OpGetLocal:        {"OpGetLocal", []int{1}},
 	OpSetLocal:        {"OpSetLocal", []int{1}},
 	OpGetBuiltin:      {"OpGetBuiltin", []int{2}},
+	OpClosure:         {"OpClosure", []int{2}},
+	OpGetFree:         {"OpGetFree", []int{1}},
+	OpSetFree:         {"OpSetFree", []int{1}},
 	OpList:            {"OpList", []int{2}},
 	OpMap:             {"OpMap", []int{2}},
 	OpIndex:           {"OpIndex", []int{}},

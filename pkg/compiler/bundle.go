@@ -213,6 +213,15 @@ func encodeConstant(w *writer, v interpreter.Value) error {
 		w.str(c.Name)
 		w.u32(c.NumLocals)
 		w.u32(c.NumParameters)
+		w.u32(c.NumFree)
+		for _, d := range c.UpvalueDescs {
+			if d.IsLocal {
+				w.u8(1)
+			} else {
+				w.u8(0)
+			}
+			w.u32(d.Index)
+		}
 		w.bytes(c.Instructions)
 	case *interpreter.StructDef:
 		w.u8(tagStruct)
@@ -265,7 +274,20 @@ func decodeConstant(r *reader) interpreter.Value {
 		name := r.str()
 		locals := r.u32()
 		params := r.u32()
-		return &vm.CompiledFunction{Name: name, NumLocals: locals, NumParameters: params, Instructions: r.rawBytes()}
+		numFree := r.u32()
+		var descs []vm.UpvalueDesc
+		for i := 0; i < numFree && r.err == nil; i++ {
+			isLocal := r.u8() == 1
+			descs = append(descs, vm.UpvalueDesc{IsLocal: isLocal, Index: r.u32()})
+		}
+		return &vm.CompiledFunction{
+			Name:          name,
+			NumLocals:     locals,
+			NumParameters: params,
+			NumFree:       numFree,
+			UpvalueDescs:  descs,
+			Instructions:  r.rawBytes(),
+		}
 	case tagStruct:
 		def := &interpreter.StructDef{Name: r.str()}
 		n := r.u32()

@@ -26,27 +26,122 @@ func unsupported(feature string, tok token.Token) error {
 	return &UnsupportedError{Feature: feature, Line: tok.Line}
 }
 
-// lookup resolves a variable and rejects captures of another function's locals
-// (closures are not implemented; silently reading the wrong frame slot would be a miscompile).
-func (c *Compiler) lookup(name string, tok token.Token) (Symbol, bool, error) {
-	depth := 0
-	for t := c.symbolTable; t != nil; t = t.Outer {
-		if sym, ok := t.store[name]; ok {
-			if sym.Scope == LocalScope && depth > 0 {
-				return sym, true, unsupported(fmt.Sprintf("capturing the local variable '%s' in a nested function/lambda", name), tok)
-			}
-			return sym, true, nil
-		}
-		depth++
-	}
-	return Symbol{}, false, nil
+// lookup resolves a variable through the lexical scopes. A variable local to an
+// enclosing function is captured as an upvalue of the current function (see
+// SymbolTable.Resolve): the VM creates closures over live stack slots, matching
+// the interpreter's by-reference closures.
+func (c *Compiler) lookup(name string) (Symbol, bool) {
+	return c.symbolTable.Resolve(name)
 }
 
 func (c *Compiler) emitSet(sym Symbol) {
-	if sym.Scope == GlobalScope {
+	switch sym.Scope {
+	case GlobalScope:
 		c.emit(OpSetGlobal, sym.Index)
-	} else {
+	case FreeScope:
+		c.emit(OpSetFree, sym.Index)
+	default:
 		c.emit(OpSetLocal, sym.Index)
+	}
+}
+
+func (c *Compiler) emitGet(sym Symbol) {
+	switch sym.Scope {
+	case GlobalScope:
+		c.emit(OpGetGlobal, sym.Index)
+	case BuiltinScope:
+		c.emit(OpGetBuiltin, sym.Index)
+	case FreeScope:
+		c.emit(OpGetFree, sym.Index)
+	default:
+		c.emit(OpGetLocal, sym.Index)
+	}
+}
+
+// canInPlace reports whether a target symbol supports the specialised in-place
+// arithmetic opcodes. Upvalues need the generic read/modify/write path because
+// the captured slot may live in another frame or be closed over.
+func canInPlace(sym Symbol) bool {
+	return sym.Scope == GlobalScope || sym.Scope == LocalScope
+}
+
+// captureDescriptors turns the free symbols recorded while compiling a function
+// body into the per-upvalue capture descriptions used by OpClosure.
+func captureDescriptors(free []Symbol) []UpvalueDesc {
+	if len(free) == 0 {
+		return nil
+	}
+	descs := make([]UpvalueDesc, len(free))
+	for i, sym := range free {
+		descs[i] = UpvalueDesc{Index: sym.Index, IsLocal: sym.Scope == LocalScope}
+	}
+	return descs
+}
+
+// emitFunctionValue pushes a compiled function as a value: OpClosure when the
+// function captures upvalues of the current frame, plain OpConstant otherwise.
+func (c *Compiler) emitFunctionValue(fn *CompiledFunction) {
+	idx := c.addConstant(fn)
+	if fn.NumFree > 0 {
+		c.emit(OpClosure, idx)
+		return
+	}
+	c.emit(OpConstant, idx)
+}
+
+// predeclareLocals defines every variable bound anywhere in a function body
+// before the body is compiled. All blocks share the function scope, nested
+// functions are compiled first (hoisting), and the interpreter resolves names at
+// run time: pre-declaring keeps slot indices stable and lets hoisted functions
+// capture locals that are declared textually later in the body.
+func (c *Compiler) predeclareLocals(body *ast.BlockStatement) {
+	if body == nil {
+		return
+	}
+	for _, st := range body.Statements {
+		c.predeclareStatement(st)
+	}
+}
+
+func (c *Compiler) predeclareStatement(st ast.Statement) {
+	switch n := st.(type) {
+	case *ast.VarDeclaration:
+		if n.Name != nil {
+			c.symbolTable.Define(n.Name.Value)
+		}
+	case *ast.FuncDeclaration:
+		c.symbolTable.Define(n.Name)
+	case *ast.StructDeclaration:
+		c.symbolTable.Define(n.Name)
+	case *ast.ForStatement:
+		if n.Variable != "" {
+			c.symbolTable.Define(n.Variable)
+		}
+		c.predeclareLocals(n.Body)
+	case *ast.ForEachStatement:
+		if n.Variable != "" {
+			c.symbolTable.Define(n.Variable)
+		}
+		c.predeclareLocals(n.Body)
+	case *ast.WhileStatement:
+		c.predeclareLocals(n.Body)
+	case *ast.LoopStatement:
+		c.predeclareLocals(n.Body)
+	case *ast.IfStatement:
+		c.predeclareLocals(n.Consequence)
+		for _, alt := range n.Alternatives {
+			if alt != nil {
+				c.predeclareLocals(alt.Body)
+			}
+		}
+		c.predeclareLocals(n.ElseBlock)
+	case *ast.MatchStatement:
+		for _, cs := range n.Cases {
+			if cs != nil {
+				c.predeclareLocals(cs.Body)
+			}
+		}
+		c.predeclareLocals(n.Default)
 	}
 }
 
@@ -211,22 +306,12 @@ func (c *Compiler) compileExt(node ast.Node) (bool, error) {
 		return true, nil
 
 	case *ast.Identifier:
-		sym, ok, err := c.lookup(n.Value, n.Token)
-		if err != nil {
-			return true, err
-		}
+		sym, ok := c.lookup(n.Value)
 		if !ok {
 			c.emit(OpGetBuiltin, c.addConstant(&interpreter.StringValue{Val: n.Value}))
 			return true, nil
 		}
-		switch sym.Scope {
-		case GlobalScope:
-			c.emit(OpGetGlobal, sym.Index)
-		case BuiltinScope:
-			c.emit(OpGetBuiltin, sym.Index)
-		default:
-			c.emit(OpGetLocal, sym.Index)
-		}
+		c.emitGet(sym)
 		return true, nil
 
 	case *ast.ErrExpression:
@@ -363,13 +448,11 @@ func (c *Compiler) compileCapture(se *ast.StreamExpression) error {
 	if !ok {
 		return unsupported("capture stream target that is not a variable", se.Token)
 	}
-	sym, found, err := c.lookup(id.Value, id.Token)
-	if err != nil {
-		return err
-	}
+	sym, found := c.lookup(id.Value)
 	if !found {
 		sym = c.symbolTable.Define(id.Value)
 	}
+	c.assignedNames[id.Value] = true
 	if se.Operator == ">>>" {
 		if err := c.Compile(se.Source); err != nil {
 			return err
@@ -434,9 +517,17 @@ func (c *Compiler) compileLambda(n *ast.LambdaExpression) error {
 	}
 	c.emit(OpReturnValue)
 	numLocals := c.symbolTable.numDefinitions
+	free := c.symbolTable.FreeSymbols
 	ins := c.leaveScope()
-	fn := &CompiledFunction{Instructions: ins, NumLocals: numLocals, NumParameters: len(n.Params), Name: "<lambda>"}
-	c.emit(OpConstant, c.addConstant(fn))
+	fn := &CompiledFunction{
+		Instructions:  ins,
+		NumLocals:     numLocals,
+		NumParameters: len(n.Params),
+		Name:          "<lambda>",
+		NumFree:       len(free),
+		UpvalueDescs:  captureDescriptors(free),
+	}
+	c.emitFunctionValue(fn)
 	return c.err
 }
 

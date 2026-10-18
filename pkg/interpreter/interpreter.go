@@ -1338,6 +1338,12 @@ func (i *Interpreter) invokeFunction(fnVal Value, args []Value, kwArgs map[strin
 
 		if ret, ok := res.(*ReturnValue); ok {
 			res = ret.Val
+		} else if _, isErr := res.(*ErrorValue); !isErr {
+			// Falling off the end of the body yields null. The value of the last
+			// expression statement is not an implicit return: a '-> void'
+			// function may end with any expression statement (e.g. println),
+			// matching the VM.
+			res = NULL
 		}
 
 		// Validate return type annotation if declared
@@ -1739,6 +1745,16 @@ func validateType(val Value, ta *ast.TypeAnnotation) bool {
 			}
 		case "json":
 			return true // dynamic type: any value
+		case "any":
+			return true // untyped: any value
+		case "func":
+			if val.Type() == FUNC_VAL || val.Type() == SHFUNC_VAL {
+				return true
+			}
+		case "void":
+			if val.Type() == NULL_VAL {
+				return true
+			}
 		default:
 			// Check user-defined struct type name
 			if inst, ok := val.(*StructInstance); ok && inst.Def.Name == expected {

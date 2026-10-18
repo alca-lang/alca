@@ -490,6 +490,36 @@ func FormatCompilerError(filename string, err error, useColor bool) string {
 	return b.String()
 }
 
+// FormatUnsupportedFeature formats the error shown when a program uses a
+// construct the bytecode VM cannot compile but the user explicitly selected
+// the VM. It must not reuse the native-build diagnostic: nothing was being
+// compiled to an executable, so telling the user to check the output path is
+// misleading.
+func FormatUnsupportedFeature(filename, feature string, line int, useColor bool) string {
+	cRed := colorBoldRed
+	cCyan := colorBoldCyan
+	cGray := colorGray
+	cGreen := colorBoldGreen
+	cReset := colorReset
+	cBold := colorBold
+
+	if !useColor {
+		cRed, cCyan, cGray, cGreen, cReset, cBold = "", "", "", "", "", ""
+	}
+
+	var b strings.Builder
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("%serror[UnsupportedFeature]: %s%s%s is not supported by the VM backend\n", cRed, cReset, cBold, feature))
+	if line > 0 {
+		b.WriteString(fmt.Sprintf("  %s-->%s %s%s:%d%s\n", cCyan, cReset, cGray, filename, line, cReset))
+	} else {
+		b.WriteString(fmt.Sprintf("  %s-->%s %s%s%s\n", cCyan, cReset, cGray, filename, cReset))
+	}
+	b.WriteString(fmt.Sprintf("   %s|%s\n", cCyan, cReset))
+	b.WriteString(fmt.Sprintf("   %s=%s %shelp:%s run without --vm, or with --interp, to use the interpreter\n\n", cGreen, cReset, cGreen, cReset))
+	return b.String()
+}
+
 func generateRuntimeSuggestion(msg string) string {
 	lower := strings.ToLower(msg)
 	switch {

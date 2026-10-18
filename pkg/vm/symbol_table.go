@@ -7,6 +7,9 @@ const (
 	GlobalScope  SymbolScope = "GLOBAL"
 	LocalScope   SymbolScope = "LOCAL"
 	BuiltinScope SymbolScope = "BUILTIN"
+	// FreeScope marks a variable that is local to an enclosing function and is
+	// captured as an upvalue of the current function.
+	FreeScope SymbolScope = "FREE"
 )
 
 // Symbol represents a resolved named identifier bound to a memory location.
@@ -21,6 +24,10 @@ type SymbolTable struct {
 	Outer          *SymbolTable
 	store          map[string]Symbol
 	numDefinitions int
+	// FreeSymbols records the upvalues captured by the function whose scope this
+	// table represents, in capture order. Each entry is the symbol as seen from
+	// the enclosing function (a local slot, or one of its own upvalues).
+	FreeSymbols []Symbol
 }
 
 // NewSymbolTable creates a root global symbol table.
@@ -61,11 +68,37 @@ func (s *SymbolTable) DefineBuiltin(index int, name string) Symbol {
 	return symbol
 }
 
-// Resolve looks up a symbol name in current and enclosing scopes.
+// Resolve looks up a symbol in the current table and its enclosing tables.
+// A variable that is local to an enclosing function is captured as an upvalue of
+// the current function (FreeScope) and recorded in this table's FreeSymbols, so
+// closures see the enclosing frame's slot by reference exactly like the
+// tree-walking interpreter.
 func (s *SymbolTable) Resolve(name string) (Symbol, bool) {
-	obj, ok := s.store[name]
-	if !ok && s.Outer != nil {
-		return s.Outer.Resolve(name)
+	if obj, ok := s.store[name]; ok {
+		return obj, true
 	}
-	return obj, ok
+	if s.Outer == nil {
+		return Symbol{}, false
+	}
+	obj, ok := s.Outer.Resolve(name)
+	if !ok {
+		return Symbol{}, false
+	}
+	if obj.Scope == GlobalScope || obj.Scope == BuiltinScope {
+		// Globals and builtins are reachable from any frame without captures.
+		return obj, true
+	}
+	return s.defineFree(obj), true
+}
+
+// defineFree records original as an upvalue of this function, reusing the same
+// upvalue slot when the name was already captured.
+func (s *SymbolTable) defineFree(original Symbol) Symbol {
+	for i, sym := range s.FreeSymbols {
+		if sym.Name == original.Name {
+			return Symbol{Name: sym.Name, Index: i, Scope: FreeScope}
+		}
+	}
+	s.FreeSymbols = append(s.FreeSymbols, original)
+	return Symbol{Name: original.Name, Index: len(s.FreeSymbols) - 1, Scope: FreeScope}
 }

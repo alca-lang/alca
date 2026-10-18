@@ -47,6 +47,11 @@ type Compiler struct {
 	tmpCounter int
 	assignStmt *ast.AssignExpression
 	err        error // first deferred compile error (e.g. jump overflow)
+
+	// assignedNames records every variable name that is written somewhere in the
+	// function(s) compiled so far. compileForRange only uses the counter fast
+	// path when the loop variable is not among them (see writesLoopVariable).
+	assignedNames map[string]bool
 }
 
 // NewCompiler creates a new Compiler.
@@ -58,14 +63,15 @@ func NewCompiler() *Compiler {
 	}
 
 	return &Compiler{
-		constants:   []interpreter.Value{},
-		symbolTable: NewSymbolTable(),
-		scopes:      []CompilationScope{mainScope},
-		scopeIndex:  0,
-		optimizer:   NewOptimizer(),
-		loopStack:   []*loopContext{},
-		funcs:       map[string]*ast.FuncDeclaration{},
-		structs:     map[string]*ast.StructDeclaration{},
+		constants:     []interpreter.Value{},
+		symbolTable:   NewSymbolTable(),
+		scopes:        []CompilationScope{mainScope},
+		scopeIndex:    0,
+		optimizer:     NewOptimizer(),
+		loopStack:     []*loopContext{},
+		funcs:         map[string]*ast.FuncDeclaration{},
+		structs:       map[string]*ast.StructDeclaration{},
+		assignedNames: map[string]bool{},
 	}
 }
 
@@ -184,7 +190,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 			return err
 		}
 		if !c.lastInstructionIs(OpSetGlobal) && !c.lastInstructionIs(OpSetLocal) &&
-			!c.lastInstructionIs(OpSetField) && !c.lastInstructionIs(OpSetIndex) &&
+			!c.lastInstructionIs(OpSetFree) && !c.lastInstructionIs(OpSetField) &&
+			!c.lastInstructionIs(OpSetIndex) &&
 			!c.lastInstructionIs(OpIncGlobal) && !c.lastInstructionIs(OpIncLocal) {
 			c.emit(OpPop)
 		}
@@ -197,13 +204,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.VarDeclaration:
-		symbol, alreadyDefined := c.symbolTable.Resolve(n.Name.Value)
+		// ':=' always binds in the current function scope: the interpreter
+		// evaluates a declaration with env.Set on the current call environment,
+		// so an inner declaration shadows (never writes) enclosing locals and
+		// globals, while a redeclaration in the same scope reuses the slot.
+		symbol, alreadyDefined := c.symbolTable.store[n.Name.Value]
 		if !alreadyDefined {
 			symbol = c.symbolTable.Define(n.Name.Value)
 		}
+		c.assignedNames[n.Name.Value] = true
 
 		if n.Value != nil {
-			if alreadyDefined {
+			if alreadyDefined && canInPlace(symbol) {
 				if inf, ok := n.Value.(*ast.InfixExpression); ok && inf.Operator == "+" {
 					var otherExpr ast.Expression
 					// Only 'x = x + e' maps onto in-place add; 'x = e + x' differs for strings/lists.
@@ -252,11 +264,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(OpNull)
 		}
 
-		if symbol.Scope == GlobalScope {
-			c.emit(OpSetGlobal, symbol.Index)
-		} else {
-			c.emit(OpSetLocal, symbol.Index)
-		}
+		c.emitSet(symbol)
 
 	case *ast.ReturnStatement:
 		if n.Value != nil {
@@ -348,6 +356,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		for _, p := range n.Params {
 			c.symbolTable.Define(p.Name)
 		}
+		c.predeclareLocals(n.Body)
 
 		if err := c.Compile(n.Body); err != nil {
 			return err
@@ -358,6 +367,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		numLocals := c.symbolTable.numDefinitions
+		free := c.symbolTable.FreeSymbols
 		instructions := c.leaveScope()
 
 		compiledFn := &CompiledFunction{
@@ -365,16 +375,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 			NumLocals:     numLocals,
 			NumParameters: len(n.Params),
 			Name:          n.Name,
+			NumFree:       len(free),
+			UpvalueDescs:  captureDescriptors(free),
 		}
 
-		fnConstantIdx := c.addConstant(compiledFn)
-		c.emit(OpConstant, fnConstantIdx)
-
-		if fnSymbol.Scope == GlobalScope {
-			c.emit(OpSetGlobal, fnSymbol.Index)
-		} else {
-			c.emit(OpSetLocal, fnSymbol.Index)
-		}
+		c.emitFunctionValue(compiledFn)
+		c.emitSet(fnSymbol)
 
 	case *ast.IntegerLiteral:
 		val := &interpreter.IntegerValue{Val: n.Value}
@@ -483,13 +489,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 			idx := c.addConstant(&interpreter.StringValue{Val: n.Value})
 			c.emit(OpGetBuiltin, idx)
 		} else {
-			if symbol.Scope == GlobalScope {
-				c.emit(OpGetGlobal, symbol.Index)
-			} else if symbol.Scope == BuiltinScope {
-				c.emit(OpGetBuiltin, symbol.Index)
-			} else {
-				c.emit(OpGetLocal, symbol.Index)
-			}
+			c.emitGet(symbol)
 		}
 
 	case *ast.RangeLiteral:
@@ -503,60 +503,63 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	case *ast.AssignExpression:
 		if ident, ok := n.Target.(*ast.Identifier); ok {
+			// Assignment uses the interpreter's Update semantics: an existing
+			// binding (including one captured from an enclosing function) is
+			// written, otherwise the name is created in the current scope.
 			symbol, ok := c.symbolTable.Resolve(ident.Value)
 			if !ok {
 				symbol = c.symbolTable.Define(ident.Value)
 			}
+			c.assignedNames[ident.Value] = true
 
-			// Compound assignment optimization: ident = ident + expr or ident = expr + ident
-			if inf, ok := n.Value.(*ast.InfixExpression); ok && inf.Operator == "+" {
-				var otherExpr ast.Expression
-				// Only 'x = x + e' maps onto in-place add; 'x = e + x' differs for strings/lists.
-				if idL, okL := inf.Left.(*ast.Identifier); okL && idL.Value == ident.Value {
-					otherExpr = inf.Right
-				}
+			// Compound assignment optimization: ident = ident + expr or ident = expr + ident.
+			// Upvalues (free variables) take the generic read/modify/write path.
+			if canInPlace(symbol) {
+				if inf, ok := n.Value.(*ast.InfixExpression); ok && inf.Operator == "+" {
+					var otherExpr ast.Expression
+					// Only 'x = x + e' maps onto in-place add; 'x = e + x' differs for strings/lists.
+					if idL, okL := inf.Left.(*ast.Identifier); okL && idL.Value == ident.Value {
+						otherExpr = inf.Right
+					}
 
-				if otherExpr != nil {
-					if intLit, okLit := otherExpr.(*ast.IntegerLiteral); okLit && intLit.Value == 1 {
+					if otherExpr != nil {
+						if intLit, okLit := otherExpr.(*ast.IntegerLiteral); okLit && intLit.Value == 1 {
+							if symbol.Scope == GlobalScope {
+								c.emit(OpIncGlobal, symbol.Index)
+							} else {
+								c.emit(OpIncLocal, symbol.Index)
+							}
+							return nil
+						}
+						if err := c.Compile(otherExpr); err != nil {
+							return err
+						}
 						if symbol.Scope == GlobalScope {
-							c.emit(OpIncGlobal, symbol.Index)
+							c.emit(OpAddGlobal, symbol.Index)
 						} else {
-							c.emit(OpIncLocal, symbol.Index)
+							c.emit(OpAddLocal, symbol.Index)
 						}
 						return nil
 					}
-					if err := c.Compile(otherExpr); err != nil {
-						return err
+				} else if inf, ok := n.Value.(*ast.InfixExpression); ok && inf.Operator == "-" {
+					if idL, okL := inf.Left.(*ast.Identifier); okL && idL.Value == ident.Value {
+						if err := c.Compile(inf.Right); err != nil {
+							return err
+						}
+						if symbol.Scope == GlobalScope {
+							c.emit(OpSubGlobal, symbol.Index)
+						} else {
+							c.emit(OpSubLocal, symbol.Index)
+						}
+						return nil
 					}
-					if symbol.Scope == GlobalScope {
-						c.emit(OpAddGlobal, symbol.Index)
-					} else {
-						c.emit(OpAddLocal, symbol.Index)
-					}
-					return nil
-				}
-			} else if inf, ok := n.Value.(*ast.InfixExpression); ok && inf.Operator == "-" {
-				if idL, okL := inf.Left.(*ast.Identifier); okL && idL.Value == ident.Value {
-					if err := c.Compile(inf.Right); err != nil {
-						return err
-					}
-					if symbol.Scope == GlobalScope {
-						c.emit(OpSubGlobal, symbol.Index)
-					} else {
-						c.emit(OpSubLocal, symbol.Index)
-					}
-					return nil
 				}
 			}
 
 			if err := c.Compile(n.Value); err != nil {
 				return err
 			}
-			if symbol.Scope == GlobalScope {
-				c.emit(OpSetGlobal, symbol.Index)
-			} else {
-				c.emit(OpSetLocal, symbol.Index)
-			}
+			c.emitSet(symbol)
 			return nil
 		} else if dot, ok := n.Target.(*ast.DotExpression); ok {
 			if err := c.Compile(n.Value); err != nil {
@@ -831,9 +834,14 @@ func (c *Compiler) compileForRange(variable string, start, end ast.Expression, b
 		// Emit OpLoopGlobalLeInc: increments var and loops back to bodyStart if var <= end!
 		contPos := len(c.currentInstructions())
 		c.emit(OpLoopGlobalLeInc, varSymbol.Index, endSymbol.Index, bodyStart)
-		loopEnd := len(c.currentInstructions())
-		c.changeOperand(jumpOut, loopEnd)
 
+		// Natural exit leaves the variable one past the last item; the
+		// interpreter leaves it at the last item. Restore it (break skips this
+		// because breaks jump past the fix-up to loopEnd).
+		c.changeOperand(jumpOut, len(c.currentInstructions()))
+		c.emitCounterExitFixup(varSymbol)
+
+		loopEnd := len(c.currentInstructions())
 		for _, brk := range ctx.breakJumps {
 			c.changeOperand(brk, loopEnd)
 		}
@@ -879,9 +887,13 @@ func (c *Compiler) compileForRange(variable string, start, end ast.Expression, b
 	}
 
 	c.emit(OpJump, loopStart)
-	loopEnd := len(c.currentInstructions())
-	c.changeOperand(jumpOut, loopEnd)
 
+	// Natural exit left the variable one past the last item; restore the
+	// interpreter's final value (breaks jump past this to loopEnd).
+	c.changeOperand(jumpOut, len(c.currentInstructions()))
+	c.emitCounterExitFixup(varSymbol)
+
+	loopEnd := len(c.currentInstructions())
 	for _, brk := range ctx.breakJumps {
 		c.changeOperand(brk, loopEnd)
 	}
@@ -893,16 +905,29 @@ func (c *Compiler) compileForRange(variable string, start, end ast.Expression, b
 	return nil
 }
 
+// emitCounterExitFixup subtracts one from a counter-loop variable so it holds
+// the last iterated item after a natural exit, matching the interpreter:
+// the VM counter is incremented before the exit test, so it ends at end+1.
+func (c *Compiler) emitCounterExitFixup(sym Symbol) {
+	c.emitGet(sym)
+	c.emit(OpConstant, c.addConstant(&interpreter.IntegerValue{Val: 1}))
+	c.emit(OpSub)
+	c.emitSet(sym)
+}
+
 func (c *Compiler) compileFor(variable string, iterable ast.Expression, body *ast.BlockStatement) error {
 	if rng, ok := iterable.(*ast.RangeLiteral); ok {
-		// The specialised counter loop only ascends (var <= end, var += 1).
-		// Use it when the compiler can prove an ascending literal range; for
-		// dynamic bounds or a descending literal range fall through to the
-		// generic iterator, whose OpRange list matches the interpreter's
-		// EvalRange semantics (inclusive, direction-aware) exactly.
+		// The specialised counter loop only ascends (var <= end, var += 1) and
+		// only when nothing can write the loop variable while the loop runs:
+		// a body write would change the iteration count, but the interpreter
+		// iterates a fixed item list. For dynamic bounds, a descending literal
+		// range, or a written variable, fall through to the generic iterator,
+		// whose OpRange list matches the interpreter's EvalRange semantics
+		// (inclusive, direction-aware) exactly.
 		startLit, startOK := rng.Start.(*ast.IntegerLiteral)
 		endLit, endOK := rng.End.(*ast.IntegerLiteral)
-		if startOK && endOK && startLit.Value <= endLit.Value {
+		if startOK && endOK && startLit.Value <= endLit.Value &&
+			!c.assignedNames[variable] && !writesLoopVariable(body, variable) {
 			return c.compileForRange(variable, rng.Start, rng.End, body)
 		}
 	}

@@ -683,6 +683,123 @@ match x:
         println("no");
 println("done");
 `, "done\n"},
+
+	{"q25_closure_counter", `
+func make_counter() -> func:
+    n := 0;
+    func next() -> int:
+        n = n + 1;
+        return n;
+    return next;
+
+c := make_counter();
+println(c());
+println(c());
+println(c());
+`, "1\n2\n3\n"},
+
+	{"q26_closure_shared_state", `
+func make() -> map[string, func]:
+    x := 0;
+    func inc() -> int:
+        x = x + 1;
+        return x;
+    func get() -> int:
+        return x;
+    return {"inc": inc, "get": get};
+
+pair := make();
+inc := pair["inc"];
+get := pair["get"];
+println(inc());
+println(get());
+println(inc());
+println(get());
+`, "1\n1\n2\n2\n"},
+
+	{"q27_closure_independent_instances", `
+func make_counter() -> func:
+    n := 0;
+    func next() -> int:
+        n = n + 1;
+        return n;
+    return next;
+
+a := make_counter();
+b := make_counter();
+println(a());
+println(a());
+println(b());
+println(a());
+`, "1\n2\n1\n3\n"},
+
+	{"q28_lambda_captures_parameter", `
+func make_adder(n: int) -> func:
+    return |x: int| x + n;
+
+add5 := make_adder(5);
+add9 := make_adder(9);
+println(add5(1));
+println(add9(1));
+`, "6\n10\n"},
+
+	{"q29_loop_variable_capture", `
+func probe_loop_capture() -> void:
+    a := |x: int| x;
+    b := |x: int| x;
+    for i in 0..2:
+        if i == 0:
+            a = |x: int| x + i;
+        else:
+            b = |x: int| x + i;
+    println(a(0));
+    println(b(0));
+
+probe_loop_capture();
+`, "2\n2\n"},
+
+	{"q30_void_function_ends_with_statement", `
+func log(msg: string) -> void:
+    println(msg);
+
+func counter() -> void:
+    n := 1;
+
+log("hi");
+counter();
+println("done");
+`, "hi\ndone\n"},
+
+	{"q31_three_level_capture", `
+func outer() -> func:
+    x := 10;
+    func mid() -> func:
+        func inner() -> int:
+            return x;
+        return inner;
+    return mid;
+
+m := outer();
+i := m();
+println(i());
+`, "10\n"},
+
+	{"q32_closure_calls_closure", `
+func make() -> list:
+    x := 0;
+    func inc() -> int:
+        x = x + 1;
+        return x;
+    func via() -> int:
+        return inc() * 10;
+    return [inc, via];
+pair := make();
+i := pair[0];
+v := pair[1];
+println(i());
+println(v());
+println(i());
+`, "1\n20\n3\n"},
 }
 
 func TestEnginesAgree(t *testing.T) {
@@ -739,6 +856,44 @@ func TestUnsupportedFeatureFallsBackToInterpreter(t *testing.T) {
 	os.Stdout = old
 	if usedVM {
 		t.Fatal("threads blocks are not VM-compilable; the interpreter must be used")
+	}
+}
+
+// TestExplicitVMReportsUnsupportedFeature: with --vm the user asked for the
+// bytecode backend, so an unsupported construct must be reported as such.
+// Regression: execute() sent *vm.UnsupportedError through the native-build
+// formatter, printing "compilation to native executable failed" and advice
+// about the output path even though no executable was being built.
+func TestExplicitVMReportsUnsupportedFeature(t *testing.T) {
+	src := "threads:\n    println(\"x\");\n"
+	file := filepath.Join(t.TempDir(), "p.al")
+	_ = os.WriteFile(file, []byte(src), 0o644)
+	prog, content, ok := loadProgram(file)
+	if !ok {
+		t.Skip("threads syntax differs")
+	}
+
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	done := make(chan string)
+	go func() { b, _ := io.ReadAll(r); done <- string(b) }()
+	code, usedVM := execute(file, content, prog, engineVM, true)
+	w.Close()
+	os.Stderr = old
+	errOut := <-done
+
+	if code == 0 {
+		t.Fatalf("explicit --vm must fail on an unsupported program")
+	}
+	if usedVM {
+		t.Fatalf("the VM must not claim to have run an uncompilable program")
+	}
+	if !strings.Contains(errOut, "UnsupportedFeature") {
+		t.Fatalf("diagnostic must name the unsupported feature, got:\n%s", errOut)
+	}
+	if strings.Contains(errOut, "BuildError") || strings.Contains(errOut, "native executable") {
+		t.Fatalf("diagnostic must not use the native-build template, got:\n%s", errOut)
 	}
 }
 

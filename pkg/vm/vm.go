@@ -27,6 +27,10 @@ type VM struct {
 	frames      []*Frame
 	framesIndex int
 
+	// openUpvalues interns the open upvalues of the live stack by absolute stack
+	// index, so sibling closures share one reference to the same variable.
+	openUpvalues map[int]*Upvalue
+
 	lastPopped StackSlot
 	env        *interpreter.Environment
 
@@ -71,15 +75,16 @@ func NewWithEnv(bytecode *Bytecode, env *interpreter.Environment) *VM {
 	}
 
 	return &VM{
-		constants:   slotConstants,
-		constVals:   bytecode.Constants,
-		globals:     make([]StackSlot, GlobalsSize),
-		stack:       make([]StackSlot, StackSize),
-		sp:          0,
-		frames:      frames,
-		framesIndex: 1,
-		env:         env,
-		lastPopped:  FromValue(interpreter.NULL),
+		constants:    slotConstants,
+		constVals:    bytecode.Constants,
+		globals:      make([]StackSlot, GlobalsSize),
+		stack:        make([]StackSlot, StackSize),
+		sp:           0,
+		frames:       frames,
+		framesIndex:  1,
+		openUpvalues: make(map[int]*Upvalue),
+		env:          env,
+		lastPopped:   FromValue(interpreter.NULL),
 	}
 }
 
@@ -108,6 +113,33 @@ func (vm *VM) pushFrame(f *Frame) {
 func (vm *VM) popFrame() *Frame {
 	vm.framesIndex--
 	return vm.frames[vm.framesIndex]
+}
+
+// captureUpvalue returns the open upvalue for an absolute stack slot, creating it
+// on first capture. Reusing the same Upvalue makes sibling closures share the
+// captured variable exactly like the interpreter's shared environment bindings.
+func (vm *VM) captureUpvalue(stackIndex int) *Upvalue {
+	if uv, ok := vm.openUpvalues[stackIndex]; ok {
+		return uv
+	}
+	uv := &Upvalue{stackIndex: stackIndex}
+	vm.openUpvalues[stackIndex] = uv
+	return uv
+}
+
+// closeUpvalues detaches every open upvalue at or above stack index from the
+// stack, preserving its current value. Called when a frame returns or is
+// unwound, because the slots it owned are about to be reused.
+func (vm *VM) closeUpvalues(from int) {
+	if len(vm.openUpvalues) == 0 {
+		return
+	}
+	for idx, uv := range vm.openUpvalues {
+		if idx >= from {
+			uv.close(vm.stack)
+			delete(vm.openUpvalues, idx)
+		}
+	}
 }
 
 func (vm *VM) pushSlot(s StackSlot) error {
@@ -172,6 +204,9 @@ func (vm *VM) unwind(err error) bool {
 	} else {
 		ev = interpreter.NewError(500, err.Error())
 	}
+	// Frames between the raised frame and the handler die here; their slots are
+	// about to be reused, so close any upvalues pointing into them.
+	vm.closeUpvalues(h.sp)
 	vm.framesIndex = h.frameIdx + 1
 	vm.frames[h.frameIdx].ip = h.ip
 	vm.sp = h.sp
@@ -578,6 +613,53 @@ func (vm *VM) run() error {
 			stack[sp] = FromValue(val)
 			sp++
 
+		case OpClosure:
+			constIndex := binary.BigEndian.Uint16(ins[ip:])
+			ip += 2
+			template := vm.constVals[constIndex].(*CompiledFunction)
+			closure := &CompiledFunction{
+				Instructions:  template.Instructions,
+				NumLocals:     template.NumLocals,
+				NumParameters: template.NumParameters,
+				Name:          template.Name,
+				NumFree:       template.NumFree,
+				UpvalueDescs:  template.UpvalueDescs,
+			}
+			if template.NumFree > 0 {
+				closure.Upvalues = make([]*Upvalue, template.NumFree)
+				for i, desc := range template.UpvalueDescs {
+					if desc.IsLocal {
+						closure.Upvalues[i] = vm.captureUpvalue(frame.basePointer + desc.Index)
+					} else {
+						closure.Upvalues[i] = frame.fn.Upvalues[desc.Index]
+					}
+				}
+			}
+			stack[sp] = FromValue(closure)
+			sp++
+
+		case OpGetFree:
+			freeIndex := int(ins[ip])
+			ip++
+			uv := frame.fn.Upvalues[freeIndex]
+			if uv.stackIndex >= 0 {
+				stack[sp] = stack[uv.stackIndex]
+			} else {
+				stack[sp] = uv.closed
+			}
+			sp++
+
+		case OpSetFree:
+			freeIndex := int(ins[ip])
+			ip++
+			sp--
+			uv := frame.fn.Upvalues[freeIndex]
+			if uv.stackIndex >= 0 {
+				stack[uv.stackIndex] = stack[sp]
+			} else {
+				uv.closed = stack[sp]
+			}
+
 		case OpSetLocal:
 			localIndex := int(ins[ip])
 			ip++
@@ -861,6 +943,7 @@ func (vm *VM) run() error {
 			sp--
 			returnVal := stack[sp]
 			frame = vm.popFrame()
+			vm.closeUpvalues(frame.basePointer)
 			sp = frame.basePointer - 1
 			stack[sp] = returnVal
 			sp++
@@ -875,6 +958,7 @@ func (vm *VM) run() error {
 
 		case OpReturn:
 			frame = vm.popFrame()
+			vm.closeUpvalues(frame.basePointer)
 			sp = frame.basePointer - 1
 			stack[sp] = StackSlot{tag: SlotNull}
 			sp++

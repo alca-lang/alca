@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/alca-lang/alca/pkg/ast"
+	"github.com/alca-lang/alca/pkg/lexer"
+	"github.com/alca-lang/alca/pkg/parser"
 	"github.com/alca-lang/alca/pkg/token"
 )
 
@@ -345,6 +347,102 @@ func TestInterpreterFunctionsAndClosures(t *testing.T) {
 	resVal, _ := interp.env.Get("res")
 	if resVal.(*IntegerValue).Val != 42 {
 		t.Fatalf("expected res=42, got %v", resVal)
+	}
+}
+
+// parseTestProgram parses Alca source for interpreter-level tests.
+func parseTestProgram(t *testing.T, src string) *ast.Program {
+	t.Helper()
+	p := parser.New(lexer.New(src))
+	prog := p.ParseProgram()
+	if errs := p.SyntaxErrors(); len(errs) > 0 {
+		t.Fatalf("syntax errors: %v", errs)
+	}
+	return prog
+}
+
+// TestReturningFunctionValueWithFuncAnnotation: a function annotated "-> func"
+// may return a lambda or a nested function. Regression: the runtime return-type
+// check did not recognise function values for the "func" annotation and failed
+// with "invalid return type: expected func, got FUNCTION" (code 400), so no
+// function could ever return a closure.
+func TestReturningFunctionValueWithFuncAnnotation(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want int64
+	}{
+		{
+			name: "lambda",
+			src: strings.Join([]string{
+				"func make_adder(n: int) -> func:",
+				"    return |x: int| x + n;",
+				"add5 := make_adder(5);",
+				"res := add5(2);",
+			}, "\n"),
+			want: 7,
+		},
+		{
+			name: "nested function",
+			src: strings.Join([]string{
+				"func make_counter() -> func:",
+				"    n := 0;",
+				"    func next() -> int:",
+				"        n = n + 1;",
+				"        return n;",
+				"    return next;",
+				"c := make_counter();",
+				"c();",
+				"res := c();",
+			}, "\n"),
+			want: 2,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			interp := New()
+			if err := interp.Execute(parseTestProgram(t, tc.src)); err != nil {
+				t.Fatalf("execution error: %v", err)
+			}
+			res, ok := interp.env.Get("res")
+			if !ok {
+				t.Fatalf("res is not bound")
+			}
+			iv, ok := res.(*IntegerValue)
+			if !ok || iv.Val != tc.want {
+				t.Fatalf("res = %v, want %d", res, tc.want)
+			}
+		})
+	}
+}
+
+// TestVoidFunctionEndingInExpressionStatement: a '-> void' function may end
+// with an expression statement such as println. Falling off the end of a body
+// yields null, it is not an implicit return of the last expression. Regression:
+// validateType rejected the println string with
+// "invalid return type: expected void, got STRING" (code 400), so no void
+// helper could end in a call.
+func TestVoidFunctionEndingInExpressionStatement(t *testing.T) {
+	src := strings.Join([]string{
+		"func log(msg: string) -> void:",
+		"    println(msg);",
+		"func counter() -> void:",
+		"    n := 1;",
+		"log(\"hi\");",
+		"counter();",
+		"println(\"done\");",
+	}, "\n")
+
+	var out strings.Builder
+	SetPrintHook(func(s string) { out.WriteString(s) })
+	defer ResetPrintHook()
+
+	interp := New()
+	if err := interp.Execute(parseTestProgram(t, src)); err != nil {
+		t.Fatalf("execution error: %v", err)
+	}
+	if got, want := out.String(), "hidone"; got != want {
+		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
 

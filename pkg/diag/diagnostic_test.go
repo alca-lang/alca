@@ -39,3 +39,22 @@ func TestFormatReport(t *testing.T) {
 		t.Errorf("expected report to contain help hint, got:\n%s", report)
 	}
 }
+
+// TestFormatUnsupportedFeatureDoesNotBlameBuild: when the user explicitly runs
+// a program with --vm and the backend rejects a construct, the diagnostic must
+// name the unsupported feature and suggest the interpreter, not reuse the
+// native-build template ("compilation to native executable failed", writable
+// output path, disk space) which describes an operation that never happened.
+func TestFormatUnsupportedFeatureDoesNotBlameBuild(t *testing.T) {
+	report := diag.FormatUnsupportedFeature("app.al", "threads blocks", 3, false)
+	for _, want := range []string{"error[UnsupportedFeature]", "threads blocks", "app.al:3", "help:", "--interp"} {
+		if !strings.Contains(report, want) {
+			t.Errorf("report must contain %q, got:\n%s", want, report)
+		}
+	}
+	for _, unwanted := range []string{"BuildError", "native executable", "output path", "disk space"} {
+		if strings.Contains(report, unwanted) {
+			t.Errorf("report must not contain %q, got:\n%s", unwanted, report)
+		}
+	}
+}

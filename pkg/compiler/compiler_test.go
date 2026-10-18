@@ -18,7 +18,12 @@ func sampleBytecode() *vm.Bytecode {
 			&interpreter.IntegerValue{Val: -42},
 			&interpreter.FloatValue{Val: 3.25},
 			&interpreter.StringValue{Val: "héllo"},
-			&vm.CompiledFunction{Name: "f", NumLocals: 3, NumParameters: 2, Instructions: vm.Instructions{1, 2, 3}},
+			&vm.CompiledFunction{
+				Name: "f", NumLocals: 3, NumParameters: 2,
+				NumFree:      2,
+				UpvalueDescs: []vm.UpvalueDesc{{IsLocal: true, Index: 1}, {IsLocal: false, Index: 0}},
+				Instructions: vm.Instructions{1, 2, 3},
+			},
 			&interpreter.StructDef{Name: "Server", Fields: []*ast.StructField{
 				{Name: "ip", TypeAnnotation: &ast.TypeAnnotation{Types: []string{"string"}}},
 				{Name: "port", TypeAnnotation: &ast.TypeAnnotation{Types: []string{"int"}}, DefaultValue: &ast.IntegerLiteral{Value: 80}},
@@ -57,6 +62,15 @@ func TestBytecodeRoundTrip(t *testing.T) {
 	fn := got.Code.Constants[3].(*vm.CompiledFunction)
 	if fn.Name != "f" || fn.NumLocals != 3 || fn.NumParameters != 2 {
 		t.Errorf("function: %+v", fn)
+	}
+	if fn.NumFree != 2 || len(fn.UpvalueDescs) != 2 {
+		t.Fatalf("free variables not preserved: %+v", fn)
+	}
+	if d := fn.UpvalueDescs[0]; !d.IsLocal || d.Index != 1 {
+		t.Errorf("upvalue 0 = %+v, want local 1", d)
+	}
+	if d := fn.UpvalueDescs[1]; d.IsLocal || d.Index != 0 {
+		t.Errorf("upvalue 1 = %+v, want outer upvalue 0", d)
 	}
 	st := got.Code.Constants[4].(*interpreter.StructDef)
 	if st.Name != "Server" || len(st.Fields) != 3 {
