@@ -2,7 +2,10 @@
 // for the Alca programming language.
 package token
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 // TokenType represents the classification of a lexical token in Alca.
 type TokenType string
@@ -334,6 +337,32 @@ func LookupIdent(ident string) TokenType {
 		return tok
 	}
 	return IDENT
+}
+
+// KeywordNames returns all control-flow and declaration keywords (excluding
+// type keywords) in sorted order, for editor tooling and completion.
+func KeywordNames() []string {
+	names := make([]string, 0, len(keywords))
+	for name, t := range keywords {
+		if !IsTypeKeyword(t) {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// TypeKeywordNames returns all primitive type keywords in sorted order, for
+// editor tooling and completion.
+func TypeKeywordNames() []string {
+	names := make([]string, 0, len(keywords))
+	for name, t := range keywords {
+		if IsTypeKeyword(t) {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // IsKeyword returns true if the token type represents a language keyword.

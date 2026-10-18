@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/alca-lang/alca/pkg/ast"
+	"github.com/alca-lang/alca/pkg/diag"
 	"github.com/alca-lang/alca/pkg/lexer"
 	"github.com/alca-lang/alca/pkg/parser"
 	"github.com/alca-lang/alca/pkg/typecheck"
@@ -140,21 +142,21 @@ func (s *Server) handleMessage(req map[string]interface{}) {
 		}
 
 	case "textDocument/completion":
-		completions := s.getCompletions()
-		s.sendResponse(id, completions, nil)
+		uri, line, char := positionParams(req)
+		s.sendResponse(id, s.completionsFor(uri, line, char), nil)
 
 	case "textDocument/hover":
-		var contents string = "### Alca Programming Language\nModern high-performance language."
-		if params, ok := req["params"].(map[string]interface{}); ok {
-			if pos, ok := params["position"].(map[string]interface{}); ok {
-				_ = pos
-				contents = "### Alca Symbol\nAlca standard symbol definition."
-			}
+		uri, line, char := positionParams(req)
+		prog, checker, _ := analyze(uri, s.docs[uri])
+		value := hoverDescription(prog, checker, line+1, char+1)
+		if value == "" {
+			s.sendResponse(id, nil, nil)
+			break
 		}
 		s.sendResponse(id, map[string]interface{}{
 			"contents": map[string]interface{}{
 				"kind":  "markdown",
-				"value": contents,
+				"value": value,
 			},
 		}, nil)
 
@@ -166,10 +168,42 @@ func (s *Server) handleMessage(req map[string]interface{}) {
 	}
 }
 
-func (s *Server) publishDiagnostics(uri, text string) {
-	l := lexer.New(text)
-	p := parser.New(l)
+// analyze parses and type-checks a document. Syntax errors stop the analysis;
+// otherwise the checker records expression types even when type errors exist,
+// which is what hover and completion rely on.
+func analyze(uri, text string) (*ast.Program, *typecheck.Checker, []*diag.SyntaxError) {
+	p := parser.New(lexer.New(text))
 	prog := p.ParseProgram()
+	if errs := p.SyntaxErrors(); len(errs) > 0 {
+		return prog, nil, errs
+	}
+	checker := typecheck.NewChecker(uri, text)
+	return prog, checker, checker.Check(prog)
+}
+
+// positionParams extracts the document URI and the 0-based cursor position
+// from request params.
+func positionParams(req map[string]interface{}) (uri string, line, char int) {
+	params, _ := req["params"].(map[string]interface{})
+	if params == nil {
+		return "", 0, 0
+	}
+	if doc, ok := params["textDocument"].(map[string]interface{}); ok {
+		uri, _ = doc["uri"].(string)
+	}
+	if pos, ok := params["position"].(map[string]interface{}); ok {
+		if v, ok := pos["line"].(float64); ok {
+			line = int(v)
+		}
+		if v, ok := pos["character"].(float64); ok {
+			char = int(v)
+		}
+	}
+	return uri, line, char
+}
+
+func (s *Server) publishDiagnostics(uri, text string) {
+	_, _, allErrors := analyze(uri, text)
 
 	type RangePos struct {
 		Line      int `json:"line"`
@@ -187,13 +221,6 @@ func (s *Server) publishDiagnostics(uri, text string) {
 	}
 
 	diagnostics := make([]DiagnosticItem, 0)
-	allErrors := p.SyntaxErrors()
-
-	if len(allErrors) == 0 {
-		checker := typecheck.NewChecker(uri, text)
-		typeErrors := checker.Check(prog)
-		allErrors = append(allErrors, typeErrors...)
-	}
 
 	for _, syntaxErr := range allErrors {
 		line := syntaxErr.Line - 1
@@ -228,66 +255,6 @@ func (s *Server) publishDiagnostics(uri, text string) {
 		"uri":         uri,
 		"diagnostics": diagnostics,
 	})
-}
-
-func (s *Server) getCompletions() []map[string]interface{} {
-	items := make([]map[string]interface{}, 0)
-
-	keywords := []string{
-		"func", "shfunc", "return", "if", "else", "elif", "while", "for", "loop", "foreach", "in",
-		"break", "continue", "and", "or", "not", "true", "false", "null", "struct", "pub", "use",
-		"as", "ba", "threads", "wait", "watch", "test", "mock", "assert", "tx", "match", "case",
-	}
-	for _, kw := range keywords {
-		items = append(items, map[string]interface{}{
-			"label":         kw,
-			"kind":          14, // Keyword
-			"detail":        "Alca keyword",
-			"documentation": fmt.Sprintf("Keyword: `%s`", kw),
-		})
-	}
-
-	types := []string{"string", "int", "float", "bool", "list", "map", "blob", "secret", "json"}
-	for _, t := range types {
-		items = append(items, map[string]interface{}{
-			"label":         t,
-			"kind":          7, // Class/Type
-			"detail":        "Alca primitive type",
-			"documentation": fmt.Sprintf("Type: `%s`", t),
-		})
-	}
-
-	modules := []string{
-		"std.db", "std.sql", "std.sqlite", "std.postgres", "std.metrics",
-		"std.io", "std.regex", "std.re", "std.archive", "std.zip",
-		"std.formats", "std.csv", "std.ini", "std.sys", "std.cli",
-		"std.log", "std.math", "std.time", "std.path", "std.crypto", "std.net", "std.env",
-		"std.gui", "std.ffi", "std.ai", "std.security",
-	}
-	for _, mod := range modules {
-		items = append(items, map[string]interface{}{
-			"label":         mod,
-			"kind":          9, // Module
-			"detail":        "Standard library module",
-			"documentation": fmt.Sprintf("Standard module: `%s`", mod),
-		})
-	}
-
-	builtins := []string{
-		"print", "println", "len", "type", "int", "float", "string", "bool", "list",
-		"append", "pop", "push", "keys", "values", "range", "sleep", "exit", "input",
-		"json_encode", "json_decode", "abs", "max", "min", "time_now", "env",
-	}
-	for _, b := range builtins {
-		items = append(items, map[string]interface{}{
-			"label":         b,
-			"kind":          3, // Function
-			"detail":        "Builtin function",
-			"documentation": fmt.Sprintf("Builtin: `%s(...)`", b),
-		})
-	}
-
-	return items
 }
 
 func (s *Server) sendResponse(id interface{}, result interface{}, err interface{}) {
