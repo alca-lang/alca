@@ -207,6 +207,41 @@ func stringifyINI(val *interpreter.MapValue) string {
 
 // --- JSON Query Implementation ---
 
+// convertAlcaValueToGo converts an Alca value into plain Go data (maps, slices,
+// scalars) so it can be traversed by queryJSON. Alca's Inspect() output uses
+// unquoted map keys and would not survive a JSON string round-trip.
+func convertAlcaValueToGo(v interpreter.Value) interface{} {
+	switch val := v.(type) {
+	case nil:
+		return nil
+	case *interpreter.MapValue:
+		out := make(map[string]interface{}, val.Len())
+		for _, k := range val.Keys() {
+			item, _ := val.Get(k)
+			out[k] = convertAlcaValueToGo(item)
+		}
+		return out
+	case *interpreter.ListValue:
+		out := make([]interface{}, val.Len())
+		for i, el := range val.Elements {
+			out[i] = convertAlcaValueToGo(el)
+		}
+		return out
+	case *interpreter.StringValue:
+		return val.Val
+	case *interpreter.IntegerValue:
+		return val.Val
+	case *interpreter.FloatValue:
+		return val.Val
+	case *interpreter.BoolValue:
+		return val.Val
+	case *interpreter.NullValue:
+		return nil
+	default:
+		return interpreter.CoerceToString(v)
+	}
+}
+
 func convertGoValueToAlca(val interface{}) interpreter.Value {
 	if val == nil {
 		return interpreter.NULL
@@ -217,6 +252,10 @@ func convertGoValueToAlca(val interface{}) interpreter.Value {
 			return interpreter.TRUE
 		}
 		return interpreter.FALSE
+	case int:
+		return &interpreter.IntegerValue{Val: int64(v)}
+	case int64:
+		return &interpreter.IntegerValue{Val: v}
 	case float64:
 		if v == float64(int64(v)) {
 			return &interpreter.IntegerValue{Val: int64(v)}
@@ -458,11 +497,9 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 				return interpreter.NULL
 			}
 		} else {
-			// If already a Alca Map or List, encode to JSON then decode into rawData
-			encoded := interpreter.CoerceToString(target)
-			if err := json.Unmarshal([]byte(encoded), &rawData); err != nil {
-				return interpreter.NULL
-			}
+			// Already an Alca map/list/scalar: convert it natively so paths
+			// like "a[2]" keep working on decoded values.
+			rawData = convertAlcaValueToGo(target)
 		}
 
 		res := queryJSON(rawData, path)

@@ -241,6 +241,427 @@ use std.math;
 println(str_upper("abc"));
 println(len("héllo"));
 println(math.floor(2.7));`, "ABC\n5\n2\n"},
+
+	{"module member does not shadow a module name", `
+use std.log;
+use std.math;
+log.set_level("debug");
+println("ok");`, "ok\n"},
+
+	{"p01_casts", `
+println(int("42"));
+println(int(3.9));
+println(float(7));
+println(string(3) + "x");
+println(bool(0));
+`, "42\n3\n7.0\n3x\nfalse\n"},
+
+	{"p02_str_funcs", `
+println(str_contains("hello", "ell"));
+println(str_starts_with("hello", "he"));
+println(str_ends_with("hello", "lo"));
+println(str_replace("a-b-c", "-", "+"));
+println(len(str_split("a,b,c", ",")));
+println(str_trim("  x  "));
+println(str_lower("ABC") + str_upper("def"));
+`, "true\ntrue\ntrue\na+b+c\n3\nx\nabcDEF\n"},
+
+	{"p03_math", `
+use std.math;
+println(math.abs(-5));
+println(math.floor(2.9));
+println(math.ceil(2.1));
+println(math.round(2.5));
+println(math.sqrt(16.0));
+println(math.pow(2.0, 3.0));
+println(math.min(3, 7));
+println(math.max(3, 7));
+println(math.clamp(10, 0, 5));
+println(math.hypot(3.0, 4.0));
+println(math.PI > 3.14);
+`, "5\n2\n3\n3\n4.0\n8.0\n3\n7\n5\n5.0\ntrue\n"},
+
+	{"p04_str_index", `
+s: string = "hello";
+println(s[0]);
+println(s[4]);
+`, "h\no\n"},
+
+	{"p06_map_key_order", `
+m: map[string, int] = {"b": 2, "a": 1, "c": 3};
+for k in keys(m):
+    println(k);
+`, "b\na\nc\n"},
+
+	{"p09_typeof", `
+println(typeof(1));
+println(typeof(1.5));
+println(typeof("s"));
+println(typeof(true));
+println(type(null));
+`, "INTEGER\nFLOAT\nSTRING\nBOOL\nNULL\n"},
+
+	{"p10_json", `
+j := json_decode("{\"a\": [1, 2, 3]}");
+println(json_query(j, "a[2]"));
+println(json_query("{\"a\": [1, 2, 3]}", "a[1]"));
+println(json_encode(j));
+`, "3\n2\n{\"a\":[1,2,3]}\n"},
+
+	{"p12_empty_containers", `
+xs: list[int] = [];
+println(len(xs));
+push(xs, 7);
+println(xs[0]);
+m: map[string, int] = {};
+m["k"] = 1;
+println(len(m));
+`, "0\n7\n1\n"},
+
+	{"p13_nested_struct", `
+struct Point:
+    x: int;
+    y: int;
+struct Line:
+    a: Point;
+    b: Point;
+l := Line(Point(1, 2), Point(3, 4));
+println(l.a.x + l.b.y);
+`, "5\n"},
+
+	{"p14_list_of_structs", `
+struct P:
+    v: int;
+ps: list[P] = [P(1), P(2), P(3)];
+t: int = 0;
+for p in ps:
+    t = t + p.v;
+println(t);
+`, "6\n"},
+
+	{"p15_struct_nullable_field", `
+struct User:
+    name: string;
+    email: string | null = null;
+u := User("Bob");
+println(u.email == null);
+u.email = "bob@x.io";
+println(u.email);
+`, "true\nbob@x.io\n"},
+
+	{"p16_assert", `
+assert(1 + 1 == 2);
+println("ok");
+`, "ok\n"},
+
+	{"p17_json_prettify", `
+println(json_prettify({"a": [2, 3]}));
+`, "{a: [2, 3]}\n"},
+
+	{"p18_div_zero_capture", `
+e: error | null = null;
+x: int = 0;
+println(10 / x) ?>>> e;
+if e != null:
+    println(e.code);
+    println(e.msg);
+`, "400\ndivision by zero\n"},
+
+	{"p19_float_compare", `
+println(1 == 1.0);
+println(2.5 > 2);
+println(float(3) <= 3.0);
+println(0.1 + 0.2 > 0.3);
+`, "true\ntrue\ntrue\ntrue\n"},
+
+	{"p21_crypto", `
+use std.crypto;
+println(crypto.md5("abc"));
+println(crypto.sha1("abc"));
+println(crypto.base64_encode("hello"));
+println(crypto.base64_decode("aGVsbG8="));
+println(crypto.hex_encode("AB"));
+println(crypto.hmac_sha256("key", "msg"));
+`, "900150983cd24fb0d6963f7d28e17f72\na9993e364706816aba3e25717850c26c9cd0d89d\naGVsbG8=\nhello\n4142\n2d93cbc1be167bcb1637a4a23cbff01a7878f0c50ee833954ea5221bb1b8c628\n"},
+
+	{"p23_path_parts", `
+use std.path;
+println(path.base("a/b/c.txt"));
+println(path.ext("a/b/c.txt"));
+println(path.stem("a/b/c.txt"));
+`, "c.txt\n.txt\nc\n"},
+
+	{"p24_lambda_capture", `
+base: int = 10;
+f := |x: int| x + base;
+println(4 |> f);
+`, "14\n"},
+
+	{"p25_scope_assign", `
+x: int = 1;
+if true:
+    x = 2;
+println(x);
+`, "2\n"},
+
+	{"p26_string_compare", `
+println("abc" < "abd");
+println("abc" == "abc");
+println("b" > "a");
+println("a" != "b");
+`, "true\ntrue\ntrue\ntrue\n"},
+
+	{"p27_short_circuit", `
+func boom() -> bool:
+    err("must not run", code=1);
+    return false;
+println(false and boom());
+println(true or boom());
+`, "false\ntrue\n"},
+
+	{"p28_match_strings", `
+for s in ["alpha", "beta", "x"]:
+    match s:
+        case "alpha":
+            println(1);
+        case "beta":
+            println(2);
+        else:
+            println(0);
+`, "1\n2\n0\n"},
+
+	{"p31_mutual_recursion", `
+func is_even(n: int) -> bool:
+    if n == 0:
+        return true;
+    return is_odd(n - 1);
+func is_odd(n: int) -> bool:
+    if n == 0:
+        return false;
+    return is_even(n - 1);
+println(is_even(10));
+println(is_odd(7));
+`, "true\ntrue\n"},
+
+	{"p32_int_overflow", `
+x: int = 9223372036854775807;
+println(x + 1);
+`, "-9223372036854775808\n"},
+
+	{"p33_nested_func", `
+func outer() -> int:
+    func inner(x: int) -> int:
+        return x * 2;
+    return inner(21);
+println(outer());
+`, "42\n"},
+
+	{"p35_membership", `
+xs: list[int] = [1, 2, 3];
+println(2 in xs);
+println(7 in xs);
+`, "true\nfalse\n"},
+
+	{"p36_while_break", `
+i: int = 0;
+while true:
+    i = i + 1;
+    if i == 5:
+        break;
+println(i);
+`, "5\n"},
+
+	{"p37_nested_break", `
+n: int = 0;
+for i in 0..5:
+    for j in 0..5:
+        if j == 2:
+            break;
+        n = n + 1;
+println(n);
+`, "12\n"},
+
+	{"p38_func_as_value", `
+func double(x: int) -> int:
+    return x * 2;
+f := double;
+println(f(21));
+`, "42\n"},
+
+	{"p39_lambda_two_params", `
+add := |a: int, b: int| a + b;
+println(add(2, 3));
+`, "5\n"},
+
+	{"p40_lambda_pipe_chain", `
+inc := |x: int| x + 1;
+dbl := |x: int| x * 2;
+println(3 |> inc |> dbl);
+`, "8\n"},
+
+	{"p41_string_escapes", `
+println("a\tb");
+println("line1\nline2");
+println("quote:\"end\"");
+println(len("\\"));
+`, "a\tb\nline1\nline2\nquote:\"end\"\n1\n"},
+
+	{"p42_list_concat", `
+a: list[int] = [1, 2];
+b: list[int] = [3];
+println(len(a + b));
+`, "3\n"},
+
+	{"p43_map_values", `
+m: map[string, int] = {"b": 2, "a": 1};
+t: int = 0;
+for v in values(m):
+    t = t + v;
+println(t);
+`, "3\n"},
+
+	{"p44_time_deterministic", `
+use std.time;
+println(time.now() > 0);
+println(time.now_ms() > 0);
+`, "true\ntrue\n"},
+
+	{"p46_sleep_zero", `
+println(sleep(0));
+`, "null\n"},
+
+	{"p47_uuid_len", `
+use std.crypto;
+u := crypto.uuid();
+println(len(u));
+`, "36\n"},
+
+	{"p48_str_index_loop", `
+s: string = "abc";
+t: string = "";
+for ch in s:
+    t = ch + t;
+println(t);
+`, "cba\n"},
+
+	{"p50_int_float_arg", `
+use std.math;
+println(math.floor(2.999999));
+println(math.round(-2.5));
+println(math.abs(-2.5));
+`, "2\n-3\n2.5\n"},
+
+	{"q01_list_oob", `
+xs: list[int] = [1, 2, 3];
+e: error | null = null;
+println(xs[5]) ?>>> e;
+if e != null:
+    println(e.code);
+    println(e.msg);
+`, "400\nindex 5 out of bounds (len 3)\n"},
+
+	{"q02_list_negative_index", `
+xs: list[int] = [1, 2, 3];
+println(xs[-1]);
+println(xs[-3]);
+`, "3\n1\n"},
+
+	{"q03_str_negative_index", `
+s: string = "hello";
+println(s[-1]);
+println(s[-5]);
+`, "o\nh\n"},
+
+	{"q04_str_oob", `
+s: string = "hi";
+e: error | null = null;
+println(s[9]) ?>>> e;
+if e != null:
+    println(e.code);
+    println(e.msg);
+`, "400\nstring index 9 out of bounds\n"},
+
+	{"q05_set_oob", `
+func bad() -> int:
+    xs: list[int] = [1, 2, 3];
+    xs[5] = 9;
+    return 0;
+e: error | null = null;
+println(bad()) ?>>> e;
+if e != null:
+    println(e.code);
+    println(e.msg);
+`, "400\ninvalid list index for assignment\n"},
+
+	{"q06_map_missing_key", `
+m: map[string, int] = {"a": 1};
+println(m["b"]);
+`, "null\n"},
+
+	{"q09_deep_recursion", `
+func depth(n: int) -> int:
+    if n == 0:
+        return 0;
+    return 1 + depth(n - 1);
+println(depth(500));
+`, "500\n"},
+
+	{"q12_range_descending", `
+for i in 5..1:
+    println(i);
+`, "5\n4\n3\n2\n1\n"},
+
+	{"q13_range_negative", `
+for i in -3..0:
+    println(i);
+`, "-3\n-2\n-1\n0\n"},
+
+	{"q14_range_single_int", `
+for i in 3:
+    println(i);
+`, "0\n1\n2\n"},
+
+	{"q16_float_format", `
+println(1.0 / 3.0);
+println(2.0);
+println(-0.0);
+println(100000000000000000000.0);
+`, "0.3333333333333333\n2.0\n-0.0\n100000000000000000000.0\n"},
+
+	{"q17_int_mod_negative", `
+println(-7 % 3);
+println(7 % -3);
+println(-7 % -3);
+`, "-1\n1\n-1\n"},
+
+	{"q18_bool_compare", `
+println(true == true);
+println(true != false);
+`, "true\ntrue\n"},
+
+	{"q19_null_equality", `
+x: string | null = null;
+println(x == null);
+`, "true\n"},
+
+	{"q20_map_values_order", `
+m: map[string, int] = {"z": 26, "y": 25, "x": 24};
+for v in values(m):
+    println(v);
+`, "26\n25\n24\n"},
+
+	{"q21_index_json_dynamic", `
+j := json_decode("[10, 20, 30]");
+println(j[1]);
+`, "20\n"},
+
+	{"q23_pow_negative_int", `
+e: error | null = null;
+println(2 ** -1) ?>>> e;
+if e != null:
+    println(e.code);
+    println(e.msg);
+`, "400\nnegative exponent for integer power; use float operands\n"},
 }
 
 func TestEnginesAgree(t *testing.T) {

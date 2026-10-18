@@ -499,6 +499,20 @@ func TestFormatsModule(t *testing.T) {
 	if node2Ip == interpreter.NULL || node2Ip.(*interpreter.StringValue).Val != "10.0.0.2" {
 		t.Errorf("expected '10.0.0.2', got %v", node2Ip)
 	}
+
+	// 4. json_query must also accept an already-decoded map/list value, not
+	// only a raw JSON string. Decoded maps Inspect() with unquoted keys, which
+	// is not valid JSON, so a naive string round-trip silently yields null.
+	decoded := interpreter.NewMap()
+	decoded.Set("a", interpreter.NewList(
+		&interpreter.IntegerValue{Val: 1},
+		&interpreter.IntegerValue{Val: 2},
+		&interpreter.IntegerValue{Val: 3},
+	))
+	got := jsonQueryFn.(*interpreter.BuiltinFunction).Fn(decoded, &interpreter.StringValue{Val: "a[2]"})
+	if iv, ok := got.(*interpreter.IntegerValue); !ok || iv.Val != 3 {
+		t.Errorf("json_query on a decoded map: expected 3, got %v", got)
+	}
 }
 
 func TestSysModule(t *testing.T) {
@@ -814,6 +828,46 @@ func TestMetricsModule(t *testing.T) {
 	text := exportFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.StringValue).Val
 	if !strings.Contains(text, "test_requests_total 5") || !strings.Contains(text, "test_active_sessions 17") {
 		t.Errorf("expected exported metrics text, got:\n%s", text)
+	}
+}
+
+// TestMetricsHistogramBucketsAreCumulative guards against double-cumulating the
+// per-bucket hit counts: three observations in buckets {1,2,3} must export
+// le=1 -> 1, le=2 -> 2, le=3 -> 3, le=+Inf -> 3.
+func TestMetricsHistogramBucketsAreCumulative(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterMetricsBuiltins(env)
+
+	val, _ := env.Get("metrics")
+	m := val.(*interpreter.MapValue)
+	histFn, _ := m.Get("histogram")
+	buckets := &interpreter.ListValue{Elements: []interpreter.Value{
+		&interpreter.FloatValue{Val: 1},
+		&interpreter.FloatValue{Val: 2},
+		&interpreter.FloatValue{Val: 3},
+	}}
+	hVal := histFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "test_histogram_cumulative"},
+		&interpreter.StringValue{Val: "histogram"},
+		buckets,
+	).(*interpreter.MapValue)
+	observe, _ := hVal.Get("observe")
+	for _, v := range []float64{0.5, 1.5, 2.5} {
+		observe.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: v})
+	}
+
+	exportFn, _ := m.Get("export")
+	text := exportFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.StringValue).Val
+	for _, want := range []string{
+		`test_histogram_cumulative_bucket{le="1"} 1`,
+		`test_histogram_cumulative_bucket{le="2"} 2`,
+		`test_histogram_cumulative_bucket{le="3"} 3`,
+		`test_histogram_cumulative_bucket{le="+Inf"} 3`,
+		"test_histogram_cumulative_count 3",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected %q in exported metrics, got:\n%s", want, text)
+		}
 	}
 }
 

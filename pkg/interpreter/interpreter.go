@@ -805,7 +805,13 @@ func (i *Interpreter) loadStdModule(node *ast.UseStatement) Value {
 		i.env.Set(node.Alias, modMap)
 	} else {
 		i.env.Set(shortName, modMap)
+		// Flatten the module members as convenience globals, but never shadow an
+		// existing binding: module names (e.g. math.log vs the std.log module),
+		// global builtins and user variables must keep their meaning.
 		for _, k := range modMap.Keys() {
+			if _, exists := i.env.Get(k); exists {
+				continue
+			}
 			val, _ := modMap.Get(k)
 			i.env.Set(k, val)
 		}
@@ -1160,6 +1166,9 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 		}
 		return &FloatValue{Val: math.Pow(getNumericFloat(left), getNumericFloat(right))}
 
+	case "in":
+		return InOp(left, right)
+
 	case "<":
 		if left.Type() == STRING_VAL && right.Type() == STRING_VAL {
 			return &BoolValue{Val: left.(*StringValue).Val < right.(*StringValue).Val}
@@ -1186,6 +1195,36 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 
 	default:
 		return NewError(400, fmt.Sprintf("unknown infix operator %s", node.Operator))
+	}
+}
+
+// InOp evaluates the `left in right` membership operator. Both engines share
+// this helper so list/map/string membership can never diverge:
+//
+//	list   -> true when any element equals left
+//	map    -> true when left is one of the keys
+//	string -> true when left is a substring of right
+func InOp(left, right Value) Value {
+	switch coll := right.(type) {
+	case *ListValue:
+		for _, el := range coll.Elements {
+			if ValuesEqual(left, el) {
+				return TRUE
+			}
+		}
+		return FALSE
+	case *MapValue:
+		if coll.Has(CoerceToString(left)) {
+			return TRUE
+		}
+		return FALSE
+	case *StringValue:
+		if strings.Contains(coll.Val, CoerceToString(left)) {
+			return TRUE
+		}
+		return FALSE
+	default:
+		return NewError(400, "'in' needs a list, map or string on the right")
 	}
 }
 
@@ -1594,6 +1633,17 @@ func extractIterableItems(v Value) []Value {
 		items := make([]Value, len(runes))
 		for idx, r := range runes {
 			items[idx] = &StringValue{Val: string(r)}
+		}
+		return items
+	case *IntegerValue:
+		// 'for i in n' iterates 0..n-1 (see the type checker's forLoop).
+		n := val.Val
+		if n < 0 {
+			n = 0
+		}
+		items := make([]Value, n)
+		for idx := int64(0); idx < n; idx++ {
+			items[idx] = &IntegerValue{Val: idx}
 		}
 		return items
 	default:

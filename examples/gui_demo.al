@@ -2,19 +2,19 @@
 // Alca GUI Showcase — All 3 Modes
 // ==========================================
 
-print("=== Alca GUI Module Loaded ===")
+println("=== Alca GUI Module Loaded ===");
 
 // ------------------------------------------
 // 1. Native System Dialogs (Zero-Dependency)
 // ------------------------------------------
 // Native Windows Win32 API MessageBox / Linux Zenity dialogs:
-// gui.alert("Системное уведомление", "Сервер Alca успешно запущен!")
-// ok = gui.confirm("Перезагрузка", "Выполнить безопасную перезагрузку?")
-// name = gui.prompt("Авторизация", "Введите логин администратора:", "admin")
-// file_path = gui.open_file("Выберите конфиг", "JSON Files (*.json)|*.json|All Files (*.*)|*.*")
-// gui.notify("Alca Backup", "Резервная копия создана за 0.4 сек")
+// gui.alert("Системное уведомление", "Сервер Alca успешно запущен!");
+// ok := gui.confirm("Перезагрузка", "Выполнить безопасную перезагрузку?");
+// name := gui.prompt("Авторизация", "Введите логин администратора:", "admin");
+// file_path := gui.open_file("Выберите конфиг", "JSON Files (*.json)|*.json|All Files (*.*)|*.*");
+// gui.notify("Alca Backup", "Резервная копия создана за 0.4 сек");
 
-print("1. Native dialogs API ready: gui.alert, gui.confirm, gui.prompt, gui.open_file, gui.save_file, gui.notify")
+println("1. Native dialogs API ready: gui.alert, gui.confirm, gui.prompt, gui.open_file, gui.save_file, gui.notify");
 
 // ------------------------------------------
 // 2. Desktop WebView UI (HTML/CSS/JS + Alca IPC Bridge)
@@ -40,7 +40,7 @@ html = """
 app = gui.webview("Alca Control Center", html, width=800, height=500)
 */
 
-print("2. Desktop WebView API ready: gui.webview(title, htmlOrURL, width, height)")
+println("2. Desktop WebView API ready: gui.webview(title, htmlOrURL, width, height)");
 
 // ------------------------------------------
 // 3. Native Windows & Interactive Widgets
@@ -56,12 +56,12 @@ win.add_button("Запустить диагностику")
 win.show()
 */
 
-print("3. Native Windows & Widgets API ready: win = gui.window(title, w, h)")
-print("   - win.add_label(text)")
-print("   - win.add_button(text, callback)")
-print("   - win.add_input(placeholder)")
-print("   - win.add_checkbox(text, checked)")
-print("   - win.add_progress(percent)")
-print("   - win.show() / win.run()")
+println("3. Native Windows & Widgets API ready: win = gui.window(title, w, h)");
+println("   - win.add_label(text)");
+println("   - win.add_button(text, callback)");
+println("   - win.add_input(placeholder)");
+println("   - win.add_checkbox(text, checked)");
+println("   - win.add_progress(percent)");
+println("   - win.show() / win.run()");
 
-print("=== GUI Verification Complete ===")
+println("=== GUI Verification Complete ===");

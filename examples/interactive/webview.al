@@ -1,7 +1,8 @@
 // Desktop WebView Application
-use std.gui
+// Interactive example: opens a WebView window and blocks until it is closed.
+use std.gui;
 
-html = """
+html := """
 <!DOCTYPE html>
 <html>
 <head>
@@ -52,12 +53,11 @@ html = """
     </div>
 </body>
 </html>
-"""
+""";
 
-print("Открываю десктопное окно WebView...")
-app = gui.webview("Alca Desktop App", html, 800, 550)
-print("WebView окно открыто! Сервер запущен на: " + app.url)
-print("Закройте окно приложения для завершения работы...")
-app.wait()
-print("WebView окно закрыто.")
-
+println("Открываю десктопное окно WebView...");
+app := gui.webview("Alca Desktop App", html, 800, 550);
+println("WebView окно открыто! Сервер запущен на: " + string(app["url"]));
+println("Закройте окно приложения для завершения работы...");
+app.wait();
+println("WebView окно закрыто.");

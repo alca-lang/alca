@@ -305,9 +305,13 @@ func RegisterMetricsBuiltins(env *interpreter.Environment) {
 					entry.mu.Lock()
 					entry.count++
 					entry.sum += val
+					// Count the observation in the smallest bucket that contains
+					// it; ExportText turns these per-bucket counts into the
+					// cumulative Prometheus form.
 					for _, b := range entry.buckets {
 						if val <= b {
 							entry.bucketHits[b]++
+							break
 						}
 					}
 					entry.mu.Unlock()

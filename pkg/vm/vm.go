@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"strconv"
 
 	"github.com/alca-lang/alca/pkg/ast"
 	"github.com/alca-lang/alca/pkg/interpreter"
@@ -47,6 +46,10 @@ type handler struct {
 type RaisedError struct{ Val *interpreter.ErrorValue }
 
 func (e *RaisedError) Error() string { return e.Val.Message }
+
+// AlcaErrorCode reports the Alca error code carried by the raised error value,
+// so diagnostics can print the code the program actually used.
+func (e *RaisedError) AlcaErrorCode() int64 { return e.Val.Code }
 
 // New creates a new VM initialized with compiled bytecode.
 func New(bytecode *Bytecode) *VM {
@@ -286,7 +289,7 @@ func (vm *VM) run() error {
 				if r.i64 == 0 {
 					frame.ip = ip
 					vm.sp = sp
-					return fmt.Errorf("division by zero")
+					return &RaisedError{Val: interpreter.NewError(400, "division by zero")}
 				}
 				l.i64 /= r.i64
 				sp--
@@ -309,7 +312,7 @@ func (vm *VM) run() error {
 				if r.i64 == 0 {
 					frame.ip = ip
 					vm.sp = sp
-					return fmt.Errorf("modulo by zero")
+					return &RaisedError{Val: interpreter.NewError(400, "modulo by zero")}
 				}
 				l.i64 %= r.i64
 				sp--
@@ -470,6 +473,21 @@ func (vm *VM) run() error {
 			if err := vm.executeComparison(OpNotEqual, left, right); err != nil {
 				frame.ip = ip
 				vm.sp = sp
+				return err
+			}
+			sp = vm.sp
+
+		case OpIn:
+			vm.sp = sp
+			right := vm.pop()
+			left := vm.pop()
+			res := interpreter.InOp(left, right)
+			if ev, ok := res.(*interpreter.ErrorValue); ok {
+				frame.ip = ip
+				vm.sp = sp
+				return &RaisedError{Val: ev}
+			}
+			if err := vm.push(res); err != nil {
 				return err
 			}
 			sp = vm.sp
@@ -961,6 +979,16 @@ func (vm *VM) executeBinaryOp(op Opcode, left, right interpreter.Value) error {
 		}
 	}
 
+	// List concatenation (mirrors the interpreter's '+' on two lists)
+	if op == OpAdd && left.Type() == interpreter.LIST_VAL && right.Type() == interpreter.LIST_VAL {
+		l1 := left.(*interpreter.ListValue)
+		l2 := right.(*interpreter.ListValue)
+		combined := make([]interpreter.Value, 0, len(l1.Elements)+len(l2.Elements))
+		combined = append(combined, l1.Elements...)
+		combined = append(combined, l2.Elements...)
+		return vm.push(interpreter.NewList(combined...))
+	}
+
 	// Integer arithmetic
 	if left.Type() == interpreter.INTEGER_VAL && right.Type() == interpreter.INTEGER_VAL {
 		l := left.(*interpreter.IntegerValue).Val
@@ -974,20 +1002,25 @@ func (vm *VM) executeBinaryOp(op Opcode, left, right interpreter.Value) error {
 			return vm.push(&interpreter.IntegerValue{Val: l * r})
 		case OpDiv:
 			if r == 0 {
-				return fmt.Errorf("division by zero")
+				return &RaisedError{Val: interpreter.NewError(400, "division by zero")}
 			}
 			return vm.push(&interpreter.IntegerValue{Val: l / r})
 		case OpMod:
 			if r == 0 {
-				return fmt.Errorf("modulo by zero")
+				return &RaisedError{Val: interpreter.NewError(400, "modulo by zero")}
 			}
 			return vm.push(&interpreter.IntegerValue{Val: l % r})
 		case OpPow:
 			if r < 0 {
-				return fmt.Errorf("negative exponent for integer power; use float operands")
+				return &RaisedError{Val: interpreter.NewError(400, "negative exponent for integer power; use float operands")}
 			}
 			return vm.push(&interpreter.IntegerValue{Val: interpreter.IntPow(l, r)})
 		}
+	}
+
+	if op == OpMod {
+		// '%' is only defined for int/int, matching the interpreter.
+		return &RaisedError{Val: interpreter.NewError(400, "modulo requires integer operands")}
 	}
 
 	// Float arithmetic
@@ -1002,7 +1035,7 @@ func (vm *VM) executeBinaryOp(op Opcode, left, right interpreter.Value) error {
 		return vm.push(&interpreter.FloatValue{Val: lf * rf})
 	case OpDiv:
 		if rf == 0 {
-			return fmt.Errorf("division by zero")
+			return &RaisedError{Val: interpreter.NewError(400, "division by zero")}
 		}
 		return vm.push(&interpreter.FloatValue{Val: lf / rf})
 	case OpPow:
@@ -1012,6 +1045,8 @@ func (vm *VM) executeBinaryOp(op Opcode, left, right interpreter.Value) error {
 	return fmt.Errorf("unsupported binary operation")
 }
 
+// toFloat mirrors the interpreter's getNumericFloat: only int/float operands
+// have a numeric value, everything else is treated as zero.
 func toFloat(v interpreter.Value) float64 {
 	switch n := v.(type) {
 	case *interpreter.FloatValue:
@@ -1019,8 +1054,7 @@ func toFloat(v interpreter.Value) float64 {
 	case *interpreter.IntegerValue:
 		return float64(n.Val)
 	default:
-		f, _ := strconv.ParseFloat(interpreter.CoerceToString(v), 64)
-		return f
+		return 0
 	}
 }
 
@@ -1030,14 +1064,33 @@ func (vm *VM) executeComparison(op Opcode, left, right interpreter.Value) error 
 		return vm.push(nativeBool(interpreter.ValuesEqual(left, right)))
 	case OpNotEqual:
 		return vm.push(nativeBool(!interpreter.ValuesEqual(left, right)))
-	case OpGreaterThan:
-		return vm.push(nativeBool(toFloat(left) > toFloat(right)))
-	case OpGreaterEqual:
-		return vm.push(nativeBool(toFloat(left) >= toFloat(right)))
-	case OpLessThan:
-		return vm.push(nativeBool(toFloat(left) < toFloat(right)))
-	case OpLessEqual:
-		return vm.push(nativeBool(toFloat(left) <= toFloat(right)))
+	case OpGreaterThan, OpGreaterEqual, OpLessThan, OpLessEqual:
+		// Strings order lexicographically, numbers numerically.
+		if ls, ok := left.(*interpreter.StringValue); ok {
+			if rs, ok := right.(*interpreter.StringValue); ok {
+				switch op {
+				case OpGreaterThan:
+					return vm.push(nativeBool(ls.Val > rs.Val))
+				case OpGreaterEqual:
+					return vm.push(nativeBool(ls.Val >= rs.Val))
+				case OpLessThan:
+					return vm.push(nativeBool(ls.Val < rs.Val))
+				case OpLessEqual:
+					return vm.push(nativeBool(ls.Val <= rs.Val))
+				}
+			}
+		}
+		lf, rf := toFloat(left), toFloat(right)
+		switch op {
+		case OpGreaterThan:
+			return vm.push(nativeBool(lf > rf))
+		case OpGreaterEqual:
+			return vm.push(nativeBool(lf >= rf))
+		case OpLessThan:
+			return vm.push(nativeBool(lf < rf))
+		case OpLessEqual:
+			return vm.push(nativeBool(lf <= rf))
+		}
 	}
 	return fmt.Errorf("unknown comparison operator")
 }
@@ -1072,13 +1125,17 @@ func (vm *VM) executeIndex(target, idx interpreter.Value) (interpreter.Value, er
 	case *interpreter.ListValue:
 		iv, ok := idx.(*interpreter.IntegerValue)
 		if !ok {
-			return nil, fmt.Errorf("list index must be integer")
+			return nil, &RaisedError{Val: interpreter.NewError(400, "list index must be an integer")}
 		}
-		index := int(iv.Val)
-		if index < 0 || index >= t.Len() {
-			return interpreter.NULL, nil
+		iVal := iv.Val
+		n := int64(t.Len())
+		if iVal < 0 {
+			iVal += n
 		}
-		return t.Elements[index], nil
+		if iVal < 0 || iVal >= n {
+			return nil, &RaisedError{Val: interpreter.NewError(400, fmt.Sprintf("index %d out of bounds (len %d)", iv.Val, n))}
+		}
+		return t.Elements[iVal], nil
 
 	case *interpreter.MapValue:
 		key := interpreter.CoerceToString(idx)
@@ -1090,35 +1147,43 @@ func (vm *VM) executeIndex(target, idx interpreter.Value) (interpreter.Value, er
 	case *interpreter.StringValue:
 		iv, ok := idx.(*interpreter.IntegerValue)
 		if !ok {
-			return nil, fmt.Errorf("string index must be integer")
+			return nil, &RaisedError{Val: interpreter.NewError(400, "string index must be an integer")}
 		}
 		runes := []rune(t.Val) // index by character, not by byte
-		index := int(iv.Val)
-		if index < 0 || index >= len(runes) {
-			return interpreter.NULL, nil
+		iVal := iv.Val
+		n := int64(len(runes))
+		if iVal < 0 {
+			iVal += n
 		}
-		return &interpreter.StringValue{Val: string(runes[index])}, nil
+		if iVal < 0 || iVal >= n {
+			return nil, &RaisedError{Val: interpreter.NewError(400, fmt.Sprintf("string index %d out of bounds", iv.Val))}
+		}
+		return &interpreter.StringValue{Val: string(runes[iVal])}, nil
 	}
 
-	return interpreter.NULL, nil
+	return nil, &RaisedError{Val: interpreter.NewError(400, fmt.Sprintf("cannot index value of type %s", target.Type()))}
 }
 
 func (vm *VM) executeSetIndex(target, idx, val interpreter.Value) error {
 	switch t := target.(type) {
 	case *interpreter.ListValue:
-		iv, ok := idx.(*interpreter.IntegerValue)
-		if !ok {
-			return fmt.Errorf("list index must be integer")
+		if iv, ok := idx.(*interpreter.IntegerValue); ok {
+			iVal := iv.Val
+			n := int64(t.Len())
+			if iVal < 0 {
+				iVal += n
+			}
+			if iVal >= 0 && iVal < n {
+				t.Elements[iVal] = val
+				return nil
+			}
 		}
-		index := int(iv.Val)
-		if index >= 0 && index < t.Len() {
-			t.Elements[index] = val
-		}
+		return &RaisedError{Val: interpreter.NewError(400, "invalid list index for assignment")}
 	case *interpreter.MapValue:
-		key := interpreter.CoerceToString(idx)
-		t.Set(key, val)
+		t.Set(interpreter.CoerceToString(idx), val)
+		return nil
 	}
-	return nil
+	return &RaisedError{Val: interpreter.NewError(400, "cannot assign to indexed target")}
 }
 
 func (vm *VM) executeGetField(target interpreter.Value, field string) (interpreter.Value, error) {

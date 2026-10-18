@@ -34,6 +34,7 @@ const (
 	OpGreaterEqual // >=
 	OpLessThan     // <
 	OpLessEqual    // <=
+	OpIn           // membership: left in right
 
 	// Boolean & Unary
 	OpTrue   // Push true
@@ -115,6 +116,7 @@ var definitions = map[Opcode]*Definition{
 	OpGreaterEqual:    {"OpGreaterEqual", []int{}},
 	OpLessThan:        {"OpLessThan", []int{}},
 	OpLessEqual:       {"OpLessEqual", []int{}},
+	OpIn:              {"OpIn", []int{}},
 	OpTrue:            {"OpTrue", []int{}},
 	OpFalse:           {"OpFalse", []int{}},
 	OpNull:            {"OpNull", []int{}},

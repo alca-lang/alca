@@ -470,6 +470,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(OpLessThan)
 		case "<=":
 			c.emit(OpLessEqual)
+		case "in":
+			c.emit(OpIn)
 		default:
 			return fmt.Errorf("unknown infix operator: %s", n.Operator)
 		}
@@ -893,7 +895,16 @@ func (c *Compiler) compileForRange(variable string, start, end ast.Expression, b
 
 func (c *Compiler) compileFor(variable string, iterable ast.Expression, body *ast.BlockStatement) error {
 	if rng, ok := iterable.(*ast.RangeLiteral); ok {
-		return c.compileForRange(variable, rng.Start, rng.End, body)
+		// The specialised counter loop only ascends (var <= end, var += 1).
+		// Use it when the compiler can prove an ascending literal range; for
+		// dynamic bounds or a descending literal range fall through to the
+		// generic iterator, whose OpRange list matches the interpreter's
+		// EvalRange semantics (inclusive, direction-aware) exactly.
+		startLit, startOK := rng.Start.(*ast.IntegerLiteral)
+		endLit, endOK := rng.End.(*ast.IntegerLiteral)
+		if startOK && endOK && startLit.Value <= endLit.Value {
+			return c.compileForRange(variable, rng.Start, rng.End, body)
+		}
 	}
 
 	c.emit(OpGetBuiltin, c.addConstant(&interpreter.StringValue{Val: "@iter"}))

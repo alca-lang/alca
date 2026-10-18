@@ -217,6 +217,13 @@ func (e *RuntimeError) Error() string {
 	return fmt.Sprintf("runtime error: %s (code %d)", e.Message, e.Code)
 }
 
+// ErrorCoder is implemented by runtime error values (from any engine) that carry
+// an Alca error code, so diagnostics can report the code instead of a fallback.
+type ErrorCoder interface {
+	error
+	AlcaErrorCode() int64
+}
+
 // CleanErrorMessage translates raw Go OS/runtime error messages into clean, human-friendly Alca errors.
 func CleanErrorMessage(err error) string {
 	if err == nil {
@@ -305,6 +312,10 @@ func FormatRuntimeError(filename string, source string, err error, useColor bool
 		code = rtErr.Code
 		msg = rtErr.Message
 		suggestion = rtErr.Suggestion
+	} else if coded, ok := err.(ErrorCoder); ok {
+		// Runtime error values raised by other engines (e.g. the VM) keep
+		// their own Alca error code.
+		code = coded.AlcaErrorCode()
 	} else {
 		// Try to extract line from error text like "foo.al:12:4: ..."
 		str := err.Error()
