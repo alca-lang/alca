@@ -1,0 +1,98 @@
+{
+  "name": "alca-lang",
+  "displayName": "Alca Language",
+  "description": "Rich language support for Alca: syntax highlighting, snippets, code execution, and diagnostics.",
+  "version": "1.0.0",
+  "publisher": "alca-lang",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Linters"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:alca"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "alca",
+        "aliases": [
+          "Alca",
+          "alca"
+        ],
+        "extensions": [
+          ".al"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/alca.svg",
+          "dark": "./icons/alca.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "alca",
+        "scopeName": "source.al",
+        "path": "./syntaxes/alca.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "alca",
+        "path": "./snippets/snippets.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "alca.runFile",
+        "title": "Alca: Run Script",
+        "category": "Alca"
+      },
+      {
+        "command": "alca.runFileVM",
+        "title": "Alca: Run on Bytecode VM",
+        "category": "Alca"
+      },
+      {
+        "command": "alca.buildFile",
+        "title": "Alca: Build Standalone Native Binary (.exe)",
+        "category": "Alca"
+      },
+      {
+        "command": "alca.checkFile",
+        "title": "Alca: Check Syntax & Types",
+        "category": "Alca"
+      },
+      {
+        "command": "alca.testFile",
+        "title": "Alca: Run Tests",
+        "category": "Alca"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceExtname == .al",
+          "command": "alca.runFileVM",
+          "group": "alca_run@1"
+        },
+        {
+          "when": "resourceExtname == .al",
+          "command": "alca.buildFile",
+          "group": "alca_run@2"
+        },
+        {
+          "when": "resourceExtname == .al",
+          "command": "alca.checkFile",
+          "group": "alca_run@3"
+        }
+      ]
+    }
+  }
+}

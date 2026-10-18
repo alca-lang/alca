@@ -1,0 +1,136 @@
+{
+  "Function Declaration": {
+    "prefix": "func",
+    "body": [
+      "func ${1:name}(${2:params}) -> ${3:return_type}:",
+      "    ${0:// body}",
+      "    return ${4:null}"
+    ],
+    "description": "Declare a typed function in Alca"
+  },
+  "Shell Function Declaration": {
+    "prefix": "shfunc",
+    "body": [
+      "shfunc ${1:name}(${2:params}) -> bool:",
+      "    print(\"${3:echo command}\")",
+      "    return true"
+    ],
+    "description": "Declare a shell execution function in Alca"
+  },
+  "Struct Declaration": {
+    "prefix": "struct",
+    "body": [
+      "struct ${1:Name}:",
+      "    ${2:field}: ${3:string}",
+      "    ${4:active}: bool = true"
+    ],
+    "description": "Declare a structure with typed fields"
+  },
+  "If Statement": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition}:",
+      "    ${0:// body}"
+    ],
+    "description": "If conditional block"
+  },
+  "If-Else Statement": {
+    "prefix": "ifelse",
+    "body": [
+      "if ${1:condition}:",
+      "    ${2:// consequence}",
+      "else:",
+      "    ${0:// alternative}"
+    ],
+    "description": "If-else conditional block"
+  },
+  "While Loop": {
+    "prefix": "while",
+    "body": [
+      "int i = 0",
+      "while i < ${1:10}:",
+      "    ${0:// body}",
+      "    i = i + 1"
+    ],
+    "description": "While loop"
+  },
+  "For In Loop": {
+    "prefix": "for",
+    "body": [
+      "for ${1:item} in ${2:iterable}:",
+      "    ${0:// body}"
+    ],
+    "description": "For-in iteration loop"
+  },
+  "For Range Loop": {
+    "prefix": "forrange",
+    "body": [
+      "for ${1:i} in ${2:0}..${3:10}:",
+      "    ${0:// body}"
+    ],
+    "description": "Zero-allocation numeric range loop"
+  },
+  "Concurrent Baroutine": {
+    "prefix": "ba",
+    "body": [
+      "ba ${1:task_function}() ~ ${2:5s} >> \"${3:output.log}\""
+    ],
+    "description": "Launch a concurrent baroutine with timeout"
+  },
+  "Limited Baroutine Pool": {
+    "prefix": "bafor",
+    "body": [
+      "ba for ${1:item} in ${2:items} (limit=${3:10}):",
+      "    ${0:// process item}"
+    ],
+    "description": "Parallel iteration with concurrency limit"
+  },
+  "SQLite Database": {
+    "prefix": "sqlite",
+    "body": [
+      "use std.sqlite",
+      "",
+      "db = sqlite.open(\"${1:app.db}\")",
+      "db.exec(\"CREATE TABLE IF NOT EXISTS ${2:items} (id INTEGER PRIMARY KEY, name TEXT)\")",
+      "db.exec(\"INSERT INTO ${2:items} (name) VALUES (?)\", \"${3:Example}\")",
+      "",
+      "rows = db.query(\"SELECT * FROM ${2:items}\")",
+      "for row in rows:",
+      "    print(row[\"name\"])",
+      "",
+      "db.close()"
+    ],
+    "description": "SQLite database setup and query"
+  },
+  "Prometheus Metrics": {
+    "prefix": "metrics",
+    "body": [
+      "use std.metrics",
+      "",
+      "${1:requests_total} = metrics.counter(\"${2:http_requests_total}\", \"${3:Total HTTP requests}\")",
+      "${1:requests_total}.inc()",
+      "",
+      "metrics.start_http_server(${4:9090}, \"/metrics\")"
+    ],
+    "description": "Prometheus metrics collector and HTTP server"
+  },
+  "Test Block": {
+    "prefix": "test",
+    "body": [
+      "test \"${1:Feature description}\":",
+      "    ${2:int val = 10}",
+      "    assert ${3:val == 10}"
+    ],
+    "description": "Alca integration test block"
+  },
+  "Structured Logger": {
+    "prefix": "log",
+    "body": [
+      "use std.log",
+      "",
+      "log.set_format(\"json\")",
+      "log.info(\"${1:Service started}\", \"${2:port}\", ${3:8080})"
+    ],
+    "description": "Structured JSON logging"
+  }
+}
