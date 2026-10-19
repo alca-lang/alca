@@ -196,6 +196,29 @@ func TestBuildFromBuiltProgramDoesNotStackPayloads(t *testing.T) {
 	}
 }
 
+// TestHostBuildUsesTheRunningExecutable: a host build must use the running
+// alca binary, never a stale runtime stub left in runtimes/. A stale stub can
+// predate payload-format or security-policy changes.
+func TestHostBuildUsesTheRunningExecutable(t *testing.T) {
+	dir := t.TempDir()
+	stale := filepath.Join(dir, RuntimeName(HostTarget()))
+	if err := os.WriteFile(stale, []byte("STALE"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ALCA_RUNTIMES", dir)
+	got, err := FindRuntime(HostTarget(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("host runtime = %q, want the running executable %q", got, want)
+	}
+}
+
 func TestMissingRuntimeExplainsHowToGetOne(t *testing.T) {
 	t.Setenv("ALCA_RUNTIMES", t.TempDir())
 	_, err := FindRuntime(Target{"linux", "arm64"}, "")

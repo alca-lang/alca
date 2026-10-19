@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 
@@ -206,6 +207,40 @@ println(n);
 				t.Errorf("engines disagree: interpreter %q, vm %q", interpOut, vmOut)
 			}
 		})
+	}
+}
+
+// TestFiveMillionIterationLoopDoesNotGrowMemory is the acceptance regression
+// for long-running loops: five million iterations must complete without a
+// panic, stack overflow, or unbounded heap growth. The loop deliberately keeps
+// no collection alive, so a correctly reusing VM must return to roughly its
+// starting heap size.
+func TestFiveMillionIterationLoopDoesNotGrowMemory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("5M-iteration stress test skipped in -short mode")
+	}
+	const src = `total := 0;
+for i in 0..5000000:
+    total = total + 1;
+`
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	if err := runSource(t, src); err != nil {
+		t.Fatalf("5M-iteration loop failed: %v", err)
+	}
+
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+
+	const limit = 64 << 20
+	if after.HeapAlloc > before.HeapAlloc {
+		growth := after.HeapAlloc - before.HeapAlloc
+		if growth > limit {
+			t.Fatalf("heap grew by %.1f MiB after 5M iterations (limit %d MiB)", float64(growth)/(1<<20), limit>>20)
+		}
 	}
 }
 

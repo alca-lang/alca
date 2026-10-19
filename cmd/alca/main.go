@@ -15,6 +15,7 @@ import (
 	"github.com/alca-lang/alca/pkg/lexer"
 	"github.com/alca-lang/alca/pkg/lsp"
 	"github.com/alca-lang/alca/pkg/parser"
+	"github.com/alca-lang/alca/pkg/sandbox"
 	"github.com/alca-lang/alca/pkg/stdlib"
 	"github.com/alca-lang/alca/pkg/typecheck"
 )
@@ -59,17 +60,13 @@ func main() {
 		os.Exit(cmdBuildRuntimes(os.Args[2:]))
 
 	case "repl":
-		startREPL()
+		startREPL(os.Args[2:])
 
 	case "fmt":
 		os.Exit(cmdFmt(os.Args[2:]))
 
 	case "test":
-		if len(os.Args) < 3 {
-			fmt.Fprintln(os.Stderr, "Usage: alca test <file.al>")
-			os.Exit(1)
-		}
-		os.Exit(testFile(os.Args[2]))
+		os.Exit(cmdTest(os.Args[2:]))
 
 	case "check":
 		if len(os.Args) < 3 {
@@ -122,6 +119,11 @@ func printUsage() {
 	fmt.Println("  test <file.al>              Run test blocks and report PASS/FAIL")
 	fmt.Println("  fmt [-w] <file.al>          Format the program (-w rewrites the file in place)")
 	fmt.Println("  repl                        Interactive session")
+	fmt.Println()
+	fmt.Println("Runtime capabilities (file and network access are denied by default):")
+	fmt.Println("  " + sandbox.FlagHint)
+	fmt.Println("  Use --allow-read=<path>, --allow-write=<path>, --allow-net=<host[:port]>")
+	fmt.Println("  before the file name; --allow-all grants everything.")
 	fmt.Println("  lsp                         Language Server Protocol daemon for editors")
 	fmt.Println("  version | help")
 }
@@ -291,11 +293,45 @@ func (r *replSession) eval(input string) {
 	}
 }
 
+// cmdTest implements `alca test` with the same capability policy as `alca run`.
+func cmdTest(args []string) int {
+	policy, rest, err := sandbox.ParseArgs(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr, "Usage: alca test ["+sandbox.FlagHint+"] <file.al>")
+		return 1
+	}
+	if len(rest) != 1 {
+		fmt.Fprintln(os.Stderr, "Usage: alca test ["+sandbox.FlagHint+"] <file.al>")
+		return 1
+	}
+	previous := sandbox.CurrentPolicy()
+	sandbox.SetPolicy(policy)
+	defer sandbox.SetPolicy(previous)
+	return testFile(rest[0])
+}
+
 // startREPL runs the interactive Alca REPL session.
-func startREPL() {
+func startREPL(args []string) {
+	policy, rest, err := sandbox.ParseArgs(args)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr, "Usage: alca repl ["+sandbox.FlagHint+"]")
+		return
+	}
+	if len(rest) > 0 {
+		fmt.Fprintln(os.Stderr, "Usage: alca repl ["+sandbox.FlagHint+"]")
+		return
+	}
+	sandbox.SetPolicy(policy)
+	defer sandbox.ResetPolicy()
+
 	fmt.Printf("Alca v%s REPL\n", Version)
 	fmt.Println("Every simple statement ends with ';'. A line ending with ':' starts a block;")
 	fmt.Println("finish the block with an empty line. Type 'exit' or 'quit' to leave.")
+	if !policy.Read.All && !policy.Write.All && !policy.Net.All && len(policy.Read.Roots) == 0 && len(policy.Write.Roots) == 0 && len(policy.Net.Roots) == 0 {
+		fmt.Println("File and network access are disabled; restart with --allow-read/--allow-write/--allow-net or --allow-all.")
+	}
 
 	scanner := bufio.NewScanner(os.Stdin)
 	session := newREPLSession()

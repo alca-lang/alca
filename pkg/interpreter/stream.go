@@ -13,12 +13,24 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
-var (
-	asyncWg   sync.WaitGroup
-	streamClt = &http.Client{Timeout: 15 * time.Second}
-)
+var asyncWg sync.WaitGroup
+
+// streamHTTPClient re-checks the capability policy for every redirect.
+func streamHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 15 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			return sandbox.RequireURL(req.URL.String())
+		},
+	}
+}
 
 // WaitAll blocks until all asynchronous streaming, threads, and background workers finish.
 func WaitAll() {
@@ -81,6 +93,9 @@ func FileExists(path string) bool {
 
 // writeToNetwork sends content to an HTTP or WebSocket destination URL.
 func writeToNetwork(targetURL, content string) error {
+	if err := sandbox.RequireURL(targetURL); err != nil {
+		return err
+	}
 	if strings.HasPrefix(targetURL, "ws://") || strings.HasPrefix(targetURL, "wss://") {
 		// Fall back to HTTP post for websocket endpoint simulation if no full WS library is attached
 		targetURL = strings.Replace(targetURL, "ws://", "http://", 1)
@@ -93,7 +108,7 @@ func writeToNetwork(targetURL, content string) error {
 	}
 	req.Header.Set("Content-Type", "text/plain")
 
-	resp, err := streamClt.Do(req)
+	resp, err := streamHTTPClient().Do(req)
 	if err != nil {
 		return err
 	}
@@ -129,6 +144,9 @@ func HandleStream(source Value, operator string, target Value, env *Environment)
 			}
 			return source, nil
 		}
+		if err := sandbox.RequireWrite(targetPath); err != nil {
+			return nil, err
+		}
 		if err := WriteFile(targetPath, content, true); err != nil {
 			return nil, fmt.Errorf("stream append error: %w", err)
 		}
@@ -145,6 +163,9 @@ func HandleStream(source Value, operator string, target Value, env *Environment)
 				return nil, fmt.Errorf("network stream write failed: %w", err)
 			}
 			return source, nil
+		}
+		if err := sandbox.RequireWrite(targetPath); err != nil {
+			return nil, err
 		}
 		if err := WriteFile(targetPath, content, false); err != nil {
 			return nil, fmt.Errorf("stream overwrite error: %w", err)
@@ -177,6 +198,9 @@ func HandleStream(source Value, operator string, target Value, env *Environment)
 			}
 			return &StringValue{Val: ""}, nil
 		}
+		if err := sandbox.RequireRead(targetStr); err != nil {
+			return nil, err
+		}
 		content, err := ReadFile(targetStr)
 		if err != nil {
 			return nil, fmt.Errorf("stream read error: %w", err)
@@ -194,6 +218,9 @@ func HandleStream(source Value, operator string, target Value, env *Environment)
 			}
 			targetPath := CoerceToString(target)
 			content := fmt.Sprintf("[%s] Error(%d): %s\n", errVal.Time, errVal.Code, errVal.Message)
+			if err := sandbox.RequireWrite(targetPath); err != nil {
+				return nil, err
+			}
 			if err := WriteFile(targetPath, content, true); err != nil {
 				return nil, fmt.Errorf("stream error log failed: %w", err)
 			}
@@ -220,7 +247,9 @@ func HandleStream(source Value, operator string, target Value, env *Environment)
 			}
 			path := CoerceToString(tgtVal)
 			content := CoerceToString(srcVal) + "\n"
-			_ = WriteFile(path, content, true)
+			if sandbox.RequireWrite(path) == nil {
+				_ = WriteFile(path, content, true)
+			}
 		}(source, target)
 		return source, nil
 
@@ -235,7 +264,9 @@ func HandleStream(source Value, operator string, target Value, env *Environment)
 			}
 			path := CoerceToString(tgtVal)
 			content := CoerceToString(srcVal) + "\n"
-			_ = WriteFile(path, content, true)
+			if sandbox.RequireWrite(path) == nil {
+				_ = WriteFile(path, content, true)
+			}
 		}(source, target)
 		return source, nil
 

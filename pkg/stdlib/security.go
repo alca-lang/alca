@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 // AccessDenialEvent captures a security or permission access failure.
@@ -126,6 +127,17 @@ func GetRecentAccessErrors() []AccessDenialEvent {
 // Mode can contain: "r" (read), "w" (write), "x" (execute).
 func CheckFileAccess(path string, mode string) (bool, error) {
 	cleanPath := filepath.Clean(path)
+	modeLower := strings.ToLower(mode)
+	if strings.Contains(modeLower, "r") {
+		if err := sandbox.RequireRead(cleanPath); err != nil {
+			return false, err
+		}
+	}
+	if strings.Contains(modeLower, "w") {
+		if err := sandbox.RequireWrite(cleanPath); err != nil {
+			return false, err
+		}
+	}
 	info, err := os.Stat(cleanPath)
 	if err != nil {
 		if IsPermissionError(err) {
@@ -133,8 +145,6 @@ func CheckFileAccess(path string, mode string) (bool, error) {
 		}
 		return false, err
 	}
-
-	modeLower := strings.ToLower(mode)
 
 	// Check read access
 	if strings.Contains(modeLower, "r") {
@@ -195,6 +205,9 @@ func CheckFileAccess(path string, mode string) (bool, error) {
 // GetFilePermissions returns file permission details including octal and symbol representation.
 func GetFilePermissions(path string) (map[string]interface{}, error) {
 	cleanPath := filepath.Clean(path)
+	if err := sandbox.RequireRead(cleanPath); err != nil {
+		return nil, err
+	}
 	info, err := os.Stat(cleanPath)
 	if err != nil {
 		if IsPermissionError(err) {
@@ -224,6 +237,9 @@ func GetFilePermissions(path string) (map[string]interface{}, error) {
 // ChangeFilePermissions updates file mode permissions.
 func ChangeFilePermissions(path string, mode os.FileMode) error {
 	cleanPath := filepath.Clean(path)
+	if err := sandbox.RequireWrite(cleanPath); err != nil {
+		return err
+	}
 	err := os.Chmod(cleanPath, mode)
 	if err != nil {
 		if IsPermissionError(err) {

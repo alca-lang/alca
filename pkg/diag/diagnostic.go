@@ -239,6 +239,12 @@ func CleanErrorMessage(err error) string {
 
 	lower := strings.ToLower(raw)
 
+	// Capability denials carry the exact flag that grants access. Keep that
+	// text instead of collapsing it into a generic OS "permission denied".
+	if strings.Contains(lower, "--allow-") {
+		return raw
+	}
+
 	switch {
 	case strings.Contains(lower, "the system cannot find the file specified") || strings.Contains(lower, "no such file or directory"):
 		return "file does not exist"
@@ -531,6 +537,12 @@ func generateRuntimeSuggestion(msg string) string {
 		return "Index exceeds list length. Verify list bounds using len() before indexing."
 	case strings.Contains(lower, "null pointer") || strings.Contains(lower, "access member on null"):
 		return "Attempted to access field or call method on 'null'. Check if object was properly initialized."
+	case strings.Contains(lower, "--allow-read"):
+		return "Grant read access with --allow-read[=<path>] (or --allow-all)."
+	case strings.Contains(lower, "--allow-write"):
+		return "Grant write access with --allow-write[=<path>] (or --allow-all)."
+	case strings.Contains(lower, "--allow-net"):
+		return "Grant network access with --allow-net[=<host[:port]>] (or --allow-all)."
 	case strings.Contains(lower, "permission denied") || strings.Contains(lower, "access denied"):
 		return "Operation was rejected by OS security policy. Verify file/resource permissions."
 	case strings.Contains(lower, "stack overflow"):

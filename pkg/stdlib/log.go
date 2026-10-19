@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 type logLevel int
@@ -245,6 +246,9 @@ func RegisterLogBuiltins(env *interpreter.Environment) {
 				return interpreter.FALSE
 			}
 			path := interpreter.CoerceToString(args[0])
+			if err := sandbox.RequireWrite(path); err != nil {
+				return handleIOError("log.set_file", path, err)
+			}
 			maxMB := int64(10)
 			maxBackups := 5
 

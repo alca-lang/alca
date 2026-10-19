@@ -4,12 +4,126 @@ package stdlib
 import (
 	"database/sql"
 	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
+
+// sqliteDSNPath extracts the file path from the DSN forms accepted by the
+// SQLite driver. Memory databases return an empty path.
+func sqliteDSNPath(dsn string) (path string, readOnly bool) {
+	dsn = strings.TrimSpace(dsn)
+	if dsn == "" || dsn == ":memory:" {
+		return "", false
+	}
+	raw := dsn
+	if strings.HasPrefix(raw, "file:") {
+		if u, err := url.Parse(raw); err == nil {
+			q := u.Query()
+			switch q.Get("mode") {
+			case "memory":
+				return "", false
+			case "ro":
+				readOnly = true
+			}
+			if q.Get("immutable") == "1" {
+				readOnly = true
+			}
+			if u.Opaque != "" {
+				raw = u.Opaque
+			} else {
+				raw = u.Path
+			}
+		} else {
+			raw = strings.TrimPrefix(raw, "file:")
+			if i := strings.IndexByte(raw, '?'); i >= 0 {
+				raw = raw[:i]
+			}
+		}
+	} else if i := strings.IndexByte(raw, '?'); i >= 0 {
+		raw = raw[:i]
+	}
+	if raw == "" || raw == ":memory:" {
+		return "", readOnly
+	}
+	if decoded, err := url.PathUnescape(raw); err == nil {
+		raw = decoded
+	}
+	// file:///C:/x.db is a URL path; the SQLite driver expects C:/x.db.
+	if runtime.GOOS == "windows" && len(raw) >= 3 && raw[0] == '/' && raw[2] == ':' &&
+		(raw[1] >= 'A' && raw[1] <= 'Z' || raw[1] >= 'a' && raw[1] <= 'z') {
+		raw = raw[1:]
+	}
+	return raw, readOnly
+}
+
+func requireSQLiteDSN(dsn string) error {
+	path, readOnly := sqliteDSNPath(dsn)
+	if path == "" {
+		return nil
+	}
+	if err := sandbox.RequireRead(path); err != nil {
+		return err
+	}
+	if !readOnly {
+		if err := sandbox.RequireWrite(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// requirePostgresDSN applies the network policy to PostgreSQL URL and keyword
+// DSNs, including the environment defaults used when host/port are omitted.
+func requirePostgresDSN(dsn string) error {
+	if strings.HasPrefix(dsn, "postgres://") || strings.HasPrefix(dsn, "postgresql://") {
+		if u, err := url.Parse(dsn); err == nil && u.Host != "" {
+			port := u.Port()
+			if port == "" {
+				port = "5432"
+			}
+			return sandbox.RequireNet(net.JoinHostPort(u.Hostname(), port))
+		}
+	}
+
+	host, port := "", ""
+	for _, field := range strings.Fields(dsn) {
+		key, value, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(key) {
+		case "host", "hostaddr":
+			host = value
+		case "port":
+			port = value
+		}
+	}
+	if host == "" {
+		host = os.Getenv("PGHOST")
+	}
+	if port == "" {
+		port = os.Getenv("PGPORT")
+	}
+	if host == "" {
+		host = "localhost"
+	}
+	if port == "" {
+		port = "5432"
+	}
+	if strings.HasPrefix(host, "/") {
+		return sandbox.RequireWrite(filepath.Dir(host))
+	}
+	return sandbox.RequireNet(net.JoinHostPort(host, port))
+}
 
 // ActiveDBRegistry tracks active database pools for graceful cleanup.
 type ActiveDBRegistry struct {
@@ -68,8 +182,14 @@ func RegisterDBBuiltins(env *interpreter.Environment) {
 			switch driver {
 			case "sqlite", "sqlite3":
 				driver = "sqlite"
+				if err := requireSQLiteDSN(dsn); err != nil {
+					return handleIOError("db.open", dsn, err)
+				}
 			case "postgres", "postgresql", "pg":
 				driver = "postgres"
+				if err := requirePostgresDSN(dsn); err != nil {
+					return handleIOError("db.open", dsn, err)
+				}
 			}
 
 			db, err := sql.Open(driver, dsn)
@@ -96,6 +216,9 @@ func RegisterDBBuiltins(env *interpreter.Environment) {
 			if len(args) > 0 {
 				path = interpreter.CoerceToString(args[0])
 			}
+			if err := requireSQLiteDSN(path); err != nil {
+				return handleIOError("db.sqlite", path, err)
+			}
 			db, err := sql.Open("sqlite", path)
 			if err != nil {
 				return interpreter.NewError(500, fmt.Sprintf("sqlite open error: %s", err.Error()))
@@ -114,6 +237,9 @@ func RegisterDBBuiltins(env *interpreter.Environment) {
 				return interpreter.NewError(400, "db.postgres(dsn) requires connection string")
 			}
 			dsn := interpreter.CoerceToString(args[0])
+			if err := requirePostgresDSN(dsn); err != nil {
+				return handleIOError("db.postgres", dsn, err)
+			}
 			db, err := sql.Open("postgres", dsn)
 			if err != nil {
 				return interpreter.NewError(500, fmt.Sprintf("postgres open error: %s", err.Error()))

@@ -10,10 +10,14 @@ import (
 	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 // ReadFile reads the entire contents of a file as a string.
 func ReadFile(path string) (string, error) {
+	if err := sandbox.RequireRead(path); err != nil {
+		return "", err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
@@ -23,6 +27,9 @@ func ReadFile(path string) (string, error) {
 
 // WriteFile writes string content to a file, replacing any existing contents.
 func WriteFile(path, content string) error {
+	if err := sandbox.RequireWrite(path); err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -34,6 +41,9 @@ func WriteFile(path, content string) error {
 
 // AppendFile appends string content to a file, creating it if it does not exist.
 func AppendFile(path, content string) error {
+	if err := sandbox.RequireWrite(path); err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -51,17 +61,26 @@ func AppendFile(path, content string) error {
 
 // FileExists checks whether a file or directory exists at the given path.
 func FileExists(path string) bool {
+	if err := sandbox.RequireRead(path); err != nil {
+		return false
+	}
 	_, err := os.Stat(path)
 	return err == nil || !os.IsNotExist(err)
 }
 
 // DeleteFile removes the file or directory at the given path.
 func DeleteFile(path string) error {
+	if err := sandbox.RequireWrite(path); err != nil {
+		return err
+	}
 	return os.RemoveAll(path)
 }
 
 // ListDir lists all entry names within a directory.
 func ListDir(path string) ([]string, error) {
+	if err := sandbox.RequireRead(path); err != nil {
+		return nil, err
+	}
 	entries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
@@ -75,11 +94,20 @@ func ListDir(path string) ([]string, error) {
 
 // MakeDir creates a new directory and any necessary parent directories.
 func MakeDir(path string) error {
+	if err := sandbox.RequireWrite(path); err != nil {
+		return err
+	}
 	return os.MkdirAll(path, 0755)
 }
 
 // CopyFile copies a file from src to dst.
 func CopyFile(src, dst string) error {
+	if err := sandbox.RequireRead(src); err != nil {
+		return err
+	}
+	if err := sandbox.RequireWrite(dst); err != nil {
+		return err
+	}
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -105,6 +133,12 @@ func CopyFile(src, dst string) error {
 
 // MoveFile moves or renames a file from src to dst.
 func MoveFile(src, dst string) error {
+	if err := sandbox.RequireWrite(src); err != nil {
+		return err
+	}
+	if err := sandbox.RequireWrite(dst); err != nil {
+		return err
+	}
 	destDir := filepath.Dir(dst)
 	if destDir != "" && destDir != "." {
 		if err := os.MkdirAll(destDir, 0755); err != nil {
@@ -124,6 +158,9 @@ func MoveFile(src, dst string) error {
 
 // FileSize returns the size of a file in bytes.
 func FileSize(path string) (int64, error) {
+	if err := sandbox.RequireRead(path); err != nil {
+		return 0, err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return 0, err
@@ -133,6 +170,9 @@ func FileSize(path string) (int64, error) {
 
 // FileInfo returns metadata about a file as a map.
 func FileInfo(path string) map[string]interface{} {
+	if err := sandbox.RequireRead(path); err != nil {
+		return map[string]interface{}{"exists": false, "error": err.Error()}
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return map[string]interface{}{
@@ -152,6 +192,9 @@ func FileInfo(path string) map[string]interface{} {
 
 // ReadLines reads a text file and returns a slice of its lines.
 func ReadLines(path string) ([]string, error) {
+	if err := sandbox.RequireRead(path); err != nil {
+		return nil, err
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -171,6 +214,9 @@ func ReadLines(path string) ([]string, error) {
 
 // Glob returns the names of all files matching pattern.
 func Glob(pattern string) ([]string, error) {
+	if err := sandbox.RequireRead(filepath.Dir(pattern)); err != nil {
+		return nil, err
+	}
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, err
@@ -180,6 +226,9 @@ func Glob(pattern string) ([]string, error) {
 
 // TempFile creates a temporary file with the given prefix and returns its path.
 func TempFile(prefix string) (string, error) {
+	if err := sandbox.RequireWrite(os.TempDir()); err != nil {
+		return "", err
+	}
 	f, err := os.CreateTemp("", prefix+"-*")
 	if err != nil {
 		return "", err
@@ -191,6 +240,9 @@ func TempFile(prefix string) (string, error) {
 
 // TempDir creates a temporary directory with the given prefix and returns its path.
 func TempDir(prefix string) (string, error) {
+	if err := sandbox.RequireWrite(os.TempDir()); err != nil {
+		return "", err
+	}
 	dir, err := os.MkdirTemp("", prefix+"-*")
 	if err != nil {
 		return "", err

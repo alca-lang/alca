@@ -139,6 +139,14 @@ func FindRuntime(t Target, explicit string) (string, error) {
 		}
 		return explicit, nil
 	}
+	// The running executable is always the best runtime for its own platform:
+	// it is guaranteed to match this CLI's payload format and security policy.
+	// Prefer it over a possibly stale copy in a runtime directory.
+	if t == HostTarget() {
+		if exe, err := os.Executable(); err == nil && fileExists(exe) {
+			return exe, nil
+		}
+	}
 	var dirs []string
 	if d := os.Getenv("ALCA_RUNTIMES"); d != "" {
 		dirs = append(dirs, d)
@@ -154,11 +162,6 @@ func FindRuntime(t Target, explicit string) (string, error) {
 		p := filepath.Join(d, RuntimeName(t))
 		if fileExists(p) {
 			return p, nil
-		}
-	}
-	if t == HostTarget() {
-		if exe, err := os.Executable(); err == nil && fileExists(exe) {
-			return exe, nil
 		}
 	}
 	return "", fmt.Errorf("no Alca runtime for %s found.\n  build runtimes once with:  make runtimes   (or scripts/build-runtimes.sh)\n  then point to them with:   ALCA_RUNTIMES=./runtimes alca build ... --target %s\n  looked for %q in: %s", t, t, RuntimeName(t), strings.Join(dirs, ", "))

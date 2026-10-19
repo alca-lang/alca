@@ -3,6 +3,7 @@ package stdlib
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 // MetricType defines the category of a recorded metric.
@@ -345,6 +347,15 @@ func RegisterMetricsBuiltins(env *interpreter.Environment) {
 				path = interpreter.CoerceToString(args[1])
 			}
 
+			addr := ":" + strconv.Itoa(port)
+			if err := sandbox.RequireNet(addr); err != nil {
+				return handleIOError("metrics.serve", addr, err)
+			}
+			listener, err := net.Listen("tcp", addr)
+			if err != nil {
+				return handleIOError("metrics.serve", addr, err)
+			}
+
 			mux := http.NewServeMux()
 			mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "text/plain; version=0.0.4")
@@ -352,17 +363,20 @@ func RegisterMetricsBuiltins(env *interpreter.Environment) {
 			})
 
 			server := &http.Server{
-				Addr:         ":" + strconv.Itoa(port),
 				Handler:      mux,
 				ReadTimeout:  5 * time.Second,
 				WriteTimeout: 10 * time.Second,
 			}
 
 			go func() {
-				_ = server.ListenAndServe()
+				_ = server.Serve(listener)
 			}()
 
-			return &interpreter.StringValue{Val: fmt.Sprintf("http://localhost:%d%s", port, path)}
+			boundPort := port
+			if tcpAddr, ok := listener.Addr().(*net.TCPAddr); ok {
+				boundPort = tcpAddr.Port
+			}
+			return &interpreter.StringValue{Val: fmt.Sprintf("http://localhost:%d%s", boundPort, path)}
 		},
 	})
 

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 // --- CSV Implementation ---
@@ -365,9 +366,12 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 
 		var r io.Reader
 		if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
+			if err := sandbox.RequireRead(target); err != nil {
+				return handleIOError("csv_read", target, err)
+			}
 			f, err := os.Open(target)
 			if err != nil {
-				return interpreter.NewError(500, err.Error())
+				return handleIOError("csv_read", target, err)
 			}
 			defer f.Close()
 			res, err := parseCSVReader(f, hasHeader)
@@ -406,8 +410,11 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 		if err != nil {
 			return interpreter.NewError(500, err.Error())
 		}
+		if err := sandbox.RequireWrite(path); err != nil {
+			return handleIOError("csv_write", path, err)
+		}
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("csv_write", path, err)
 		}
 		return interpreter.TRUE
 	}
@@ -443,6 +450,9 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 		target := interpreter.CoerceToString(args[0])
 		content := target
 		if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
+			if err := sandbox.RequireRead(target); err != nil {
+				return handleIOError("ini_read", target, err)
+			}
 			if data, err := os.ReadFile(target); err == nil {
 				content = string(data)
 			}
@@ -462,8 +472,11 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 			return interpreter.NewError(400, "ini.write requires a map")
 		}
 		content := stringifyINI(m)
+		if err := sandbox.RequireWrite(path); err != nil {
+			return handleIOError("ini_write", path, err)
+		}
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("ini_write", path, err)
 		}
 		return interpreter.TRUE
 	}

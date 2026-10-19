@@ -114,13 +114,26 @@ func UTF16StringPointer(s string) uintptr {
 	return ptr
 }
 
+// foreignPointer converts an address received from native code into an
+// unsafe.Pointer. unsafe.Add keeps the conversion explicit and vet-clean.
+//
+// The address belongs to a foreign allocation, so the race detector's checkptr
+// instrumentation cannot validate it against the Go heap. This is the one place
+// where that check must be suspended; callers only dereference addresses that
+// native code returned or that UTF16StringPointer registered.
+//
+//go:nocheckptr
+func foreignPointer(ptr uintptr) unsafe.Pointer {
+	return unsafe.Add(unsafe.Pointer(nil), ptr)
+}
+
 func ReadCString(ptr uintptr) string {
 	if ptr == 0 {
 		return ""
 	}
 	var b []byte
 	for {
-		ch := *(*byte)(unsafe.Pointer(ptr))
+		ch := *(*byte)(foreignPointer(ptr))
 		if ch == 0 {
 			break
 		}
@@ -136,7 +149,7 @@ func ReadUTF16String(ptr uintptr) string {
 	}
 	var u16 []uint16
 	for {
-		ch := *(*uint16)(unsafe.Pointer(ptr))
+		ch := *(*uint16)(foreignPointer(ptr))
 		if ch == 0 {
 			break
 		}

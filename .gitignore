@@ -1,0 +1,7 @@
+# Generated Alca runtime stubs for cross-compilation.
+/runtimes/
+
+# Local CLI builds and built applications.
+/alca
+/alca.exe
+*.test

@@ -3,6 +3,7 @@ package stdlib
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,7 +15,22 @@ import (
 	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
+
+// policyHTTPClient returns an HTTP client that re-checks the capability policy
+// for every redirect, not only the URL the program supplied.
+func policyHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			return sandbox.RequireURL(req.URL.String())
+		},
+	}
+}
 
 // SimpleServer wraps an HTTP server with programmatic control.
 type SimpleServer struct {
@@ -85,7 +101,10 @@ func (l *TCPListener) Close() error {
 
 // HTTPGet performs an HTTP GET request to the given URL and returns the response body, status code, and error.
 func HTTPGet(url string) (string, int, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
+	if err := sandbox.RequireURL(url); err != nil {
+		return "", 0, err
+	}
+	client := policyHTTPClient(30 * time.Second)
 	resp, err := client.Get(url)
 	if err != nil {
 		return "", 0, err
@@ -101,7 +120,10 @@ func HTTPGet(url string) (string, int, error) {
 
 // HTTPPost performs an HTTP POST request with the given content type and body.
 func HTTPPost(url, contentType, body string) (string, int, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
+	if err := sandbox.RequireURL(url); err != nil {
+		return "", 0, err
+	}
+	client := policyHTTPClient(30 * time.Second)
 	resp, err := client.Post(url, contentType, strings.NewReader(body))
 	if err != nil {
 		return "", 0, err
@@ -138,6 +160,9 @@ func HTTPServer(port int) *SimpleServer {
 
 // TCPConnect establishes a TCP connection to the given address (e.g. "example.com:80").
 func TCPConnect(addr string) (*TCPConn, error) {
+	if err := sandbox.RequireNet(addr); err != nil {
+		return nil, err
+	}
 	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		return nil, err
@@ -147,6 +172,9 @@ func TCPConnect(addr string) (*TCPConn, error) {
 
 // TCPListen creates a TCP listener on the given address (e.g. ":8080").
 func TCPListen(addr string) (*TCPListener, error) {
+	if err := sandbox.RequireNet(addr); err != nil {
+		return nil, err
+	}
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
@@ -156,6 +184,9 @@ func TCPListen(addr string) (*TCPListener, error) {
 
 // DNSLookup performs a DNS resolution for the given hostname and returns IP addresses.
 func DNSLookup(host string) ([]string, error) {
+	if err := sandbox.RequireNet(host); err != nil {
+		return nil, err
+	}
 	ips, err := net.LookupHost(host)
 	if err != nil {
 		return nil, err
@@ -165,6 +196,9 @@ func DNSLookup(host string) ([]string, error) {
 
 // Ping checks host reachability via connection attempt on common service ports or ICMP.
 func Ping(host string) (bool, error) {
+	if err := sandbox.RequireNet(host); err != nil {
+		return false, err
+	}
 	// Probe common ports (80, 443, 53) or dial address directly
 	addr := host
 	if !strings.Contains(host, ":") {
@@ -197,7 +231,13 @@ func Ping(host string) (bool, error) {
 
 // DownloadFile downloads a file from the given URL and writes it to dest.
 func DownloadFile(url, dest string) error {
-	client := &http.Client{Timeout: 5 * time.Minute}
+	if err := sandbox.RequireURL(url); err != nil {
+		return err
+	}
+	if err := sandbox.RequireWrite(dest); err != nil {
+		return err
+	}
+	client := policyHTTPClient(5 * time.Minute)
 	resp, err := client.Get(url)
 	if err != nil {
 		return err
@@ -242,7 +282,7 @@ func RegisterNetBuiltins(env *interpreter.Environment) {
 		url := interpreter.CoerceToString(args[0])
 		body, code, err := HTTPGet(url)
 		if err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("http_get", url, err)
 		}
 		res := interpreter.NewMap()
 		res.Set("body", &interpreter.StringValue{Val: body})
@@ -259,7 +299,7 @@ func RegisterNetBuiltins(env *interpreter.Environment) {
 		body := interpreter.CoerceToString(args[2])
 		respBody, code, err := HTTPPost(url, contentType, body)
 		if err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("http_post", url, err)
 		}
 		res := interpreter.NewMap()
 		res.Set("body", &interpreter.StringValue{Val: respBody})
@@ -274,7 +314,7 @@ func RegisterNetBuiltins(env *interpreter.Environment) {
 		host := interpreter.CoerceToString(args[0])
 		ips, err := DNSLookup(host)
 		if err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("dns_lookup", host, err)
 		}
 		elems := make([]interpreter.Value, len(ips))
 		for i, ip := range ips {
@@ -288,7 +328,10 @@ func RegisterNetBuiltins(env *interpreter.Environment) {
 			return interpreter.FALSE
 		}
 		host := interpreter.CoerceToString(args[0])
-		ok, _ := Ping(host)
+		ok, err := Ping(host)
+		if err != nil && IsPermissionError(err) {
+			return handleIOError("ping", host, err)
+		}
 		if ok {
 			return interpreter.TRUE
 		}
@@ -302,7 +345,7 @@ func RegisterNetBuiltins(env *interpreter.Environment) {
 		url := interpreter.CoerceToString(args[0])
 		dest := interpreter.CoerceToString(args[1])
 		if err := DownloadFile(url, dest); err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("download_file", url, err)
 		}
 		return interpreter.TRUE
 	})

@@ -13,6 +13,7 @@ import (
 	"github.com/alca-lang/alca/pkg/diag"
 	"github.com/alca-lang/alca/pkg/lexer"
 	"github.com/alca-lang/alca/pkg/parser"
+	"github.com/alca-lang/alca/pkg/sandbox"
 	"github.com/alca-lang/alca/pkg/stdlib"
 	"github.com/alca-lang/alca/pkg/typecheck"
 	"github.com/alca-lang/alca/pkg/vm"
@@ -51,26 +52,44 @@ func loadProgram(filename string) (*ast.Program, string, bool) {
 // cmdRun implements `alca run`.
 func cmdRun(args []string) int {
 	eng := engineAuto
-	var rest []string
-	for i, a := range args {
-		switch a {
-		case "--vm":
+	var policyArgs, rest []string
+	for len(args) > 0 {
+		a := args[0]
+		switch {
+		case a == "--vm":
 			eng = engineVM
-		case "--interp":
+		case a == "--interp":
 			eng = engineInterp
+		case a == "--allow-all" || strings.HasPrefix(a, "--allow-"):
+			policyArgs = append(policyArgs, a)
+		case a == "--":
+			args = args[1:]
+			rest = args
+			goto parsed
 		default:
-			rest = append(rest, args[i:]...)
-			i = len(args)
+			rest = args
+			goto parsed
 		}
-		if len(rest) > 0 {
-			break
-		}
+		args = args[1:]
+	}
+parsed:
+	policy, leftover, err := sandbox.ParseArgs(policyArgs)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(os.Stderr, "Usage: alca run [--vm|--interp] ["+sandbox.FlagHint+"] <file.al> [args...]")
+		return 1
+	}
+	if len(leftover) > 0 {
+		rest = leftover
 	}
 	if len(rest) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: alca run [--vm|--interp] <file.al> [args...]")
+		fmt.Fprintln(os.Stderr, "Usage: alca run [--vm|--interp] ["+sandbox.FlagHint+"] <file.al> [args...]")
 		return 1
 	}
 	filename, scriptArgs := rest[0], rest[1:]
+	previousPolicy := sandbox.CurrentPolicy()
+	sandbox.SetPolicy(policy)
+	defer sandbox.SetPolicy(previousPolicy)
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprint(os.Stderr, diag.FormatPanicReport(filename, r, isTerminal(os.Stderr)))
@@ -222,7 +241,14 @@ func runStandalone() int {
 		fmt.Fprint(os.Stderr, diag.FormatCompilerError(name, err, isTerminal(os.Stderr)))
 		return 1
 	}
-	stdlib.SetScriptArgs(os.Args[1:])
+	policy, scriptArgs, perr := sandbox.ParseArgs(os.Args[1:])
+	if perr != nil {
+		fmt.Fprintln(os.Stderr, "error:", perr)
+		fmt.Fprintln(os.Stderr, "Usage: <app> ["+sandbox.FlagHint+"] [args...]")
+		return 1
+	}
+	sandbox.SetPolicy(policy)
+	stdlib.SetScriptArgs(scriptArgs)
 	defer stdlib.CloseAllDatabases()
 
 	if bundle.Kind == compiler.KindBytecode {

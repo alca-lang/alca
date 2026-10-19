@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 var (
@@ -39,6 +40,18 @@ func OpenFileHandle(path, mode string) (*interpreter.MapValue, error) {
 
 	var flag int
 	modeLower := strings.ToLower(mode)
+
+	// A handle that can write must have write permission; r+ reads and writes.
+	if strings.ContainsAny(modeLower, "wa+") {
+		if err := sandbox.RequireWrite(path); err != nil {
+			return nil, err
+		}
+	}
+	if modeLower == "r" || modeLower == "rb" || strings.Contains(modeLower, "+") {
+		if err := sandbox.RequireRead(path); err != nil {
+			return nil, err
+		}
+	}
 
 	switch modeLower {
 	case "r", "rb":
@@ -461,6 +474,9 @@ func RegisterAdvancedIOBuiltins(env *interpreter.Environment, ioModule *interpre
 			return interpreter.NewError(409, fmt.Sprintf("file %q is already locked by this process", path))
 		}
 
+		if err := sandbox.RequireWrite(path); err != nil {
+			return handleIOError("lock_file", path, err)
+		}
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
 		if err != nil {
 			return handleIOError("lock_file", path, err)

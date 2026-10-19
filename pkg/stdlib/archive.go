@@ -13,10 +13,17 @@ import (
 	"strings"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 // ZipCreate archives a file or directory into a ZIP file.
 func ZipCreate(srcPath, destZip string) error {
+	if err := sandbox.RequireRead(srcPath); err != nil {
+		return err
+	}
+	if err := sandbox.RequireWrite(destZip); err != nil {
+		return err
+	}
 	zipFile, err := os.Create(destZip)
 	if err != nil {
 		return err
@@ -87,6 +94,12 @@ func ZipCreate(srcPath, destZip string) error {
 
 // ZipExtract safely unpacks a ZIP archive into the destination directory.
 func ZipExtract(zipPath, destDir string) error {
+	if err := sandbox.RequireRead(zipPath); err != nil {
+		return err
+	}
+	if err := sandbox.RequireWrite(destDir); err != nil {
+		return err
+	}
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
@@ -139,6 +152,12 @@ func ZipExtract(zipPath, destDir string) error {
 
 // TarGzCreate packages a file or directory into a compressed .tar.gz archive.
 func TarGzCreate(srcPath, destTarGz string) error {
+	if err := sandbox.RequireRead(srcPath); err != nil {
+		return err
+	}
+	if err := sandbox.RequireWrite(destTarGz); err != nil {
+		return err
+	}
 	tarFile, err := os.Create(destTarGz)
 	if err != nil {
 		return err
@@ -203,6 +222,12 @@ func TarGzCreate(srcPath, destTarGz string) error {
 
 // TarGzExtract safely unpacks a .tar.gz archive into destDir.
 func TarGzExtract(tarGzPath, destDir string) error {
+	if err := sandbox.RequireRead(tarGzPath); err != nil {
+		return err
+	}
+	if err := sandbox.RequireWrite(destDir); err != nil {
+		return err
+	}
 	file, err := os.Open(tarGzPath)
 	if err != nil {
 		return err
@@ -275,7 +300,7 @@ func RegisterArchiveBuiltins(env *interpreter.Environment) {
 		src := interpreter.CoerceToString(args[0])
 		dest := interpreter.CoerceToString(args[1])
 		if err := ZipCreate(src, dest); err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("zip_create", src+" -> "+dest, err)
 		}
 		return interpreter.TRUE
 	})
@@ -288,7 +313,7 @@ func RegisterArchiveBuiltins(env *interpreter.Environment) {
 		zipPath := interpreter.CoerceToString(args[0])
 		dest := interpreter.CoerceToString(args[1])
 		if err := ZipExtract(zipPath, dest); err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("zip_extract", zipPath+" -> "+dest, err)
 		}
 		return interpreter.TRUE
 	})
@@ -301,7 +326,7 @@ func RegisterArchiveBuiltins(env *interpreter.Environment) {
 		src := interpreter.CoerceToString(args[0])
 		dest := interpreter.CoerceToString(args[1])
 		if err := TarGzCreate(src, dest); err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("tar_create", src+" -> "+dest, err)
 		}
 		return interpreter.TRUE
 	})
@@ -314,7 +339,7 @@ func RegisterArchiveBuiltins(env *interpreter.Environment) {
 		tarPath := interpreter.CoerceToString(args[0])
 		dest := interpreter.CoerceToString(args[1])
 		if err := TarGzExtract(tarPath, dest); err != nil {
-			return interpreter.NewError(500, err.Error())
+			return handleIOError("tar_extract", tarPath+" -> "+dest, err)
 		}
 		return interpreter.TRUE
 	})
@@ -325,6 +350,9 @@ func RegisterArchiveBuiltins(env *interpreter.Environment) {
 			return interpreter.NewList()
 		}
 		path := interpreter.CoerceToString(args[0])
+		if err := sandbox.RequireRead(path); err != nil {
+			return handleIOError("archive_list", path, err)
+		}
 		var entries []interpreter.Value
 
 		if strings.HasSuffix(strings.ToLower(path), ".zip") {
