@@ -16,14 +16,14 @@ for p in current_path:
         i = i + 1;
 
 println("\n=== 2. Поиск исполняемых файлов (which) ===");
-git_path: string = env.which("git");
-if git_path != "":
+git_path := env.which("git");
+if git_path != null:
     println("Найден git: " + git_path);
 else:
     println("git не найден в PATH");
 
-go_path: string = path.which("go");
-if go_path != "":
+go_path := path.which("go");
+if go_path != null:
     println("Найден go:  " + go_path);
 
 println("\n=== 3. Проверка и динамическое добавление директории в PATH ===");

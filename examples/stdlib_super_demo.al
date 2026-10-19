@@ -21,7 +21,7 @@ is_post: bool = re.match(`POST`, log_line);
 println("Содержит POST запрос: " + string(is_post));
 
 ip_pattern := `\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b`;
-ip_addr: string = re.find(ip_pattern, log_line);
+ip_addr: string = string(re.find(ip_pattern, log_line));
 println("IP адрес клиента: " + ip_addr);
 
 cleaned: string = re.replace(`\s+`, " ", "Alca    Lang     Automation");

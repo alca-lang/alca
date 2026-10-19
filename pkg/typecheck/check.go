@@ -198,7 +198,7 @@ func (c *Checker) initGlobal() {
 	for name, t := range globalBuiltins() {
 		c.global.syms[name] = &symbol{kind: kBuiltin, typ: t}
 	}
-	for _, name := range []string{"len", "keys", "values", "push", "pop", "range", "list"} {
+	for _, name := range []string{"len", "keys", "values", "push", "append", "pop", "range", "list"} {
 		c.global.syms[name] = &symbol{kind: kBuiltin, typ: &FuncType{Dynamic: true, Ret: JSON}}
 	}
 	c.global.syms["std"] = &symbol{kind: kModule, typ: stdNamespace()}

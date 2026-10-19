@@ -1003,7 +1003,7 @@ func (c *Checker) specialCall(name string, n *ast.CallExpression, sc *scope) (Ty
 
 	case "push":
 		if !need(2) {
-			return Void, true
+			return &ListType{Elem: JSON}, true
 		}
 		lt := c.expr(n.Arguments[0], sc, nil)
 		l, ok := lt.(*ListType)
@@ -1012,7 +1012,7 @@ func (c *Checker) specialCall(name string, n *ast.CallExpression, sc *scope) (Ty
 				c.addError(tokOf(n.Arguments[0]), fmt.Sprintf("push() needs a list as first argument, got %s", lt), "")
 			}
 			c.expr(n.Arguments[1], sc, nil)
-			return Void, true
+			return &ListType{Elem: JSON}, true
 		}
 		et := c.expr(n.Arguments[1], sc, l.Elem)
 		ne, fits := c.fit(l.Elem, n.Arguments[1], et)
@@ -1020,7 +1020,34 @@ func (c *Checker) specialCall(name string, n *ast.CallExpression, sc *scope) (Ty
 			c.addError(tokOf(n.Arguments[1]), fmt.Sprintf("cannot push %s onto %s", et, lt), conversionHint(l.Elem, et))
 		}
 		n.Arguments[1] = ne
-		return Void, true
+		if l.Elem == Never {
+			return &ListType{Elem: et}, true
+		}
+		return lt, true
+
+	case "append":
+		if !need(2) {
+			return &ListType{Elem: JSON}, true
+		}
+		lt := c.expr(n.Arguments[0], sc, nil)
+		l, ok := lt.(*ListType)
+		if !ok {
+			if lt != JSON {
+				c.addError(tokOf(n.Arguments[0]), fmt.Sprintf("append() needs a list as first argument, got %s", lt), "")
+			}
+			c.expr(n.Arguments[1], sc, nil)
+			return &ListType{Elem: JSON}, true
+		}
+		et := c.expr(n.Arguments[1], sc, l.Elem)
+		ne, fits := c.fit(l.Elem, n.Arguments[1], et)
+		if !fits && l.Elem != Never {
+			c.addError(tokOf(n.Arguments[1]), fmt.Sprintf("cannot append %s to %s", et, lt), conversionHint(l.Elem, et))
+		}
+		n.Arguments[1] = ne
+		if l.Elem == Never {
+			return &ListType{Elem: et}, true
+		}
+		return lt, true
 
 	case "pop":
 		if !need(1) {
@@ -1031,7 +1058,8 @@ func (c *Checker) specialCall(name string, n *ast.CallExpression, sc *scope) (Ty
 			if l.Elem == Never {
 				return JSON, true
 			}
-			return l.Elem, true
+			// pop() on an empty list returns null, so the result is nullable.
+			return NewUnion(l.Elem, Null), true
 		}
 		if lt != JSON {
 			c.addError(tokOf(n.Arguments[0]), fmt.Sprintf("pop() needs a list, got %s", lt), "")
