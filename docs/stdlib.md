@@ -176,10 +176,116 @@ Raw foreign-function calls and pointer helpers; trusted code only.
 | `ffi.alloc` | `(int?)->blob` |
 | `ffi.c_str` | `(string)->int` |
 | `ffi.load` | `(string)->json` |
+| `ffi.load_embedded` | `(string)->json` |
 | `ffi.ptr_to_str` | `(int)->string` |
 | `ffi.ptr_to_utf16` | `(int)->string` |
 | `ffi.size_of` | `(string)->int` |
 | `ffi.utf16_str` | `(string)->int` |
+
+`ffi.load_embedded` loads a native library that was packed into the program
+with `alca build --cc` or `alca build --native-lib`. The library is unpacked
+from the resources of the program into the temporary directory of the process
+and loaded from there.
+
+### `mem`
+
+Raw memory for a program: it allocates a block and reads and writes that block
+by address. The memory a program can reach is only the memory it allocated
+itself, so the module cannot be used to read or write the memory of the
+process. Trusted code only.
+
+| Member | Signature |
+| --- | --- |
+| `mem.add` | `(int,int)->int` |
+| `mem.alloc` | `(int)->int` |
+| `mem.copy` | `(int,int,int)->bool` |
+| `mem.fill` | `(int,int,int)->bool` |
+| `mem.free` | `(int)->bool` |
+| `mem.is_null` | `(int)->bool` |
+| `mem.read_bytes` | `(int,int?,int)->blob` |
+| `mem.read_f64` | `(int,int?)->float` |
+| `mem.read_i16` | `(int,int?)->int` |
+| `mem.read_i32` | `(int,int?)->int` |
+| `mem.read_i64` | `(int,int?)->int` |
+| `mem.read_i8` | `(int,int?)->int` |
+| `mem.read_u16` | `(int,int?)->int` |
+| `mem.read_u32` | `(int,int?)->int` |
+| `mem.read_u64` | `(int,int?)->int` |
+| `mem.read_u8` | `(int,int?)->int` |
+| `mem.size` | `(int)->int` |
+| `mem.size_of` | `(string)->int` |
+| `mem.write_bytes` | `(int,blob,int?)->bool` |
+| `mem.write_f64` | `(int,float,int?)->bool` |
+| `mem.write_i16` | `(int,int,int?)->bool` |
+| `mem.write_i32` | `(int,int,int?)->bool` |
+| `mem.write_i64` | `(int,int,int?)->bool` |
+| `mem.write_i8` | `(int,int,int?)->bool` |
+| `mem.write_u16` | `(int,int,int?)->bool` |
+| `mem.write_u32` | `(int,int,int?)->bool` |
+| `mem.write_u64` | `(int,int,int?)->bool` |
+| `mem.write_u8` | `(int,int,int?)->bool` |
+| `mem.zero` | `(int,int)->bool` |
+
+The readers take the address and an optional offset, the writers the address,
+the value and an optional offset.
+
+```alca
+use std.mem;
+addr := mem.alloc(8);
+mem.write_u32(addr, 305419896);
+println(mem.read_u32(addr));
+```
+
+### `mtproto`
+
+The protocol of the Telegram network: the AES-IGE cipher, the authorization
+key exchange, the message framing, the transport and the serialization layer of
+the protocol language. The API of the network is not part of the protocol: a
+program passes the identifier of the method and the serialized arguments, so
+the module stays independent of the API schema.
+
+| Member | Signature |
+| --- | --- |
+| `mtproto.call` | `(int,int,blob)->blob` |
+| `mtproto.close` | `(int)->bool` |
+| `mtproto.connect` | `(int)->json` |
+| `mtproto.dc_list` | `()->list[json]` |
+| `mtproto.decrypt_message` | `(blob,string,blob)->json` |
+| `mtproto.dh_derive` | `(int,blob,blob,blob,blob)->blob` |
+| `mtproto.dh_start` | `(string)->json` |
+| `mtproto.encrypt_message` | `(blob,int,int,int,int,blob)->blob` |
+| `mtproto.fingerprint` | `(blob)->blob` |
+| `mtproto.ige_decrypt` | `(blob,blob,blob)->blob` |
+| `mtproto.ige_encrypt` | `(blob,blob,blob)->blob` |
+| `mtproto.key_hex` | `(blob)->string` |
+| `mtproto.key_id` | `(blob)->blob` |
+| `mtproto.new_msg_id` | `(int)->int` |
+| `mtproto.parse_key` | `(string)->blob` |
+| `mtproto.rsa_encrypt` | `(string,blob,blob)->blob` |
+| `mtproto.tl_bool` | `(bool)->blob` |
+| `mtproto.tl_bytes` | `(blob)->blob` |
+| `mtproto.tl_int32` | `(int)->blob` |
+| `mtproto.tl_int64` | `(int)->blob` |
+| `mtproto.tl_read_bool` | `(blob)->bool` |
+| `mtproto.tl_read_bytes` | `(blob)->blob` |
+| `mtproto.tl_read_int32` | `(blob)->int` |
+| `mtproto.tl_read_int64` | `(blob)->int` |
+| `mtproto.tl_read_string` | `(blob)->string` |
+| `mtproto.tl_string` | `(string)->blob` |
+| `mtproto.use_key` | `(int,blob)->bool` |
+
+The members that open a connection need the network capability of the runtime.
+
+```alca
+use std.mtproto;
+use std.crypto;
+
+key := crypto.random_bytes(32);
+data := crypto.random_bytes(16);
+iv := crypto.random_bytes(32);
+encrypted := mtproto.ige_encrypt(key, data, iv);
+println(len(mtproto.ige_decrypt(key, encrypted, iv)));
+```
 
 ### `embed`
 
@@ -824,12 +930,15 @@ a program. The following operations are checked at call time on both engines:
   parsed: a granted SQLite connection can use SQL features such as `ATTACH`, so
   only grant database access to trusted programs.
 
-`process`, the global `exec` function, `env`, `ffi`, `gui`, and `sys` expose
-host resources (command execution, environment mutation, native calls, UI, and
-machine information).
+`process`, the global `exec` function, `env`, `ffi`, `mem`, `gui`, and `sys`
+expose host resources (command execution, environment mutation, native calls,
+raw memory, UI, and machine information).
 They are intentionally outside the read/write/network capability model: only
 run trusted programs with access to those modules, or omit them from a
-restricted build.
+restricted build. The `mem` module limits a program to the memory it allocated
+itself, so it is not a way around the policy, but it is still low level code.
+The members of `mtproto` that open a connection need the network capability;
+the rest of the module works without any grant.
 
 Denied operations return Alca error code `403`, unwrap to
 `os.ErrPermission` in Go, and are handled by `io.is_permission_error` in Alca.

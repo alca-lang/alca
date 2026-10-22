@@ -573,6 +573,8 @@ func cmdBuild(args []string) int {
 	}()
 	var input, output, targetStr, runtimePath string
 	var embedPaths []string
+	var nativeSources []string
+	var nativeLibraries []string
 	forceSource := false
 	forceNative := false
 	forceBytecode := false
@@ -590,6 +592,12 @@ func cmdBuild(args []string) int {
 			i++
 		case a == "--embed" && i+1 < len(args):
 			embedPaths = append(embedPaths, args[i+1])
+			i++
+		case a == "--cc" && i+1 < len(args):
+			nativeSources = append(nativeSources, args[i+1])
+			i++
+		case a == "--native-lib" && i+1 < len(args):
+			nativeLibraries = append(nativeLibraries, args[i+1])
 			i++
 		case a == "--source":
 			forceSource = true
@@ -648,6 +656,33 @@ func cmdBuild(args []string) int {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "error:", err)
 			return 1
+		}
+	}
+	// The native libraries of the program: a C or assembly source is compiled
+	// for the host, a library that was compiled already is taken as it is.
+	if len(nativeSources) > 0 || len(nativeLibraries) > 0 {
+		if bundle.Resources == nil {
+			bundle.Resources = map[string][]byte{}
+		}
+		for _, source := range nativeSources {
+			data, err := compileNativeLibrary(source)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return 1
+			}
+			name := stdlib.EmbeddedNativeLibraryName(filepath.Base(source))
+			bundle.Resources[name] = data
+			fmt.Printf("  native library %s\n", name)
+		}
+		for _, library := range nativeLibraries {
+			data, err := os.ReadFile(library)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error: cannot read the native library:", err)
+				return 1
+			}
+			name := stdlib.EmbeddedNativeLibraryName(filepath.Base(library))
+			bundle.Resources[name] = data
+			fmt.Printf("  native library %s\n", name)
 		}
 	}
 	mode, reason := "bytecode", ""

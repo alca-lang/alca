@@ -77,6 +77,7 @@ checker, standard-library tables, and AST.
 
 ```text
 alca build <file.al> [-o output] [--target os/arch] [--runtime file] [--source]
+            [--cc file.c] [--native-lib file.so]
 ```
 
 Builds a standalone executable. By default the payload is VM bytecode, so
@@ -86,6 +87,12 @@ can run through the interpreter. `--source` forces this mode.
 
 `-o` receives the platform suffix automatically (`.exe` on Windows).
 `--runtime` overrides runtime discovery for one build.
+
+`--cc` compiles a C or assembly source into a shared library and packs it into
+the program; the program loads it with `ffi.load_embedded`. The library is
+built for the host, because the C compiler of the host is the only one that is
+available. `--native-lib` packs a library that was compiled already, which is
+the way to add native code to a program that is built for another target.
 
 ## `alca targets`
 

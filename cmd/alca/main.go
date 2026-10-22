@@ -204,6 +204,8 @@ func newInterpreter() *interpreter.Interpreter {
 	stdlib.RegisterMetricsBuiltins(env)
 	stdlib.RegisterSecurityBuiltins(env)
 	stdlib.RegisterFFIBuiltins(env)
+	stdlib.RegisterMemBuiltins(env)
+	stdlib.RegisterMTProtoBuiltins(env)
 	stdlib.RegisterAIBuiltins(env)
 	stdlib.RegisterCompressBuiltins(env)
 	stdlib.RegisterEmbedBuiltins(env)
@@ -217,6 +219,7 @@ func newInterpreter() *interpreter.Interpreter {
 		"regex", "re", "archive", "zip", "formats", "csv", "ini", "json",
 		"sys", "cli", "log", "math", "db", "sql", "sqlite", "postgres", "metrics",
 		"ffi", "ai", "security", "compress", "embed", "http", "urllib2", "string", "str",
+		"mem", "mtproto",
 	} {
 		if val, ok := env.Get(name); ok {
 			stdModule.Set(name, val)

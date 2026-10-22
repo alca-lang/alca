@@ -109,6 +109,77 @@ func RegisterFFIBuiltins(env *interpreter.Environment) {
 		return libMap
 	})
 
+	// ffi.load_embedded(name) -> FFILibrary: loads a native library that was
+	// built into the program with `alca build --cc` or `--native-lib`. The
+	// library is unpacked from the resources of the program and loaded from
+	// the temporary directory.
+	register("load_embedded", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) < 1 {
+			return interpreter.NewError(400, "ffi.load_embedded requires the name of a library")
+		}
+		name := interpreter.CoerceToString(args[0])
+		path, err := ExtractEmbeddedLibrary(name)
+		if err != nil {
+			return interpreter.NewError(404, err.Error())
+		}
+		libHandle, err := LoadDynamicLibrary(path)
+		if err != nil {
+			if IsPermissionError(err) {
+				LogPermissionDenied("ffi_load_embedded", name, err)
+				return interpreter.NewError(403, fmt.Sprintf("access denied loading library %q: %s", name, err.Error()))
+			}
+			return interpreter.NewError(500, fmt.Sprintf("failed to load library %q: %s", name, err.Error()))
+		}
+		libMap := interpreter.NewMap()
+		libMap.Set("path", &interpreter.StringValue{Val: name})
+		libMap.Set("is_loaded", interpreter.TRUE)
+		libMap.Set("call", &interpreter.BuiltinFunction{
+			Name: "call",
+			Fn: func(callArgs ...interpreter.Value) interpreter.Value {
+				if len(callArgs) < 1 {
+					return interpreter.NewError(400, "lib.call requires function name argument")
+				}
+				funcName := interpreter.CoerceToString(callArgs[0])
+				res, err := InvokeDynamicProc(libHandle, funcName, callArgs[1:])
+				if err != nil {
+					return interpreter.NewError(500, fmt.Sprintf("call %q failed: %s", funcName, err.Error()))
+				}
+				return &interpreter.IntegerValue{Val: int64(res)}
+			},
+		})
+		libMap.Set("func", &interpreter.BuiltinFunction{
+			Name: "func",
+			Fn: func(fArgs ...interpreter.Value) interpreter.Value {
+				if len(fArgs) < 1 {
+					return interpreter.NewError(400, "lib.func requires function name argument")
+				}
+				funcName := interpreter.CoerceToString(fArgs[0])
+				return &interpreter.BuiltinFunction{
+					Name: funcName,
+					Fn: func(runArgs ...interpreter.Value) interpreter.Value {
+						res, err := InvokeDynamicProc(libHandle, funcName, runArgs)
+						if err != nil {
+							return interpreter.NewError(500, fmt.Sprintf("call %q failed: %s", funcName, err.Error()))
+						}
+						return &interpreter.IntegerValue{Val: int64(res)}
+					},
+				}
+			},
+		})
+		libMap.Set("close", &interpreter.BuiltinFunction{
+			Name: "close",
+			Fn: func(args ...interpreter.Value) interpreter.Value {
+				err := UnloadDynamicLibrary(libHandle)
+				libMap.Set("is_loaded", interpreter.FALSE)
+				if err != nil {
+					return interpreter.NewError(500, err.Error())
+				}
+				return interpreter.TRUE
+			},
+		})
+		return libMap
+	})
+
 	// ffi.c_str(s) -> pointer (int)
 	register("c_str", func(args ...interpreter.Value) interpreter.Value {
 		if len(args) < 1 {
