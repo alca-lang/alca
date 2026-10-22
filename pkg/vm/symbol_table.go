@@ -61,11 +61,35 @@ func (s *SymbolTable) Define(name string) Symbol {
 	return symbol
 }
 
+// DefineGlobal binds a name in the program-wide symbol table, regardless of the
+// table's current nesting. Public declarations use this so every function sees
+// the same global slot.
+func (s *SymbolTable) DefineGlobal(name string) Symbol {
+	root := s
+	for root.Outer != nil {
+		root = root.Outer
+	}
+	return root.Define(name)
+}
+
 // DefineBuiltin registers a pre-defined global builtin symbol at a designated index.
 func (s *SymbolTable) DefineBuiltin(index int, name string) Symbol {
 	symbol := Symbol{Name: name, Index: index, Scope: BuiltinScope}
 	s.store[name] = symbol
 	return symbol
+}
+
+// GlobalNames returns global symbol names ordered by slot index. The slice has
+// one entry per global slot; concurrently-defined names occupy their own slot
+// and never collide, so the order matches the VM's globals array exactly.
+func (s *SymbolTable) GlobalNames() []string {
+	names := make([]string, s.numDefinitions)
+	for name, sym := range s.store {
+		if sym.Scope == GlobalScope && sym.Index >= 0 && sym.Index < len(names) {
+			names[sym.Index] = name
+		}
+	}
+	return names
 }
 
 // Resolve looks up a symbol in the current table and its enclosing tables.

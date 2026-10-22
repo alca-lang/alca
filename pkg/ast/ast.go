@@ -72,6 +72,8 @@ type VarDeclaration struct {
 	Name           *Identifier     // Name of the variable
 	TypeAnnotation *TypeAnnotation // Explicit type annotation, or nil for inferred type
 	Value          Expression      // Initializing expression, or nil
+	Visibility     string          // "", "public" or "private"
+	IsConst        bool            // True when declared with the 'const' modifier
 }
 
 func (vd *VarDeclaration) statementNode() {}
@@ -100,6 +102,30 @@ func (vd *VarDeclaration) String() string {
 		out.WriteString(vd.Value.String())
 	}
 	return out.String()
+}
+
+// Description returns the declaration as canonical source, including modifiers.
+func (vd *VarDeclaration) Description() string {
+	prefix := ""
+	if vd.Visibility != "" {
+		prefix += vd.Visibility + " "
+	}
+	if vd.IsConst {
+		prefix += "const "
+	}
+	if vd.Name == nil {
+		return strings.TrimSpace(prefix)
+	}
+	if vd.TypeAnnotation != nil && (vd.Visibility != "" || vd.IsConst) {
+		// Keep the type-first form requested for modified declarations:
+		// 'public int: x = 10;'.
+		out := prefix + vd.TypeAnnotation.String() + ": " + vd.Name.Value
+		if vd.Value != nil {
+			out += " = " + vd.Value.String()
+		}
+		return out
+	}
+	return prefix + vd.String()
 }
 
 // FuncDeclaration represents a function or shell-integrated function declaration.
@@ -225,12 +251,108 @@ func (sd *StructDeclaration) String() string {
 	return out.String()
 }
 
+// ClassDeclaration represents a user-defined class with inheritance, fields
+// and methods. Classes are nominal reference types: instances are created by
+// calling the class name, and methods are invoked with dot notation.
+type ClassDeclaration struct {
+	Token         token.Token          // token.CLASS
+	Decorators    []*Decorator         // Annotations applied to the class
+	IsPublic      bool                 // True if exported via 'pub'
+	Name          string               // Class name
+	Parent        string               // Name of the base class, or ""
+	ParentToken   token.Token          // Token of the base class name, for diagnostics
+	Fields        []*StructField       // Instance fields
+	Methods       []*MethodDeclaration // Instance methods
+	NestedStructs []*StructDeclaration // Struct declarations embedded in the class body
+}
+
+func (cd *ClassDeclaration) statementNode() {}
+
+// TokenLiteral returns the literal representation of the class token.
+func (cd *ClassDeclaration) TokenLiteral() string { return cd.Token.Literal }
+
+// String returns the string representation of the class declaration.
+func (cd *ClassDeclaration) String() string {
+	var out strings.Builder
+	for _, d := range cd.Decorators {
+		if d != nil {
+			out.WriteString(d.String())
+			out.WriteString("\n")
+		}
+	}
+	if cd.IsPublic {
+		out.WriteString("pub ")
+	}
+	out.WriteString("class ")
+	out.WriteString(cd.Name)
+	if cd.Parent != "" {
+		out.WriteString(" extends ")
+		out.WriteString(cd.Parent)
+	}
+	out.WriteString(" {\n")
+	for _, s := range cd.NestedStructs {
+		if s != nil {
+			out.WriteString(s.String())
+			out.WriteString("\n")
+		}
+	}
+	for _, f := range cd.Fields {
+		if f != nil {
+			out.WriteString("  ")
+			out.WriteString(f.String())
+			out.WriteString("\n")
+		}
+	}
+	for _, m := range cd.Methods {
+		if m != nil {
+			out.WriteString("  ")
+			out.WriteString(m.String())
+			out.WriteString("\n")
+		}
+	}
+	out.WriteString("}")
+	return out.String()
+}
+
+// MethodDeclaration is a function declared inside a class body.
+type MethodDeclaration struct {
+	Token      token.Token      // token.FUNC
+	Visibility string           // "", "public" or "private"
+	Func       *FuncDeclaration // Method signature and body
+}
+
+// TokenLiteral returns the literal representation of the method token.
+func (md *MethodDeclaration) TokenLiteral() string { return md.Token.Literal }
+
+// Name returns the method name.
+func (md *MethodDeclaration) Name() string {
+	if md.Func == nil {
+		return ""
+	}
+	return md.Func.Name
+}
+
+// String returns the method declaration text.
+func (md *MethodDeclaration) String() string {
+	var out strings.Builder
+	if md.Visibility != "" {
+		out.WriteString(md.Visibility)
+		out.WriteString(" ")
+	}
+	if md.Func != nil {
+		out.WriteString(md.Func.String())
+	}
+	return out.String()
+}
+
 // StructField represents a typed field within a struct declaration.
 type StructField struct {
 	Token          token.Token     // Identifier token of the field
 	Name           string          // Field name
 	TypeAnnotation *TypeAnnotation // Field type annotation
 	DefaultValue   Expression      // Default field value, or nil
+	Visibility     string          // "", "public" or "private"
+	IsConst        bool            // True when declared with the 'const' modifier
 }
 
 func (sf *StructField) statementNode() {}
@@ -241,6 +363,13 @@ func (sf *StructField) TokenLiteral() string { return sf.Token.Literal }
 // String returns the string representation of the struct field.
 func (sf *StructField) String() string {
 	var out strings.Builder
+	if sf.Visibility != "" {
+		out.WriteString(sf.Visibility)
+		out.WriteString(" ")
+	}
+	if sf.IsConst {
+		out.WriteString("const ")
+	}
 	out.WriteString(sf.Name)
 	if sf.TypeAnnotation != nil {
 		out.WriteString(": ")
@@ -1465,6 +1594,8 @@ func NodePosition(node Node) (int, int) {
 	case *FuncDeclaration:
 		return n.Token.Line, n.Token.Column
 	case *StructDeclaration:
+		return n.Token.Line, n.Token.Column
+	case *ClassDeclaration:
 		return n.Token.Line, n.Token.Column
 	case *IfStatement:
 		return n.Token.Line, n.Token.Column

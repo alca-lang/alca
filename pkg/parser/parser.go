@@ -50,6 +50,7 @@ var precedences = map[token.TokenType]int{
 	token.AND:              AND,
 	token.RANGE:            RANGE,
 	token.EQ:               EQUALS,
+	token.STRICT_EQ:        EQUALS,
 	token.NOT_EQ:           EQUALS,
 	token.LT:               LESSGREATER,
 	token.GT:               LESSGREATER,
@@ -100,6 +101,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.INT, p.parseIntegerLiteral)
 	p.registerPrefix(token.FLOAT, p.parseFloatLiteral)
 	p.registerPrefix(token.STRING, p.parseStringLiteral)
+	p.registerPrefix(token.FSTRING, p.parseFStringLiteral)
 	p.registerPrefix(token.TRUE, p.parseBooleanLiteral)
 	p.registerPrefix(token.FALSE, p.parseBooleanLiteral)
 	p.registerPrefix(token.NULL, p.parseNullLiteral)
@@ -133,6 +135,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.POWER, p.parsePowerExpression)
 
 	p.registerInfix(token.EQ, p.parseInfixExpression)
+	p.registerInfix(token.STRICT_EQ, p.parseInfixExpression)
 	p.registerInfix(token.NOT_EQ, p.parseInfixExpression)
 	p.registerInfix(token.LT, p.parseInfixExpression)
 	p.registerInfix(token.GT, p.parseInfixExpression)
@@ -254,21 +257,49 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 }
 
 func (p *Parser) peekError(t token.TokenType) {
-	msg := fmt.Sprintf("line %d, col %d: expected next token to be %s, got %s instead",
-		p.peekToken.Line, p.peekToken.Column, t, p.peekToken.Type)
-	p.errors = append(p.errors, msg)
-
-	length := len(p.peekToken.Literal)
+	tok := p.peekToken
+	length := len(tok.Literal)
 	if length <= 0 {
 		length = 1
 	}
+
+	var msg, suggestion string
+	switch t {
+	case token.RPAREN:
+		msg = fmt.Sprintf("expected ')' to close parenthesis, got %q (%s)", tok.Literal, tok.Type)
+		suggestion = "did you forget a closing ')'?"
+	case token.RBRACKET:
+		msg = fmt.Sprintf("expected ']' to close list or index, got %q (%s)", tok.Literal, tok.Type)
+		suggestion = "did you forget a closing ']'?"
+	case token.RBRACE:
+		msg = fmt.Sprintf("expected '}' to close block or map, got %q (%s)", tok.Literal, tok.Type)
+		suggestion = "did you forget a closing '}'?"
+	case token.COLON:
+		msg = fmt.Sprintf("expected ':' before block or in type annotation, got %q (%s)", tok.Literal, tok.Type)
+		suggestion = "block headers and type annotations require ':'"
+	case token.ASSIGN:
+		msg = fmt.Sprintf("expected '=' after declaration, got %q (%s)", tok.Literal, tok.Type)
+		suggestion = "variable declarations require an initial value: 'x: type = value;' or 'x := value;'"
+	case token.IN:
+		msg = fmt.Sprintf("expected 'in' in for-loop, got %q (%s)", tok.Literal, tok.Type)
+		suggestion = "for-loops use the syntax 'for <item> in <iterable>:'"
+	case token.LPAREN:
+		msg = fmt.Sprintf("expected '(' after function or call, got %q (%s)", tok.Literal, tok.Type)
+		suggestion = "enclose arguments or parameter lists in parentheses '(...)'"
+	default:
+		msg = fmt.Sprintf("expected next token to be %s, got %q (%s)", t, tok.Literal, tok.Type)
+		suggestion = fmt.Sprintf("expected '%s' here", t)
+	}
+
+	p.errors = append(p.errors, fmt.Sprintf("line %d, col %d: %s", tok.Line, tok.Column, msg))
 	p.syntaxErrors = append(p.syntaxErrors, &diag.SyntaxError{
-		Filename: "",
-		Line:     p.peekToken.Line,
-		Column:   p.peekToken.Column,
-		Message:  fmt.Sprintf("expected next token to be %s, got %q (%s)", t, p.peekToken.Literal, p.peekToken.Type),
-		Token:    string(p.peekToken.Type),
-		Length:   length,
+		Filename:   "",
+		Line:       tok.Line,
+		Column:     tok.Column,
+		Message:    msg,
+		Token:      string(tok.Type),
+		Length:     length,
+		Suggestion: suggestion,
 	})
 }
 
@@ -299,21 +330,83 @@ func (p *Parser) expectBlockColon(contextName string) bool {
 }
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {
-	msg := fmt.Sprintf("line %d, col %d: no prefix parse function for %s found",
-		p.curToken.Line, p.curToken.Column, t)
-	p.errors = append(p.errors, msg)
-
-	length := len(p.curToken.Literal)
+	tok := p.curToken
+	length := len(tok.Literal)
 	if length <= 0 {
 		length = 1
 	}
+
+	var msg, suggestion string
+
+	switch t {
+	case token.RPAREN:
+		msg = "unexpected closing ')' without matching '('"
+		suggestion = "check for an unclosed '(' earlier, or remove this extra ')'"
+	case token.RBRACKET:
+		msg = "unexpected closing ']' without matching '['"
+		suggestion = "check for an unclosed '[' earlier, or remove this extra ']'"
+	case token.RBRACE:
+		msg = "unexpected closing '}' without matching '{'"
+		suggestion = "check for an unclosed '{' earlier, or remove this extra '}'"
+	case token.COLON:
+		msg = "unexpected ':' outside of a type annotation or block header"
+		suggestion = "use ':' only at the end of block headers ('if cond:', 'func foo():') or in variable types ('x: int = 5;')"
+	case token.SEMICOLON:
+		msg = "unexpected ';' (empty statement)"
+		suggestion = "remove the stray semicolon or provide an expression before ';'"
+	case token.ASSIGN:
+		msg = "unexpected '=' assignment operator"
+		suggestion = "check if you meant ':=' for declaration or '==' for equality comparison"
+	case token.COMMA:
+		msg = "unexpected ',' outside list, map, or argument list"
+		suggestion = "remove the extra comma or enclose the items in brackets or parentheses"
+	case token.PLUS, token.ASTERISK, token.SLASH, token.PERCENT, token.POWER:
+		msg = fmt.Sprintf("stray arithmetic operator %q without left-hand operand", tok.Literal)
+		suggestion = fmt.Sprintf("provide an expression to the left of '%s'", tok.Literal)
+	case token.EQ, token.NOT_EQ, token.LT, token.LT_EQ, token.GT, token.GT_EQ:
+		msg = fmt.Sprintf("comparison operator %q without left-hand operand", tok.Literal)
+		suggestion = fmt.Sprintf("comparison operators require a left-hand expression (e.g. 'x %s y')", tok.Literal)
+	case token.AND, token.OR:
+		msg = fmt.Sprintf("logical operator %q without left-hand operand", tok.Literal)
+		suggestion = fmt.Sprintf("provide a boolean expression to the left of '%s'", tok.Literal)
+	case token.PIPE:
+		msg = "pipeline operator '|>' without left-hand value"
+		suggestion = "pipeline '|>' takes a value on the left and passes it to the function on the right (e.g. 'val |> func')"
+	case token.ARROW:
+		msg = "unexpected '->'"
+		suggestion = "'->' is used in function return type signatures (e.g. 'func foo() -> int:')"
+	case token.ELSE, token.ELIF:
+		msg = fmt.Sprintf("'%s' clause without a preceding 'if'", tok.Literal)
+		suggestion = fmt.Sprintf("ensure this '%s' matches an 'if' at the same indentation level", tok.Literal)
+	case token.CASE:
+		msg = "'case' clause outside of a 'match' statement"
+		suggestion = "'case' must be placed inside an indented 'match' block"
+	case token.IN:
+		msg = "unexpected 'in' keyword"
+		suggestion = "'in' is used in 'for item in collection:' or membership check 'item in list'"
+	case token.INDENT:
+		msg = "unexpected indentation"
+		suggestion = "indentation is only valid inside block bodies (following ':')"
+	case token.DEDENT:
+		msg = "unaligned dedent"
+		suggestion = "check block indentation: indentation decreased to an invalid level"
+	case token.ILLEGAL:
+		msg = fmt.Sprintf("illegal character %q", tok.Literal)
+		suggestion = "remove or replace the invalid character"
+	default:
+		msg = fmt.Sprintf("unexpected token %q (%s)", tok.Literal, t)
+		suggestion = "check the syntax around this token"
+	}
+
+	p.errors = append(p.errors, fmt.Sprintf("line %d, col %d: %s", tok.Line, tok.Column, msg))
 	p.syntaxErrors = append(p.syntaxErrors, &diag.SyntaxError{
-		Filename: "",
-		Line:     p.curToken.Line,
-		Column:   p.curToken.Column,
-		Message:  fmt.Sprintf("unexpected token %q (%s)", p.curToken.Literal, t),
-		Token:    string(t),
-		Length:   length,
+		Filename:   "",
+		Line:       tok.Line,
+		Column:     tok.Column,
+		Message:    msg,
+		Token:      string(t),
+		Length:     length,
+		Suggestion: suggestion,
 	})
 }
 
@@ -392,7 +485,70 @@ func (p *Parser) consumeStatementEnd() {
 // Statement Parsing
 // -----------------------------------------------------------------------------
 
+func isNilStatement(s ast.Statement) bool {
+	if s == nil {
+		return true
+	}
+	switch v := s.(type) {
+	case *ast.FuncDeclaration:
+		return v == nil
+	case *ast.StructDeclaration:
+		return v == nil
+	case *ast.ClassDeclaration:
+		return v == nil
+	case *ast.IfStatement:
+		return v == nil
+	case *ast.WhileStatement:
+		return v == nil
+	case *ast.ForStatement:
+		return v == nil
+	case *ast.ForEachStatement:
+		return v == nil
+	case *ast.LoopStatement:
+		return v == nil
+	case *ast.ReturnStatement:
+		return v == nil
+	case *ast.BreakStatement:
+		return v == nil
+	case *ast.ContinueStatement:
+		return v == nil
+	case *ast.UseStatement:
+		return v == nil
+	case *ast.WatchStatement:
+		return v == nil
+	case *ast.TestStatement:
+		return v == nil
+	case *ast.MockStatement:
+		return v == nil
+	case *ast.ThreadsStatement:
+		return v == nil
+	case *ast.TxStatement:
+		return v == nil
+	case *ast.WaitStatement:
+		return v == nil
+	case *ast.AssertStatement:
+		return v == nil
+	case *ast.MatchStatement:
+		return v == nil
+	case *ast.VarDeclaration:
+		return v == nil
+	case *ast.ExpressionStatement:
+		return v == nil
+	case *ast.BlockStatement:
+		return v == nil
+	}
+	return false
+}
+
 func (p *Parser) parseStatement() ast.Statement {
+	stmt := p.parseStatementInternal()
+	if isNilStatement(stmt) {
+		return nil
+	}
+	return stmt
+}
+
+func (p *Parser) parseStatementInternal() ast.Statement {
 	var decorators []*ast.Decorator
 	for p.curTokenIs(token.AT) {
 		dec := p.parseDecorator()
@@ -401,6 +557,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		}
 		p.skipNewlines()
 	}
+
+	visibility, isConst := p.parseVarModifiers()
 
 	isPublic := false
 	if p.curTokenIs(token.PUB) {
@@ -413,6 +571,19 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseFuncDeclaration(isPublic, decorators)
 	case token.STRUCT:
 		return p.parseStructDeclaration(isPublic, decorators)
+	case token.CLASS:
+		if visibility == "private" {
+			p.reportAt(p.curToken, "classes are visible to the whole module; remove 'private'", "private class")
+			visibility = ""
+		}
+		if isConst {
+			p.reportAt(p.curToken, "classes cannot be declared 'const'", "const class")
+			isConst = false
+		}
+		if visibility == "public" {
+			isPublic = true
+		}
+		return p.parseClassDeclaration(isPublic, decorators)
 	case token.IF:
 		return p.parseIfStatement()
 	case token.WHILE:
@@ -452,18 +623,77 @@ func (p *Parser) parseStatement() ast.Statement {
 	case token.IDENT, token.TYPE_STRING, token.TYPE_INT, token.TYPE_FLOAT,
 		token.TYPE_BOOL, token.TYPE_LIST, token.TYPE_MAP, token.TYPE_BLOB,
 		token.TYPE_SECRET, token.TYPE_JSON:
-		if token.IsTypeKeyword(p.curToken.Type) && p.peekTokenIs(token.IDENT) {
-			// C-style declaration ('int x = 5;') is not part of Alca: reject with a hint, keep parsing.
+		if token.IsTypeKeyword(p.curToken.Type) && (p.peekTokenIs(token.IDENT) || p.peekTokenIs(token.COLON)) {
+			if visibility != "" || isConst {
+				// Modified declarations use the requested type-first form:
+				// 'public int: x = 10;', 'private string: name = "";',
+				// 'const float: pi = 3.14;'.
+				return p.parseTypedVarDeclaration(visibility, isConst, decorators)
+			}
+			// C-style declaration ('int x = 5;' or 'int: x = 5;') is not part of
+			// Alca: reject with a hint and skip to end of statement to avoid cascading errors.
 			p.reportAt(p.curToken, fmt.Sprintf("declare variables as 'name: %s = value;'", p.curToken.Literal),
 				"C-style declarations are not supported")
-			return p.parseCStyleVarDeclaration(decorators)
+			// Skip tokens until we reach the end of the statement to avoid cascading errors
+			for !p.peekTokenIs(token.NEWLINE) && !p.peekTokenIs(token.EOF) && !p.peekTokenIs(token.DEDENT) {
+				p.nextToken()
+			}
+			p.nextToken() // cur = NEWLINE / EOF / DEDENT
+			return nil
 		}
 		if p.curTokenIs(token.IDENT) && p.peekTokenIs(token.COLON) {
-			return p.parseVarDeclaration(decorators)
+			vd := p.parseVarDeclaration(decorators)
+			if vd != nil {
+				vd.Visibility = visibility
+				vd.IsConst = isConst
+			}
+			return vd
+		}
+		if visibility != "" || isConst {
+			p.reportAt(p.curToken, "write 'public int: x = 10;', 'private int: x = 10;' or 'const int: x = 10;'",
+				fmt.Sprintf("modifier %q must be followed by a variable declaration", p.curToken.Literal))
+			p.consumeStatementEnd()
+			return nil
 		}
 		return p.parseExpressionStatement()
 	default:
+		if visibility != "" || isConst {
+			p.reportAt(p.curToken, "write 'public int: x = 10;', 'private int: x = 10;' or 'const int: x = 10;'",
+				fmt.Sprintf("modifier %q must be followed by a variable declaration", p.curToken.Literal))
+			p.consumeStatementEnd()
+			return nil
+		}
 		return p.parseExpressionStatement()
+	}
+}
+
+// parseVarModifiers consumes the optional visibility and const modifiers of a
+// variable declaration. They precede the declaration in any order, e.g.
+// 'public const int: limit = 10;'.
+func (p *Parser) parseVarModifiers() (visibility string, isConst bool) {
+	for {
+		switch p.curToken.Type {
+		case token.PUBLIC:
+			if visibility == "private" {
+				p.reportAt(p.curToken, "keep a single visibility: 'public' or 'private'", "conflicting visibility modifiers")
+			}
+			visibility = "public"
+			p.nextToken()
+		case token.PRIVATE:
+			if visibility == "public" {
+				p.reportAt(p.curToken, "keep a single visibility: 'public' or 'private'", "conflicting visibility modifiers")
+			}
+			visibility = "private"
+			p.nextToken()
+		case token.CONST:
+			if isConst {
+				p.reportAt(p.curToken, "remove the duplicate 'const'", "duplicate 'const' modifier")
+			}
+			isConst = true
+			p.nextToken()
+		default:
+			return visibility, isConst
+		}
 	}
 }
 
@@ -489,7 +719,8 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	p.nextToken()     // move to decorator name
 
 	if !p.curTokenIs(token.IDENT) {
-		p.peekError(token.IDENT)
+		p.reportAt(p.curToken, "provide a decorator name: '@memoize' or '@timeout(5s)'",
+			fmt.Sprintf("expected identifier after '@', got %q", p.curToken.Literal))
 		return nil
 	}
 
@@ -499,6 +730,12 @@ func (p *Parser) parseDecorator() *ast.Decorator {
 	if p.peekTokenIs(token.LPAREN) {
 		p.nextToken() // move to '('
 		args = p.parseExpressionList(token.RPAREN)
+		// parseExpressionList leaves the current token on the closing
+		// parenthesis. Step past it so that a decorator with arguments ends
+		// like a bare one and the declaration that follows is parsed.
+		if p.curTokenIs(token.RPAREN) {
+			p.nextToken()
+		}
 	} else {
 		p.nextToken() // move past decorator name
 	}
@@ -544,22 +781,40 @@ func (p *Parser) parseVarDeclaration(decorators []*ast.Decorator) *ast.VarDeclar
 	}
 }
 
-func (p *Parser) parseCStyleVarDeclaration(decorators []*ast.Decorator) *ast.VarDeclaration {
+// parseTypedVarDeclaration parses the type-first declaration form used with
+// modifiers:
+//
+//	public int: x = 10;
+//	private string: name = "secret";
+//	const float: pi = 3.14;
+//	public int count = 0;
+func (p *Parser) parseTypedVarDeclaration(visibility string, isConst bool, decorators []*ast.Decorator) *ast.VarDeclaration {
 	typeTok := p.curToken
-	typeAnnotation := &ast.TypeAnnotation{
-		Token: typeTok,
-		Types: []string{typeTok.Literal},
+	typeAnnotation := p.parseTypeAnnotation()
+
+	// Move from the type to the variable name. Both 'int: x' and 'int x' are
+	// accepted, with the colon form being the canonical one.
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // ':'
 	}
-	p.nextToken() // move to variable name (IDENT)
+	if !p.peekTokenIs(token.IDENT) && !token.IsTypeKeyword(p.peekToken.Type) {
+		p.reportAt(p.curToken, fmt.Sprintf("write '%s int: x = 10;'", firstModifier(visibility, isConst)),
+			fmt.Sprintf("expected variable name after type %q, got %q", typeAnnotation.String(), p.peekToken.Literal))
+		p.consumeStatementEnd()
+		return nil
+	}
+	p.nextToken() // variable name
 
 	nameTok := p.curToken
 	name := &ast.Identifier{Token: nameTok, Value: nameTok.Literal}
 
 	var value ast.Expression
 	if p.peekTokenIs(token.ASSIGN) {
-		p.nextToken() // move to '='
-		p.nextToken() // move to value expression
+		p.nextToken() // '='
+		p.nextToken() // value expression
 		value = p.parseExpression(LOWEST)
+	} else {
+		p.reportAt(nameTok, "initialize it: 'name: type = value;'", "variable declaration requires an initial value")
 	}
 
 	p.consumeStatementEnd()
@@ -570,7 +825,22 @@ func (p *Parser) parseCStyleVarDeclaration(decorators []*ast.Decorator) *ast.Var
 		TypeAnnotation: typeAnnotation,
 		Value:          value,
 		Decorators:     decorators,
+		Visibility:     visibility,
+		IsConst:        isConst,
 	}
+}
+
+func firstModifier(visibility string, isConst bool) string {
+	switch {
+	case visibility != "":
+		if isConst {
+			return visibility + " const"
+		}
+		return visibility
+	case isConst:
+		return "const"
+	}
+	return ""
 }
 
 func (p *Parser) parseFuncDeclaration(isPublic bool, decorators []*ast.Decorator) *ast.FuncDeclaration {
@@ -578,6 +848,11 @@ func (p *Parser) parseFuncDeclaration(isPublic bool, decorators []*ast.Decorator
 	isShell := (tok.Type == token.SHFUNC)
 
 	p.nextToken() // past func/shfunc
+	if !p.curTokenIs(token.IDENT) && !token.IsTypeKeyword(p.curToken.Type) {
+		p.reportAt(p.curToken, "provide a valid function name, e.g. 'func calculate():'",
+			fmt.Sprintf("expected function name after '%s', got %q", tok.Literal, p.curToken.Literal))
+		return nil
+	}
 	name := p.curToken.Literal
 
 	if !p.expectPeek(token.LPAREN) {
@@ -633,6 +908,11 @@ func (p *Parser) parseFuncParams() []*ast.FuncParam {
 			p.nextToken() // ':'
 			p.nextToken() // start of type
 			param.TypeAnnotation = p.parseTypeAnnotation()
+		} else if p.peekTokenIs(token.IDENT) || token.IsTypeKeyword(p.peekToken.Type) {
+			p.reportAt(p.peekToken, fmt.Sprintf("write parameter types with a colon: '%s: %s'", paramName, p.peekToken.Literal),
+				fmt.Sprintf("missing ':' before type annotation for parameter '%s'", paramName))
+			p.nextToken() // move to type
+			param.TypeAnnotation = p.parseTypeAnnotation()
 		}
 
 		if p.peekTokenIs(token.ASSIGN) {
@@ -671,7 +951,8 @@ func (p *Parser) parseStructDeclaration(isPublic bool, decorators []*ast.Decorat
 	p.nextToken() // past 'struct'
 
 	if !p.curTokenIs(token.IDENT) {
-		p.peekError(token.IDENT)
+		p.reportAt(p.curToken, "provide a struct name, e.g. 'struct User:'",
+			fmt.Sprintf("expected struct name after 'struct', got %q", p.curToken.Literal))
 		return nil
 	}
 
@@ -696,13 +977,28 @@ func (p *Parser) parseStructDeclaration(isPublic bool, decorators []*ast.Decorat
 				break
 			}
 
+			fieldVisibility, fieldIsConst := p.parseVarModifiers()
 			fieldTok := p.curToken
 			fieldName := fieldTok.Literal
 
 			var typeAnnot *ast.TypeAnnotation
 			var defaultVal ast.Expression
 
-			if p.peekTokenIs(token.COLON) {
+			if token.IsTypeKeyword(fieldTok.Type) && (p.peekTokenIs(token.IDENT) || p.peekTokenIs(token.COLON)) {
+				// Type-first field with a modifier: 'private int: x = 10;'.
+				typeAnnot = p.parseTypeAnnotation()
+				if p.peekTokenIs(token.COLON) {
+					p.nextToken()
+				}
+				if !p.peekTokenIs(token.IDENT) {
+					p.reportAt(fieldTok, "write 'private int: field = value;'", "expected a field name after the type")
+					p.consumeStatementEnd()
+					continue
+				}
+				p.nextToken() // field name
+				fieldTok = p.curToken
+				fieldName = fieldTok.Literal
+			} else if p.peekTokenIs(token.COLON) {
 				p.nextToken() // ':'
 				p.nextToken() // type start
 				typeAnnot = p.parseTypeAnnotation()
@@ -719,6 +1015,8 @@ func (p *Parser) parseStructDeclaration(isPublic bool, decorators []*ast.Decorat
 				Name:           fieldName,
 				TypeAnnotation: typeAnnot,
 				DefaultValue:   defaultVal,
+				Visibility:     fieldVisibility,
+				IsConst:        fieldIsConst,
 			})
 
 			p.consumeStatementEnd()
@@ -741,6 +1039,150 @@ func (p *Parser) parseStructDeclaration(isPublic bool, decorators []*ast.Decorat
 		IsPublic:   isPublic,
 		Decorators: decorators,
 	}
+}
+
+func (p *Parser) parseClassDeclaration(isPublic bool, decorators []*ast.Decorator) *ast.ClassDeclaration {
+	classTok := p.curToken
+	p.nextToken() // past 'class'
+
+	if !p.curTokenIs(token.IDENT) {
+		p.reportAt(p.curToken, "provide a class name, e.g. 'class User:'",
+			fmt.Sprintf("expected class name after 'class', got %q", p.curToken.Literal))
+		return nil
+	}
+
+	name := p.curToken.Literal
+
+	var parent string
+	var parentTok token.Token
+	if p.peekTokenIs(token.EXTENDS) {
+		p.nextToken() // 'extends'
+		p.nextToken() // base class name
+		if !p.curTokenIs(token.IDENT) {
+			p.reportAt(p.curToken, "write 'class Child extends Parent:'", "expected a base class name after 'extends'")
+		} else {
+			parent = p.curToken.Literal
+			parentTok = p.curToken
+		}
+	}
+
+	p.expectBlockColon("class " + name)
+	if p.curTokenIs(token.COLON) {
+		p.nextToken()
+	}
+	p.skipNewlines()
+
+	class := &ast.ClassDeclaration{
+		Token:       classTok,
+		Name:        name,
+		Parent:      parent,
+		ParentToken: parentTok,
+		IsPublic:    isPublic,
+		Decorators:  decorators,
+	}
+
+	if !p.curTokenIs(token.INDENT) {
+		return class
+	}
+
+	p.nextToken() // enter class body
+	for !p.curTokenIs(token.DEDENT) && !p.curTokenIs(token.EOF) {
+		prevTok := p.curToken
+		p.skipNewlines()
+		if p.curTokenIs(token.DEDENT) || p.curTokenIs(token.EOF) {
+			break
+		}
+
+		visibility, isConst := p.parseVarModifiers()
+		switch p.curToken.Type {
+		case token.FUNC, token.SHFUNC:
+			if isConst {
+				p.reportAt(p.curToken, "methods cannot be declared 'const'", "const method")
+			}
+			if p.curTokenIs(token.SHFUNC) {
+				p.reportAt(p.curToken, "methods are declared with 'func'", "shell functions cannot be class methods")
+			}
+			method := p.parseFuncDeclaration(false, nil)
+			if method != nil {
+				class.Methods = append(class.Methods, &ast.MethodDeclaration{
+					Token:      method.Token,
+					Visibility: visibility,
+					Func:       method,
+				})
+			}
+		case token.STRUCT:
+			if isConst {
+				p.reportAt(p.curToken, "nested structs cannot be declared 'const'", "const struct")
+			}
+			nested := p.parseStructDeclaration(visibility == "public", nil)
+			if nested != nil {
+				class.NestedStructs = append(class.NestedStructs, nested)
+			}
+		default:
+			field := p.parseClassField(visibility, isConst)
+			if field != nil {
+				class.Fields = append(class.Fields, field)
+			}
+		}
+
+		p.skipNewlines()
+		if p.curToken == prevTok {
+			p.nextToken()
+			p.skipNewlines()
+		}
+	}
+
+	if p.curTokenIs(token.DEDENT) {
+		p.nextToken()
+	}
+
+	return class
+}
+
+// parseClassField parses one field line inside a class body. It accepts the
+// same forms as struct fields, including 'public int: x = 10;'.
+func (p *Parser) parseClassField(visibility string, isConst bool) *ast.StructField {
+	fieldTok := p.curToken
+	fieldName := fieldTok.Literal
+
+	var typeAnnot *ast.TypeAnnotation
+	var defaultVal ast.Expression
+
+	if token.IsTypeKeyword(fieldTok.Type) && (p.peekTokenIs(token.IDENT) || p.peekTokenIs(token.COLON)) {
+		typeAnnot = p.parseTypeAnnotation()
+		if p.peekTokenIs(token.COLON) {
+			p.nextToken()
+		}
+		if !p.peekTokenIs(token.IDENT) {
+			p.reportAt(fieldTok, "write 'private int: field = value;'", "expected a field name after the type")
+			p.consumeStatementEnd()
+			return nil
+		}
+		p.nextToken()
+		fieldTok = p.curToken
+		fieldName = fieldTok.Literal
+	} else if p.peekTokenIs(token.COLON) {
+		p.nextToken() // ':'
+		p.nextToken() // type start
+		typeAnnot = p.parseTypeAnnotation()
+	}
+
+	if p.peekTokenIs(token.ASSIGN) {
+		p.nextToken() // '='
+		p.nextToken() // default value
+		defaultVal = p.parseExpression(LOWEST)
+	}
+
+	field := &ast.StructField{
+		Token:          fieldTok,
+		Name:           fieldName,
+		TypeAnnotation: typeAnnot,
+		DefaultValue:   defaultVal,
+		Visibility:     visibility,
+		IsConst:        isConst,
+	}
+	p.consumeStatementEnd()
+	return field
 }
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
@@ -831,6 +1273,17 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 
 func (p *Parser) parseIfStatement() *ast.IfStatement {
 	ifTok := p.curToken
+	if p.peekTokenIs(token.COLON) {
+		p.reportAt(p.peekToken, "provide a boolean condition, e.g. 'if x > 0:'", "missing condition in 'if' statement")
+		p.nextToken() // move to ':'
+		consequence := p.parseBlockStatement()
+		return &ast.IfStatement{
+			Token:        ifTok,
+			Condition:    &ast.BooleanLiteral{Token: ifTok, Value: false},
+			Consequence:  consequence,
+			Alternatives: []*ast.ElifClause{},
+		}
+	}
 	p.nextToken() // move past 'if' to condition
 
 	cond := p.parseExpression(LOWEST)
@@ -850,6 +1303,18 @@ func (p *Parser) parseIfStatement() *ast.IfStatement {
 
 	for p.curTokenIs(token.ELIF) {
 		elifTok := p.curToken
+		if p.peekTokenIs(token.COLON) {
+			p.reportAt(p.peekToken, "provide a boolean condition, e.g. 'elif x > 0:'", "missing condition in 'elif' statement")
+			p.nextToken() // move to ':'
+			elifBody := p.parseBlockStatement()
+			stmt.Alternatives = append(stmt.Alternatives, &ast.ElifClause{
+				Token:     elifTok,
+				Condition: &ast.BooleanLiteral{Token: elifTok, Value: false},
+				Body:      elifBody,
+			})
+			p.skipNewlines()
+			continue
+		}
 		p.nextToken() // past 'elif' to condition
 
 		elifCond := p.parseExpression(LOWEST)
@@ -876,6 +1341,16 @@ func (p *Parser) parseIfStatement() *ast.IfStatement {
 
 func (p *Parser) parseWhileStatement() *ast.WhileStatement {
 	tok := p.curToken
+	if p.peekTokenIs(token.COLON) {
+		p.reportAt(p.peekToken, "provide a loop condition, e.g. 'while running:'", "missing condition in 'while' statement")
+		p.nextToken() // move to ':'
+		body := p.parseBlockStatement()
+		return &ast.WhileStatement{
+			Token:     tok,
+			Condition: &ast.BooleanLiteral{Token: tok, Value: false},
+			Body:      body,
+		}
+	}
 	p.nextToken() // condition
 
 	cond := p.parseExpression(LOWEST)
@@ -894,6 +1369,10 @@ func (p *Parser) parseWhileStatement() *ast.WhileStatement {
 func (p *Parser) parseForStatement() *ast.ForStatement {
 	forTok := p.curToken
 	p.nextToken() // variable name
+	if !p.curTokenIs(token.IDENT) {
+		p.reportAt(p.curToken, "specify a variable name: 'for item in collection:'", "expected loop variable name after 'for'")
+		return nil
+	}
 
 	varName := p.curToken.Literal
 	if p.peekTokenIs(token.COMMA) {
@@ -925,6 +1404,10 @@ func (p *Parser) parseForStatement() *ast.ForStatement {
 func (p *Parser) parseForEachStatement() *ast.ForEachStatement {
 	forEachTok := p.curToken
 	p.nextToken() // variable name
+	if !p.curTokenIs(token.IDENT) {
+		p.reportAt(p.curToken, "specify a variable name: 'foreach item in collection:'", "expected loop variable name after 'foreach'")
+		return nil
+	}
 
 	varName := p.curToken.Literal
 	if p.peekTokenIs(token.COMMA) {
@@ -1309,6 +1792,12 @@ func (p *Parser) parseAssertStatement() *ast.AssertStatement {
 	tok := p.curToken
 	p.nextToken() // past 'assert'
 
+	if p.curTokenIs(token.SEMICOLON) {
+		p.reportAt(tok, "provide an expression to assert, e.g. 'assert x > 0;'", "missing condition in 'assert' statement")
+		p.consumeStatementEnd()
+		return &ast.AssertStatement{Token: tok}
+	}
+
 	var expr ast.Expression
 	if p.curTokenIs(token.LPAREN) {
 		p.nextToken() // inside '('
@@ -1329,6 +1818,10 @@ func (p *Parser) parseAssertStatement() *ast.AssertStatement {
 func (p *Parser) parseMatchStatement() *ast.MatchStatement {
 	matchTok := p.curToken
 	p.nextToken() // past 'match'
+
+	if p.curTokenIs(token.COLON) {
+		p.reportAt(p.curToken, "provide a match expression, e.g. 'match status:'", "missing expression in 'match' statement")
+	}
 
 	subject := p.parseExpression(LOWEST)
 
@@ -1356,6 +1849,10 @@ func (p *Parser) parseMatchStatement() *ast.MatchStatement {
 			if p.curTokenIs(token.CASE) {
 				caseTok := p.curToken
 				p.nextToken() // past 'case'
+
+				if p.curTokenIs(token.COLON) {
+					p.reportAt(p.curToken, "provide a pattern to match, e.g. 'case 200:'", "missing pattern in 'case' clause")
+				}
 
 				pattern := p.parseExpression(LOWEST)
 				if p.peekTokenIs(token.COLON) {
@@ -1396,6 +1893,17 @@ func (p *Parser) parseMatchStatement() *ast.MatchStatement {
 func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 	stmt := &ast.ExpressionStatement{Token: p.curToken}
 	stmt.Expression = p.parseExpression(LOWEST)
+	if stmt.Expression == nil {
+		// Suppress cascading "expected ';'" error on the invalid expression.
+		// Skip tokens until end of statement / newline / EOF.
+		for !p.curTokenIs(token.SEMICOLON) && !p.curTokenIs(token.NEWLINE) && !p.curTokenIs(token.EOF) && !p.curTokenIs(token.DEDENT) {
+			p.nextToken()
+		}
+		if p.curTokenIs(token.SEMICOLON) {
+			p.nextToken()
+		}
+		return nil
+	}
 	p.consumeStatementEnd()
 	return stmt
 }
@@ -1555,6 +2063,123 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
+type fstringPart struct {
+	isExpr bool
+	text   string
+}
+
+func (p *Parser) parseFStringLiteral() ast.Expression {
+	tok := p.curToken
+	s := tok.Literal
+	var parts []fstringPart
+	var lit strings.Builder
+	i := 0
+	for i < len(s) {
+		if s[i] == '{' {
+			if i+1 < len(s) && s[i+1] == '{' {
+				lit.WriteByte('{')
+				i += 2
+				continue
+			}
+			if lit.Len() > 0 {
+				parts = append(parts, fstringPart{isExpr: false, text: lit.String()})
+				lit.Reset()
+			}
+			i++ // skip '{'
+			start := i
+			depth := 1
+			for i < len(s) && depth > 0 {
+				ch := s[i]
+				if ch == '"' || ch == '\'' || ch == '`' {
+					q := ch
+					i++
+					for i < len(s) && s[i] != q {
+						if s[i] == '\\' && i+1 < len(s) {
+							i += 2
+							continue
+						}
+						i++
+					}
+					if i < len(s) {
+						i++ // consume closing quote
+					}
+					continue
+				}
+				if ch == '{' {
+					depth++
+				} else if ch == '}' {
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+				i++
+			}
+			if depth != 0 {
+				p.reportAt(tok, "f-string", "unclosed '{' in f-string")
+				return nil
+			}
+			exprStr := s[start:i]
+			i++ // skip closing '}'
+			parts = append(parts, fstringPart{isExpr: true, text: strings.TrimSpace(exprStr)})
+			continue
+		}
+		if s[i] == '}' {
+			if i+1 < len(s) && s[i+1] == '}' {
+				lit.WriteByte('}')
+				i += 2
+				continue
+			}
+			p.reportAt(tok, "f-string", "single '}' encountered in f-string; use '}}' for literal brace")
+			return nil
+		}
+		lit.WriteByte(s[i])
+		i++
+	}
+	if lit.Len() > 0 {
+		parts = append(parts, fstringPart{isExpr: false, text: lit.String()})
+	}
+
+	if len(parts) == 0 {
+		return &ast.StringLiteral{Token: tok, Value: ""}
+	}
+
+	var exprs []ast.Expression
+	for _, part := range parts {
+		if !part.isExpr {
+			exprs = append(exprs, &ast.StringLiteral{Token: tok, Value: part.text})
+		} else {
+			if part.text == "" {
+				p.reportAt(tok, "f-string", "empty expression in f-string '{}'")
+				return nil
+			}
+			subLex := lexer.New(part.text)
+			subP := New(subLex)
+			expr := subP.parseExpression(LOWEST)
+			if len(subP.Errors()) > 0 {
+				p.reportAt(tok, "f-string", fmt.Sprintf("invalid expression in f-string '{%s}': %s", part.text, strings.Join(subP.Errors(), ", ")))
+				return nil
+			}
+			exprs = append(exprs, &ast.CallExpression{
+				Token:     tok,
+				Function:  &ast.Identifier{Token: token.Token{Type: token.IDENT, Literal: "string", Line: tok.Line, Column: tok.Column}, Value: "string"},
+				Arguments: []ast.Expression{expr},
+			})
+		}
+	}
+
+	result := exprs[0]
+	for j := 1; j < len(exprs); j++ {
+		result = &ast.InfixExpression{
+			Token:    tok,
+			Left:     result,
+			Operator: "+",
+			Right:    exprs[j],
+		}
+	}
+	return result
+}
+
 func (p *Parser) parseBooleanLiteral() ast.Expression {
 	return &ast.BooleanLiteral{Token: p.curToken, Value: p.curTokenIs(token.TRUE)}
 }
@@ -1577,6 +2202,7 @@ func (p *Parser) parsePrefixExpression() ast.Expression {
 }
 
 func (p *Parser) parseGroupedExpression() ast.Expression {
+	openTok := p.curToken
 	p.nextToken()
 	p.skipNewlines()
 
@@ -1584,6 +2210,9 @@ func (p *Parser) parseGroupedExpression() ast.Expression {
 
 	p.skipNewlines()
 	if !p.expectPeek(token.RPAREN) {
+		if len(p.syntaxErrors) > 0 {
+			p.syntaxErrors[len(p.syntaxErrors)-1].Suggestion = fmt.Sprintf("unclosed '(' from line %d, col %d; add a closing ')'", openTok.Line, openTok.Column)
+		}
 		return nil
 	}
 
@@ -1645,7 +2274,11 @@ func (p *Parser) parseMapLiteral() ast.Expression {
 
 	p.skipPeekNewlines()
 	if !p.curTokenIs(token.RBRACE) {
-		p.expectPeek(token.RBRACE)
+		if !p.expectPeek(token.RBRACE) {
+			if len(p.syntaxErrors) > 0 {
+				p.syntaxErrors[len(p.syntaxErrors)-1].Suggestion = fmt.Sprintf("unclosed '{' from line %d, col %d; add a closing '}'", mapLit.Token.Line, mapLit.Token.Column)
+			}
+		}
 	}
 
 	return mapLit
@@ -1957,6 +2590,9 @@ func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
 
 	p.skipNewlines()
 	if !p.expectPeek(token.RBRACKET) {
+		if len(p.syntaxErrors) > 0 {
+			p.syntaxErrors[len(p.syntaxErrors)-1].Suggestion = fmt.Sprintf("unclosed '[' from line %d, col %d; add a closing ']'", tok.Line, tok.Column)
+		}
 		return nil
 	}
 
@@ -1970,6 +2606,12 @@ func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
 func (p *Parser) parseDotExpression(left ast.Expression) ast.Expression {
 	tok := p.curToken // '.'
 	p.nextToken()     // field identifier
+
+	if !p.curTokenIs(token.IDENT) && !token.IsKeyword(p.curToken.Type) && !token.IsTypeKeyword(p.curToken.Type) {
+		p.reportAt(p.curToken, "provide a valid field or method name, e.g. 'obj.property'",
+			fmt.Sprintf("expected identifier after '.', got %q", p.curToken.Literal))
+		return nil
+	}
 
 	fieldName := p.curToken.Literal
 	return &ast.DotExpression{

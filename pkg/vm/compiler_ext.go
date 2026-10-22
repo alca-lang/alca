@@ -107,7 +107,14 @@ func (c *Compiler) predeclareStatement(st ast.Statement) {
 	switch n := st.(type) {
 	case *ast.VarDeclaration:
 		if n.Name != nil {
-			c.symbolTable.Define(n.Name.Value)
+			if n.Visibility == "public" {
+				// Public declarations live in the program-wide table, never in
+				// the enclosing function's local slots. Declaring a local here
+				// would make references resolve to an uninitialized slot.
+				c.symbolTable.DefineGlobal(n.Name.Value)
+			} else {
+				c.symbolTable.Define(n.Name.Value)
+			}
 		}
 	case *ast.FuncDeclaration:
 		c.symbolTable.Define(n.Name)
@@ -151,14 +158,16 @@ func (c *Compiler) emitJump(op Opcode) int { return c.emit(op, 9999) }
 func (c *Compiler) patch(pos int) {
 	target := len(c.currentInstructions())
 	if target > 0xFFFF {
-		c.err = fmt.Errorf("program too large: jump target %d exceeds 65535 bytes of bytecode in one function", target)
+		if c.err == nil {
+			c.err = fmt.Errorf("program too large: jump target %d exceeds 65535 bytes of bytecode in one function", target)
+		}
 	}
 	c.changeOperand(pos, target)
 }
 
 func isDecl(st ast.Statement) bool {
 	switch st.(type) {
-	case *ast.FuncDeclaration, *ast.StructDeclaration:
+	case *ast.FuncDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration:
 		return true
 	}
 	return false
@@ -191,9 +200,6 @@ func (c *Compiler) collectDecls(stmts []ast.Statement) error {
 	for _, st := range stmts {
 		switch d := st.(type) {
 		case *ast.FuncDeclaration:
-			if len(d.Decorators) > 0 {
-				return unsupported("function decorators", d.Token)
-			}
 			if d.IsShell {
 				return unsupported("shell functions (shfunc)", d.Token)
 			}
@@ -202,10 +208,9 @@ func (c *Compiler) collectDecls(stmts []ast.Statement) error {
 		case *ast.StructDeclaration:
 			c.structs[d.Name] = d
 			c.symbolTable.Define(d.Name)
+		case *ast.ClassDeclaration:
+			c.symbolTable.Define(d.Name)
 		case *ast.VarDeclaration:
-			if len(d.Decorators) > 0 {
-				return unsupported("variable decorators", d.Token)
-			}
 			if d.Name != nil {
 				c.symbolTable.Define(d.Name.Value)
 			}
@@ -221,6 +226,29 @@ func (c *Compiler) compileExt(node ast.Node) (bool, error) {
 
 	case *ast.Program:
 		prog := c.optimizer.OptimizeAST(n)
+		c.mathAliases = make(map[string]bool)
+		c.stdlibAliases = make(map[string]string)
+		shadowedNames := make(map[string]bool)
+		collectShadowedNames(prog, shadowedNames)
+		for _, stmt := range prog.Statements {
+			use, ok := stmt.(*ast.UseStatement)
+			if !ok || len(use.Imports) > 0 {
+				continue
+			}
+			alias := use.Alias
+			if alias == "" {
+				alias = StdlibBindingName(use.ModulePath)
+			}
+			if alias == "" || shadowedNames[alias] || moduleAliasEscapes(prog, alias) {
+				continue
+			}
+			if use.ModulePath == "math" || use.ModulePath == "std.math" {
+				c.mathAliases[alias] = true
+			}
+			if SupportsPureStdlibMembers(use.ModulePath) {
+				c.stdlibAliases[alias] = use.ModulePath
+			}
+		}
 		if err := c.collectDecls(prog.Statements); err != nil {
 			return true, err
 		}
@@ -230,9 +258,6 @@ func (c *Compiler) compileExt(node ast.Node) (bool, error) {
 		return true, c.compileStatements(n.Statements)
 
 	case *ast.FuncDeclaration:
-		if len(n.Decorators) > 0 {
-			return true, unsupported("function decorators", n.Token)
-		}
 		if n.IsShell {
 			return true, unsupported("shell functions (shfunc)", n.Token)
 		}
@@ -269,7 +294,11 @@ func (c *Compiler) compileExt(node ast.Node) (bool, error) {
 
 	case *ast.AssignExpression:
 		if c.assignStmt != n {
-			return true, unsupported("an assignment used as a value", n.Token)
+			// The assignment is used as a value. The set opcodes consume the
+			// value they store, so the value is duplicated first and the
+			// assignment leaves its result on the stack.
+			c.assignAsValue = true
+			return false, nil
 		}
 		c.assignStmt = nil
 		return false, nil
@@ -293,6 +322,67 @@ func (c *Compiler) compileExt(node ast.Node) (bool, error) {
 		args, err := c.bindArgs(n)
 		if err != nil {
 			return true, err
+		}
+		if len(n.KwArgs) == 0 {
+			if dot, ok := n.Function.(*ast.DotExpression); ok {
+				root, memberPath := moduleCallPath(dot)
+				if root != nil {
+					if _, shadowed := c.symbolTable.Resolve(root.Value); !shadowed {
+						if c.mathAliases[root.Value] {
+							if id, arity, supported := MathBuiltinID(memberPath); supported && len(args) == arity {
+								for _, arg := range args {
+									if err := c.Compile(arg); err != nil {
+										return true, err
+									}
+								}
+								c.emit(OpMathBuiltin, int(id))
+								return true, nil
+							}
+						}
+						// Pure module calls are fused so the VM and JIT engines
+						// can invoke the registered member without materializing
+						// the module map and doing a generic field lookup.
+						if modulePath, ok := c.stdlibAliases[root.Value]; ok && IsPureStdlibMember(modulePath, memberPath) {
+							for _, arg := range args {
+								if err := c.Compile(arg); err != nil {
+									return true, err
+								}
+							}
+							aliasIdx := c.addConstant(&interpreter.StringValue{Val: root.Value})
+							memberIdx := c.addConstant(&interpreter.StringValue{Val: memberPath})
+							c.emit(OpStdlibCall, aliasIdx, memberIdx, len(args))
+							return true, nil
+						}
+					}
+				}
+			}
+		}
+		// A bare call to an always-available conversion builtin that does not
+		// resolve to a user binding lowers to a boxing-free opcode: the runtime
+		// name lookup the VM would otherwise do always selects the builtin.
+		if id, ok := n.Function.(*ast.Identifier); ok && len(args) == 1 {
+			if _, bound := c.symbolTable.Resolve(id.Value); !bound {
+				if bid, ok := builtin1ID(id.Value); ok {
+					// Fused conversion of a plain local/global operand.
+					if arg, ok := args[0].(*ast.Identifier); ok {
+						if sym, ok := c.symbolTable.Resolve(arg.Value); ok {
+							switch sym.Scope {
+							case LocalScope:
+								c.emit(OpConvLocal, bid, sym.Index)
+								return true, nil
+							case GlobalScope:
+								c.emit(OpConvGlobal, bid, sym.Index)
+								return true, nil
+							}
+						}
+					}
+					if err := c.Compile(args[0]); err != nil {
+						return true, err
+					}
+					c.emit(OpCallBuiltin1, bid)
+					return true, nil
+				}
+			}
 		}
 		if err := c.Compile(n.Function); err != nil {
 			return true, err
@@ -377,19 +467,39 @@ func (c *Compiler) compileExt(node ast.Node) (bool, error) {
 	case *ast.ThreadsStatement:
 		return true, unsupported("'threads' blocks", n.Token)
 	case *ast.TxStatement:
-		return true, unsupported("'tx' blocks", n.Token)
+		return true, c.compileTx(n)
 	case *ast.WatchStatement:
 		return true, unsupported("'watch' blocks", n.Token)
 	case *ast.MockStatement:
-		return true, unsupported("'mock'", n.Token)
+		return true, c.compileMock(n)
 	case *ast.WaitStatement:
-		return true, unsupported("'wait'", n.Token)
+		c.emit(OpWait)
+		return true, nil
 	case *ast.TimeoutExpression:
 		return true, unsupported("timeout expressions", n.Token)
 	case *ast.StructInstantiation:
-		return true, unsupported("struct instantiation node", n.Token)
+		return true, c.compileStructInstantiation(n)
+	case *ast.ClassDeclaration:
+		return true, c.compileClass(n)
 	}
 	return false, nil
+}
+
+// compileStructInstantiation compiles the `Name(args)` form of a struct
+// creation. It is a call of the struct value with the given arguments.
+func (c *Compiler) compileStructInstantiation(n *ast.StructInstantiation) error {
+	symbol, ok := c.symbolTable.Resolve(n.Name)
+	if !ok {
+		return unsupported(fmt.Sprintf("struct %q is not defined", n.Name), n.Token)
+	}
+	c.emitGet(symbol)
+	for _, arg := range n.Args {
+		if err := c.Compile(arg); err != nil {
+			return err
+		}
+	}
+	c.emit(OpCall, len(n.Args))
+	return c.err
 }
 
 // compileIf compiles if / elif / else as a stack-neutral statement.

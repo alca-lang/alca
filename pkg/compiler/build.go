@@ -18,8 +18,9 @@ var (
 	FooterLen = len(PayloadMagic) + 8
 )
 
-// CurrentPayloadVersion is the payload envelope version.
-const CurrentPayloadVersion uint32 = 2
+// CurrentPayloadVersion is the payload envelope version. Version 3 added module
+// paths; version 4 adds arbitrary embedded resources to standalone applications.
+const CurrentPayloadVersion uint32 = 4
 
 // VerifyMagic reports whether footer ends with the Alca payload marker.
 func VerifyMagic(footer []byte) bool {

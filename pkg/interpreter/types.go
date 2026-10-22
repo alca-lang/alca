@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alca-lang/alca/pkg/ast"
+	"github.com/alca-lang/alca/pkg/limits"
 )
 
 // ValueType represents the runtime category of a Alca value.
@@ -28,6 +29,7 @@ const (
 	SHFUNC_VAL   ValueType = "SHFUNCTION"
 	STRUCT_DEF   ValueType = "STRUCT_DEF"
 	STRUCT_INST  ValueType = "STRUCT_INSTANCE"
+	SUPER_VAL    ValueType = "SUPER"
 	ERROR_VAL    ValueType = "ERROR"
 	RETURN_VAL   ValueType = "RETURN"
 	BREAK_VAL    ValueType = "BREAK"
@@ -70,6 +72,22 @@ type IntegerValue struct {
 	Val int64
 }
 
+var intCache [1153]*IntegerValue
+
+func init() {
+	for i := range intCache {
+		intCache[i] = &IntegerValue{Val: int64(i - 128)}
+	}
+}
+
+// NewInteger returns a cached or new IntegerValue for the given int64.
+func NewInteger(v int64) *IntegerValue {
+	if v >= -128 && v <= 1024 {
+		return intCache[v+128]
+	}
+	return &IntegerValue{Val: v}
+}
+
 // Type returns INTEGER_VAL.
 func (v *IntegerValue) Type() ValueType { return INTEGER_VAL }
 
@@ -102,6 +120,21 @@ func (v *FloatValue) Clone() Value { return &FloatValue{Val: v.Val} }
 // StringValue wraps a UTF-8 string.
 type StringValue struct {
 	Val string
+	// runes caches the decoded characters of the string so that indexing and
+	// iterating it do not re-decode the UTF-8 bytes on every access. The cache
+	// is guarded because a string value can be shared between threads.
+	mu    sync.Mutex
+	runes []rune
+}
+
+// RuneSlice returns the string's characters, decoding them on first use.
+func (v *StringValue) RuneSlice() []rune {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.runes == nil {
+		v.runes = []rune(v.Val)
+	}
+	return v.runes
 }
 
 // Type returns STRING_VAL.
@@ -112,6 +145,26 @@ func (v *StringValue) Inspect() string { return v.Val }
 
 // Clone returns an exact copy of the StringValue.
 func (v *StringValue) Clone() Value { return &StringValue{Val: v.Val} }
+
+// asciiStrings holds the interned single-character strings for the ASCII range.
+// Iterating a string yields one character per step, and interning them removes
+// one allocation per character.
+var asciiStrings = func() [128]*StringValue {
+	var table [128]*StringValue
+	for i := range table {
+		table[i] = &StringValue{Val: string(rune(i))}
+	}
+	return table
+}()
+
+// SingleRuneString returns the interned single-character string for r. ASCII
+// characters share one preallocated value; other characters allocate.
+func SingleRuneString(r rune) *StringValue {
+	if r >= 0 && r < 128 {
+		return asciiStrings[r]
+	}
+	return &StringValue{Val: string(r)}
+}
 
 // BoolValue wraps a boolean true or false.
 type BoolValue struct {
@@ -148,6 +201,52 @@ func (v *NullValue) Clone() Value { return NULL }
 type ListValue struct {
 	mu       sync.RWMutex
 	Elements []Value
+	// Ints holds unboxed int64 elements when the list contains only ints.
+	// When non-nil, Elements is nil and Ints is authoritative.
+	Ints []int64
+	// Runes holds the characters of a string that is being iterated. The list
+	// then stands for one single-character string per rune, which avoids
+	// allocating a StringValue per character. When non-nil, Elements and Ints
+	// are nil and Runes is authoritative.
+	Runes []rune
+}
+
+// ElementsSlice returns the list's elements as []Value, converting from the
+// unboxed Ints or Runes representations when necessary.
+func (v *ListValue) ElementsSlice() []Value {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	if v.Ints != nil {
+		out := make([]Value, len(v.Ints))
+		for i, val := range v.Ints {
+			out[i] = &IntegerValue{Val: val}
+		}
+		return out
+	}
+	if v.Runes != nil {
+		out := make([]Value, len(v.Runes))
+		for i, r := range v.Runes {
+			out[i] = &StringValue{Val: string(r)}
+		}
+		return out
+	}
+	return v.Elements
+}
+
+// IntSlice returns the list's elements as []int64 if it holds unboxed ints,
+// or nil otherwise.
+func (v *ListValue) IntSlice() []int64 {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.Ints
+}
+
+// RuneSlice returns the list's characters as []rune if it holds a rune-backed
+// string, or nil otherwise.
+func (v *ListValue) RuneSlice() []rune {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.Runes
 }
 
 // NewList creates a new ListValue initialized with elements.
@@ -155,7 +254,27 @@ func NewList(elements ...Value) *ListValue {
 	if elements == nil {
 		elements = make([]Value, 0)
 	}
+	limits.Charge(int64(len(elements)) * limits.CostValueSlot)
 	return &ListValue{Elements: elements}
+}
+
+// NewIntList creates a new ListValue holding unboxed int64 elements.
+func NewIntList(elements []int64) *ListValue {
+	if elements == nil {
+		elements = make([]int64, 0)
+	}
+	limits.Charge(int64(len(elements)) * limits.CostValueSlot)
+	return &ListValue{Ints: elements}
+}
+
+// NewRuneList creates a new ListValue that stands for the characters of a
+// string: one single-character string per rune.
+func NewRuneList(runes []rune) *ListValue {
+	if runes == nil {
+		runes = make([]rune, 0)
+	}
+	limits.Charge(int64(len(runes)) * limits.CostValueSlot)
+	return &ListValue{Runes: runes}
 }
 
 // Type returns LIST_VAL.
@@ -168,14 +287,27 @@ func (v *ListValue) Inspect() string {
 
 	var out strings.Builder
 	out.WriteString("[")
-	items := make([]string, len(v.Elements))
-	for i, el := range v.Elements {
-		if el == nil {
-			items[i] = "null"
-		} else if s, ok := el.(*StringValue); ok {
-			items[i] = fmt.Sprintf("%q", s.Val)
-		} else {
-			items[i] = el.Inspect()
+	var items []string
+	if v.Ints != nil {
+		items = make([]string, len(v.Ints))
+		for i, val := range v.Ints {
+			items[i] = (&IntegerValue{Val: val}).Inspect()
+		}
+	} else if v.Runes != nil {
+		items = make([]string, len(v.Runes))
+		for i, r := range v.Runes {
+			items[i] = fmt.Sprintf("%q", string(r))
+		}
+	} else {
+		items = make([]string, len(v.Elements))
+		for i, el := range v.Elements {
+			if el == nil {
+				items[i] = "null"
+			} else if s, ok := el.(*StringValue); ok {
+				items[i] = fmt.Sprintf("%q", s.Val)
+			} else {
+				items[i] = el.Inspect()
+			}
 		}
 	}
 	out.WriteString(strings.Join(items, ", "))
@@ -188,6 +320,16 @@ func (v *ListValue) Clone() Value {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
+	if v.Ints != nil {
+		copied := make([]int64, len(v.Ints))
+		copy(copied, v.Ints)
+		return &ListValue{Ints: copied}
+	}
+	if v.Runes != nil {
+		copied := make([]rune, len(v.Runes))
+		copy(copied, v.Runes)
+		return &ListValue{Runes: copied}
+	}
 	copied := make([]Value, len(v.Elements))
 	for i, el := range v.Elements {
 		if el != nil {
@@ -207,7 +349,42 @@ func (v *ListValue) Append(val Value) {
 	if val == nil {
 		val = NULL
 	}
+	v.materializeLocked()
 	v.Elements = append(v.Elements, val)
+	limits.Charge(limits.CostValueSlot)
+}
+
+// materializeLocked converts an unboxed int list into the boxed representation
+// in place. It must be called before any operation that mutates or reorders
+// the element slice.
+func (v *ListValue) materializeLocked() {
+	if v.Ints != nil {
+		elems := make([]Value, len(v.Ints))
+		for i, val := range v.Ints {
+			elems[i] = &IntegerValue{Val: val}
+		}
+		v.Elements = elems
+		v.Ints = nil
+		limits.Charge(int64(len(elems)) * limits.CostBoxedValue)
+		return
+	}
+	if v.Runes != nil {
+		elems := make([]Value, len(v.Runes))
+		for i, r := range v.Runes {
+			elems[i] = &StringValue{Val: string(r)}
+		}
+		v.Elements = elems
+		v.Runes = nil
+		limits.Charge(int64(len(elems)) * limits.CostBoxedValue)
+	}
+}
+
+// Materialize converts an unboxed int list into the boxed representation so
+// that code operating on the element slice sees every element.
+func (v *ListValue) Materialize() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.materializeLocked()
 }
 
 // Len returns the number of elements in the list.
@@ -215,6 +392,12 @@ func (v *ListValue) Len() int {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
+	if v.Ints != nil {
+		return len(v.Ints)
+	}
+	if v.Runes != nil {
+		return len(v.Runes)
+	}
 	return len(v.Elements)
 }
 
@@ -297,6 +480,7 @@ func (v *MapValue) Set(key string, val Value) {
 	}
 	if _, exists := v.Pairs[key]; !exists {
 		v.Order = append(v.Order, key)
+		limits.Charge(limits.CostMapEntry + int64(len(key))*limits.CostStringByte)
 	}
 	v.Pairs[key] = val
 }
@@ -316,6 +500,7 @@ func (v *MapValue) Delete(key string) {
 			break
 		}
 	}
+	limits.Refund(limits.CostMapEntry + int64(len(key))*limits.CostStringByte)
 }
 
 // Has returns true if the map contains the specified key.
@@ -400,10 +585,35 @@ func (v *FuncValue) Clone() Value {
 	}
 }
 
-// StructDef represents the blueprint definition of a user-defined struct type.
+// MethodDef is a method attached to a class definition at runtime.
+type MethodDef struct {
+	Name       string
+	Decl       *ast.FuncDeclaration
+	Visibility string
+	Owner      *StructDef
+	// Compiled is set by a runtime that compiles the method body ahead of
+	// time. The tree-walking interpreter evaluates the AST declaration; the
+	// bytecode VM compiles the body and binds it to the receiver. Both use the
+	// same class model, so a class behaves the same on every engine.
+	Compiled CompiledMethod
+}
+
+// CompiledMethod is a method body that a runtime compiled ahead of time.
+// Bind returns a callable that runs the method with the given receiver.
+type CompiledMethod interface {
+	Bind(receiver Value) Value
+}
+
+// StructDef represents the blueprint definition of a user-defined struct or
+// class. Classes add a base-class link and a method table.
 type StructDef struct {
-	Name   string
-	Fields []*ast.StructField
+	Name    string
+	Fields  []*ast.StructField
+	Parent  *StructDef
+	Methods map[string]*MethodDef
+	IsClass bool
+	Env     *Environment
+	Nested  map[string]*StructDef
 }
 
 // Type returns STRUCT_DEF.
@@ -411,11 +621,80 @@ func (v *StructDef) Type() ValueType { return STRUCT_DEF }
 
 // Inspect returns a human-readable definition summary.
 func (v *StructDef) Inspect() string {
+	if v.IsClass {
+		return fmt.Sprintf("<class %s>", v.Name)
+	}
 	return fmt.Sprintf("<struct %s>", v.Name)
 }
 
 // Clone returns the definition itself as definitions are immutable.
 func (v *StructDef) Clone() Value { return v }
+
+// AllFields returns inherited fields first, followed by the class's own fields.
+func (v *StructDef) AllFields() []*ast.StructField {
+	var chain []*StructDef
+	for cur := v; cur != nil; cur = cur.Parent {
+		chain = append(chain, cur)
+	}
+	var out []*ast.StructField
+	for i := len(chain) - 1; i >= 0; i-- {
+		out = append(out, chain[i].Fields...)
+	}
+	return out
+}
+
+// LookupField walks the inheritance chain.
+func (v *StructDef) LookupField(name string) (*ast.StructField, bool) {
+	for cur := v; cur != nil; cur = cur.Parent {
+		for _, f := range cur.Fields {
+			if f.Name == name {
+				return f, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// LookupMethod walks the inheritance chain and returns the most derived method.
+func (v *StructDef) LookupMethod(name string) *MethodDef {
+	for cur := v; cur != nil; cur = cur.Parent {
+		if m, ok := cur.Methods[name]; ok {
+			return m
+		}
+	}
+	return nil
+}
+
+// Inherits reports whether v is parent or derives from it.
+func (v *StructDef) Inherits(parent *StructDef) bool {
+	for cur := v; cur != nil; cur = cur.Parent {
+		if cur == parent || cur.Name == parent.Name {
+			return true
+		}
+	}
+	return false
+}
+
+// SuperValue is the runtime value of 'super' inside a method. It carries the
+// receiver and the class at which method lookup must start.
+type SuperValue struct {
+	Instance *StructInstance
+	Start    *StructDef
+}
+
+// Type returns SUPER_VAL.
+func (v *SuperValue) Type() ValueType { return SUPER_VAL }
+
+// Inspect returns a short super-class description.
+func (v *SuperValue) Inspect() string {
+	if v.Start == nil {
+		return "<super>"
+	}
+	return fmt.Sprintf("<super %s>", v.Start.Name)
+}
+
+// Clone returns the immutable super proxy.
+func (v *SuperValue) Clone() Value { return v }
 
 // StructInstance represents an instantiated struct with concrete field values.
 type StructInstance struct {
@@ -432,7 +711,7 @@ func (v *StructInstance) Inspect() string {
 	out.WriteString(v.Def.Name)
 	out.WriteString("{")
 	fields := make([]string, 0, len(v.Fields))
-	for _, f := range v.Def.Fields {
+	for _, f := range v.Def.AllFields() {
 		val := v.Fields[f.Name]
 		valStr := "null"
 		if val != nil {
@@ -621,8 +900,56 @@ func IsTruthy(v Value) bool {
 	}
 }
 
-// ValuesEqual evaluates deep structural equality between two Alca values.
+// ValuesEqual evaluates deep equality while allowing numeric int/float equality.
 func ValuesEqual(a, b Value) bool {
+	return valuesEqual(a, b, false)
+}
+
+// StrictEqual requires matching runtime types recursively as well as equal values.
+func StrictEqual(a, b Value) bool {
+	return valuesEqual(a, b, true)
+}
+
+// LooseEqual compares primitive values after limited numeric coercion.
+func LooseEqual(a, b Value) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	if a.Type() == b.Type() {
+		return ValuesEqual(a, b)
+	}
+	if left, ok := equalityNumber(a); ok {
+		if right, ok := equalityNumber(b); ok {
+			return left == right
+		}
+	}
+	return false
+}
+
+func equalityNumber(value Value) (float64, bool) {
+	switch v := value.(type) {
+	case *IntegerValue:
+		return float64(v.Val), true
+	case *FloatValue:
+		return v.Val, true
+	case *BoolValue:
+		if v.Val {
+			return 1, true
+		}
+		return 0, true
+	case *StringValue:
+		text := strings.TrimSpace(v.Val)
+		if text == "" {
+			return 0, true
+		}
+		number, err := strconv.ParseFloat(text, 64)
+		return number, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func valuesEqual(a, b Value, strict bool) bool {
 	if a == nil && b == nil {
 		return true
 	}
@@ -631,10 +958,10 @@ func ValuesEqual(a, b Value) bool {
 	}
 
 	// Handle cross-type numeric equality (e.g. 5 == 5.0).
-	if a.Type() == INTEGER_VAL && b.Type() == FLOAT_VAL {
+	if !strict && a.Type() == INTEGER_VAL && b.Type() == FLOAT_VAL {
 		return float64(a.(*IntegerValue).Val) == b.(*FloatValue).Val
 	}
-	if a.Type() == FLOAT_VAL && b.Type() == INTEGER_VAL {
+	if !strict && a.Type() == FLOAT_VAL && b.Type() == INTEGER_VAL {
 		return a.(*FloatValue).Val == float64(b.(*IntegerValue).Val)
 	}
 
@@ -662,11 +989,13 @@ func ValuesEqual(a, b Value) bool {
 		return valA.Code == valB.Code && valA.Message == valB.Message
 	case *ListValue:
 		valB := b.(*ListValue)
-		if len(valA.Elements) != len(valB.Elements) {
+		aElems := valA.ElementsSlice()
+		bElems := valB.ElementsSlice()
+		if len(aElems) != len(bElems) {
 			return false
 		}
-		for i := range valA.Elements {
-			if !ValuesEqual(valA.Elements[i], valB.Elements[i]) {
+		for i := range aElems {
+			if !valuesEqual(aElems[i], bElems[i], strict) {
 				return false
 			}
 		}
@@ -678,7 +1007,7 @@ func ValuesEqual(a, b Value) bool {
 		}
 		for k, vA := range valA.Pairs {
 			vB, ok := valB.Pairs[k]
-			if !ok || !ValuesEqual(vA, vB) {
+			if !ok || !valuesEqual(vA, vB, strict) {
 				return false
 			}
 		}
@@ -693,7 +1022,7 @@ func ValuesEqual(a, b Value) bool {
 		}
 		for k, vA := range valA.Fields {
 			vB, ok := valB.Fields[k]
-			if !ok || !ValuesEqual(vA, vB) {
+			if !ok || !valuesEqual(vA, vB, strict) {
 				return false
 			}
 		}
@@ -707,6 +1036,16 @@ func ValuesEqual(a, b Value) bool {
 	default:
 		return a.Inspect() == b.Inspect()
 	}
+}
+
+// Concat joins two strings and accounts for the result on the shared memory
+// meter. The joined string is a fresh allocation, so it counts against the
+// allocation budget: a concatenation loop allocates quadratically, and the
+// budget is what keeps such a loop from exhausting the process.
+func Concat(a, b string) string {
+	joined := a + b
+	limits.ChargeTransient(int64(len(joined)) * limits.CostStringByte)
+	return joined
 }
 
 // CoerceToString converts any runtime value into a string representation.

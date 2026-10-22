@@ -87,14 +87,39 @@ const (
 	OpAddConst        // In-place stack[sp-1] += constant[idx] (2 bytes const index)
 
 	// Error handling & testing
-	OpNop       // Does nothing (used as a jump landing pad)
-	OpTryBegin  // Install an error handler: [OpTryBegin, handler_hi, handler_lo]
-	OpEndTry    // Remove the innermost error handler (normal completion)
-	OpMakeError // Pop code, pop message, push error value
-	OpRaise     // Pop an error value and unwind to the nearest handler
-	OpAssert    // Pop condition; raise "assertion failed" (2 bytes message constant) when false
-	OpTestPass  // Report a passing test (2 bytes name constant)
-	OpTestFail  // Pop error, report failing test (2 bytes name constant)
+	OpNop             // Does nothing (used as a jump landing pad)
+	OpTryBegin        // Install an error handler: [OpTryBegin, handler_hi, handler_lo]
+	OpEndTry          // Remove the innermost error handler (normal completion)
+	OpMakeError       // Pop code, pop message, push error value
+	OpRaise           // Pop an error value and unwind to the nearest handler
+	OpAssert          // Pop condition; raise "assertion failed" (2 bytes message constant) when false
+	OpTestPass        // Report a passing test (2 bytes name constant)
+	OpTestFail        // Pop error, report failing test (2 bytes name constant)
+	OpCallBuiltin1    // Call an always-available 1-argument conversion builtin (1 byte id), no boxing
+	OpIsInt           // Replace top of stack with true if it holds an int, else false
+	OpLoopRangeLocal  // Range-loop back edge on locals: var+=step, jump to target while in range (1,1,1,2)
+	OpLoopRangeGlobal // Range-loop back edge on globals: var+=step, jump to target while in range (2,2,2,2)
+	OpLoopListLocal   // List-iteration back edge on locals: idx++, load iter[idx] into var, jump to target while idx < len (1,1,1,1,2)
+	OpLoopListGlobal  // List-iteration back edge on globals: idx++, load iter[idx] into var, jump to target while idx < len (2,2,2,2,2)
+	OpAddLocalLocal   // local[dst] += local[src] (1 byte dst, 1 byte src)
+	OpAddGlobalGlobal // global[dst] += global[src] (2 bytes dst, 2 bytes src)
+	OpAddLocalConst   // push local[src] + constant[idx] (1 byte src, 2 bytes const)
+	OpMulLocalConst   // push local[src] * constant[idx] (1 byte src, 2 bytes const)
+	OpModLocalConst   // push local[src] % constant[idx] (1 byte src, 2 bytes const)
+	OpConvLocal       // push builtin1 conversion of local[src] (1 byte conversion id, 1 byte src)
+	OpConvGlobal      // push builtin1 conversion of global[src] (1 byte conversion id, 2 bytes src)
+	OpIter            // Replace the top of stack with the iterable form of a value
+	OpListLen         // Replace the top of stack with the length of a list
+	OpWait            // Wait for all background streaming / tasks to complete
+	OpLoopLocalLtInc  // Inc local int and loop if < const (1 byte var, 2 bytes const, 2 bytes target)
+	OpLoopLocalLeInc  // Inc local int and loop if <= const (1 byte var, 2 bytes const, 2 bytes target)
+	OpStrictEqual     // Type-sensitive equality comparison
+	OpMathBuiltin     // Apply a specialized std.math numeric builtin (1 byte id)
+	OpStdlibCall      // Call a pure stdlib module member (2 bytes alias, 2 bytes member path, 1 byte argc)
+	OpMakeClass       // Build a class definition (2 bytes template, 2 bytes base class global + 1)
+	OpApplyDecorator  // Apply a decorator to the program (2 bytes decorator spec)
+	OpTxBegin         // Start a transaction: snapshot the local slots of the frame
+	OpTxEnd           // Commit a transaction: discard the snapshot
 )
 
 // Definition describes an opcode's human-readable name and operand byte widths.
@@ -166,6 +191,31 @@ var definitions = map[Opcode]*Definition{
 	OpModConst:        {"OpModConst", []int{2}},
 	OpMulConst:        {"OpMulConst", []int{2}},
 	OpAddConst:        {"OpAddConst", []int{2}},
+	OpCallBuiltin1:    {"OpCallBuiltin1", []int{1}},
+	OpIsInt:           {"OpIsInt", []int{}},
+	OpLoopRangeLocal:  {"OpLoopRangeLocal", []int{1, 1, 1, 2}},
+	OpLoopRangeGlobal: {"OpLoopRangeGlobal", []int{2, 2, 2, 2}},
+	OpLoopListLocal:   {"OpLoopListLocal", []int{1, 1, 1, 1, 2}},
+	OpLoopListGlobal:  {"OpLoopListGlobal", []int{2, 2, 2, 2, 2}},
+	OpAddLocalLocal:   {"OpAddLocalLocal", []int{1, 1}},
+	OpAddGlobalGlobal: {"OpAddGlobalGlobal", []int{2, 2}},
+	OpAddLocalConst:   {"OpAddLocalConst", []int{1, 2}},
+	OpMulLocalConst:   {"OpMulLocalConst", []int{1, 2}},
+	OpModLocalConst:   {"OpModLocalConst", []int{1, 2}},
+	OpConvLocal:       {"OpConvLocal", []int{1, 1}},
+	OpConvGlobal:      {"OpConvGlobal", []int{1, 2}},
+	OpIter:            {"OpIter", []int{}},
+	OpListLen:         {"OpListLen", []int{}},
+	OpWait:            {"OpWait", []int{}},
+	OpLoopLocalLtInc:  {"OpLoopLocalLtInc", []int{1, 2, 2}},
+	OpLoopLocalLeInc:  {"OpLoopLocalLeInc", []int{1, 1, 2}},
+	OpStrictEqual:     {"OpStrictEqual", []int{}},
+	OpMathBuiltin:     {"OpMathBuiltin", []int{1}},
+	OpStdlibCall:      {"OpStdlibCall", []int{2, 2, 1}},
+	OpMakeClass:       {"OpMakeClass", []int{2, 2}},
+	OpApplyDecorator:  {"OpApplyDecorator", []int{2}},
+	OpTxBegin:         {"OpTxBegin", []int{}},
+	OpTxEnd:           {"OpTxEnd", []int{}},
 }
 
 // Lookup returns the Definition for the given Opcode.
@@ -178,10 +228,25 @@ func Lookup(op byte) (*Definition, error) {
 }
 
 // Make encodes an Opcode and its integer operands into raw instruction bytes.
+// It panics for invalid operands; compiler code should use MakeChecked instead
+// so malformed programs are reported as compilation errors.
 func Make(op Opcode, operands ...int) []byte {
+	instruction, err := MakeChecked(op, operands...)
+	if err != nil {
+		panic(err)
+	}
+	return instruction
+}
+
+// MakeChecked encodes an instruction, rejecting operands that do not fit their
+// declared widths instead of silently truncating them.
+func MakeChecked(op Opcode, operands ...int) ([]byte, error) {
 	def, ok := definitions[op]
 	if !ok {
-		return []byte{}
+		return nil, fmt.Errorf("unknown opcode %d", op)
+	}
+	if len(operands) != len(def.OperandWidths) {
+		return nil, fmt.Errorf("%s expects %d operands, got %d", def.Name, len(def.OperandWidths), len(operands))
 	}
 
 	instructionLen := 1
@@ -197,14 +262,22 @@ func Make(op Opcode, operands ...int) []byte {
 		width := def.OperandWidths[i]
 		switch width {
 		case 2:
+			if o < 0 || o > 0xFFFF {
+				return nil, fmt.Errorf("%s operand %d value %d does not fit in 16 bits", def.Name, i+1, o)
+			}
 			binary.BigEndian.PutUint16(instruction[offset:], uint16(o))
 		case 1:
+			if o < 0 || o > 0xFF {
+				return nil, fmt.Errorf("%s operand %d value %d does not fit in 8 bits", def.Name, i+1, o)
+			}
 			instruction[offset] = byte(o)
+		default:
+			return nil, fmt.Errorf("%s has unsupported operand width %d", def.Name, width)
 		}
 		offset += width
 	}
 
-	return instruction
+	return instruction, nil
 }
 
 // ReadOperands decodes the operands of an instruction according to its definition.

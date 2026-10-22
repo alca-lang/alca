@@ -3,13 +3,13 @@ package typecheck
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/alca-lang/alca/pkg/ast"
 	"github.com/alca-lang/alca/pkg/diag"
 	"github.com/alca-lang/alca/pkg/lexer"
+	"github.com/alca-lang/alca/pkg/mod"
 	"github.com/alca-lang/alca/pkg/parser"
 	"github.com/alca-lang/alca/pkg/token"
 )
@@ -21,6 +21,7 @@ const (
 	kParam
 	kFunc
 	kStruct
+	kClass
 	kModule
 	kBuiltin
 )
@@ -29,6 +30,7 @@ type symbol struct {
 	kind     symKind
 	typ      Type
 	declared Type // declared type of a variable (typ may be narrowed)
+	isConst  bool // declared with 'const' and therefore immutable
 }
 
 type scope struct {
@@ -91,6 +93,9 @@ type funcCtx struct {
 
 // Checker performs strict static type verification over Alca ASTs.
 type Checker struct {
+	// snippet marks an incremental REPL-style check, where assigning to a name
+	// that was never declared declares it instead of failing.
+	snippet  bool
 	filename string
 	source   string
 	errors   []*diag.SyntaxError
@@ -98,19 +103,29 @@ type Checker struct {
 	types    map[ast.Expression]Type
 	global   *scope
 	fn       *funcCtx
+	class    *StructType // enclosing class while checking a method body
 	loop     int
+	private  int             // > 0 inside a function/lambda where 'private' is legal
 	imported map[string]bool // files currently being analysed (cycle guard)
+	// hoistedStructs and hoistedClasses/Fields prevent a declaration from being
+	// registered twice when hoist is called for the same block.
+	hoistedStructs     map[*ast.StructDeclaration]bool
+	hoistedClasses     map[*ast.ClassDeclaration]bool
+	hoistedClassFields map[*ast.ClassDeclaration]bool
 }
 
 // NewChecker creates a checker for one source file.
 func NewChecker(filename string, source string) *Checker {
 	return &Checker{
-		filename: filename,
-		source:   source,
-		errors:   make([]*diag.SyntaxError, 0),
-		structs:  make(map[string]*StructType),
-		types:    make(map[ast.Expression]Type),
-		imported: map[string]bool{},
+		filename:           filename,
+		source:             source,
+		errors:             make([]*diag.SyntaxError, 0),
+		structs:            make(map[string]*StructType),
+		types:              make(map[ast.Expression]Type),
+		imported:           map[string]bool{},
+		hoistedStructs:     map[*ast.StructDeclaration]bool{},
+		hoistedClasses:     map[*ast.ClassDeclaration]bool{},
+		hoistedClassFields: map[*ast.ClassDeclaration]bool{},
 	}
 }
 
@@ -149,7 +164,13 @@ func (c *Checker) Check(program *ast.Program) []*diag.SyntaxError {
 // snippets, and reports only the diagnostics produced by this one. Callers
 // that reject a snippet should Restore a Snapshot taken before the call so the
 // checker stays in sync with the evaluated state.
+//
+// A snippet may also assign to a name that was never declared. The
+// interpreter creates such a binding, so the snippet check follows it and
+// declares the name with the inferred type instead of rejecting the snippet.
 func (c *Checker) CheckSnippet(program *ast.Program) []*diag.SyntaxError {
+	c.snippet = true
+	defer func() { c.snippet = false }()
 	c.errors = c.errors[:0]
 	if c.global == nil {
 		c.initGlobal()
@@ -180,8 +201,28 @@ func (c *Checker) Snapshot() *Snapshot {
 	}
 	for name, st := range c.structs {
 		cp := *st
-		cp.Fields = append([]Field(nil), st.Fields...)
+		cp.Fields = make([]Field, len(st.Fields))
 		s.structs[name] = &cp
+	}
+	for name, st := range c.structs {
+		cp := s.structs[name]
+		for i, f := range st.Fields {
+			f.Owner = cp
+			cp.Fields[i] = f
+		}
+		if st.Methods != nil {
+			cp.Methods = make(map[string]*Method, len(st.Methods))
+			for n, m := range st.Methods {
+				mc := *m
+				mc.Owner = cp
+				cp.Methods[n] = &mc
+			}
+		}
+		if st.Parent != nil {
+			if parent := s.structs[st.Parent.Name]; parent != nil {
+				cp.Parent = parent
+			}
+		}
 	}
 	return s
 }
@@ -204,48 +245,90 @@ func (c *Checker) initGlobal() {
 	c.global.syms["std"] = &symbol{kind: kModule, typ: stdNamespace()}
 }
 
-// hoist registers top-level structs and functions so they may be used before
-// their definition (mutual recursion, helpers placed after main code).
+// hoist registers type declarations and function signatures before their
+// textual position, so they may be used before their definition (mutual
+// recursion, helpers placed after main code, base classes declared later).
 func (c *Checker) hoist(stmts []ast.Statement, sc *scope) {
-	// pass 1: struct names (fields may refer to other structs)
+	var structs []*ast.StructDeclaration
+	var classes []*ast.ClassDeclaration
+
 	for _, st := range stmts {
-		if s, ok := st.(*ast.StructDeclaration); ok {
-			if _, dup := c.structs[s.Name]; dup {
-				c.addError(s.Token, fmt.Sprintf("struct '%s' is already defined", s.Name), "")
-				continue
-			}
-			c.structs[s.Name] = &StructType{Name: s.Name}
-			sc.syms[s.Name] = &symbol{kind: kStruct, typ: c.structs[s.Name]}
+		switch d := st.(type) {
+		case *ast.StructDeclaration:
+			structs = append(structs, d)
+		case *ast.ClassDeclaration:
+			classes = append(classes, d)
+			structs = append(structs, d.NestedStructs...)
 		}
 	}
-	// pass 2: struct fields
-	for _, st := range stmts {
-		if s, ok := st.(*ast.StructDeclaration); ok {
-			stype := c.structs[s.Name]
-			if stype == nil || len(stype.Fields) > 0 {
+
+	// pass 1: type names (fields and methods may refer to other types)
+	for _, s := range structs {
+		c.registerType(s.Name, s.Token, false, sc)
+	}
+	for _, d := range classes {
+		c.registerType(d.Name, d.Token, true, sc)
+	}
+
+	// pass 1b: link base classes
+	for _, d := range classes {
+		st := c.structs[d.Name]
+		if st == nil || !st.IsClass || d.Parent == "" {
+			continue
+		}
+		parent := c.structs[d.Parent]
+		if parent == nil {
+			c.addError(d.ParentToken, fmt.Sprintf("unknown base class '%s'", d.Parent),
+				"declare it first or check the class name")
+			continue
+		}
+		if !parent.IsClass {
+			c.addError(d.ParentToken, fmt.Sprintf("'%s' is a struct, not a class, and cannot be extended", d.Parent), "")
+			continue
+		}
+		if parent.Inherits(st) {
+			c.addError(d.ParentToken, fmt.Sprintf("class '%s' cannot extend itself through '%s'", d.Name, d.Parent),
+				"remove the circular 'extends'")
+			continue
+		}
+		st.Parent = parent
+	}
+
+	// pass 2: fields (parent classes first so inherited field checks work)
+	for _, s := range structs {
+		c.addTypeFields(s, false, sc)
+	}
+	for _, d := range c.classesByDepth(classes) {
+		if c.hoistedClassFields[d] {
+			continue
+		}
+		c.hoistedClassFields[d] = true
+		c.addTypeFields(&ast.StructDeclaration{Token: d.Token, Name: d.Name, Fields: d.Fields}, true, sc)
+	}
+
+	// pass 3: method signatures (parent classes first so overrides can be
+	// compared against an already resolved base method)
+	for _, d := range c.classesByDepth(classes) {
+		c.addClassMethods(d, sc)
+	}
+
+	// pass 3b: a field may not hide a method inherited from a base class.
+	for _, d := range classes {
+		st := c.structs[d.Name]
+		if st == nil || !st.IsClass {
+			continue
+		}
+		for _, f := range d.Fields {
+			if f == nil {
 				continue
 			}
-			seen := map[string]bool{}
-			for _, f := range s.Fields {
-				if seen[f.Name] {
-					c.addError(f.Token, fmt.Sprintf("duplicate field '%s' in struct %s", f.Name, s.Name), "")
-					continue
-				}
-				seen[f.Name] = true
-				ft := c.resolve(f.TypeAnnotation)
-				if f.DefaultValue != nil {
-					dt := c.expr(f.DefaultValue, sc, ft)
-					ne, ok := c.fit(ft, f.DefaultValue, dt)
-					if !ok {
-						c.addError(f.Token, fmt.Sprintf("default value of field '%s' has type %s, expected %s", f.Name, dt, ft), conversionHint(ft, dt))
-					}
-					f.DefaultValue = ne
-				}
-				stype.Fields = append(stype.Fields, Field{Name: f.Name, Type: ft, HasDefault: f.DefaultValue != nil})
+			if _, method := st.Parent.LookupMethod(f.Name); method {
+				c.addError(f.Token, fmt.Sprintf("field '%s' conflicts with an inherited method in %s", f.Name, d.Name), "")
 			}
 		}
 	}
-	// pass 3: function signatures
+
+	// pass 4: function signatures
 	for _, st := range stmts {
 		if f, ok := st.(*ast.FuncDeclaration); ok {
 			if prev, dup := sc.syms[f.Name]; dup && prev.kind != kBuiltin {
@@ -255,6 +338,153 @@ func (c *Checker) hoist(stmts []ast.Statement, sc *scope) {
 			sc.syms[f.Name] = &symbol{kind: kFunc, typ: c.funcSig(f)}
 		}
 	}
+}
+
+// registerType reserves a struct or class name in the checker's type table and
+// in the current scope.
+func (c *Checker) registerType(name string, tok token.Token, isClass bool, sc *scope) {
+	if _, dup := c.structs[name]; dup {
+		kind := "struct"
+		if isClass {
+			kind = "class"
+		}
+		c.addError(tok, fmt.Sprintf("%s '%s' is already defined", kind, name), "")
+		return
+	}
+	st := &StructType{Name: name, IsClass: isClass, Methods: map[string]*Method{}}
+	c.structs[name] = st
+	kind := kStruct
+	if isClass {
+		kind = kClass
+	}
+	sc.syms[name] = &symbol{kind: kind, typ: st}
+}
+
+// addTypeFields resolves a struct's or class's fields and checks defaults.
+func (c *Checker) addTypeFields(decl *ast.StructDeclaration, isClass bool, sc *scope) {
+	if decl == nil || c.hoistedStructs[decl] {
+		return
+	}
+	c.hoistedStructs[decl] = true
+
+	st := c.structs[decl.Name]
+	if st == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, f := range decl.Fields {
+		if f == nil {
+			continue
+		}
+		if seen[f.Name] {
+			c.addError(f.Token, fmt.Sprintf("duplicate field '%s' in %s %s", f.Name, typeKind(isClass), decl.Name), "")
+			continue
+		}
+		seen[f.Name] = true
+		if isClass {
+			if _, inherited := st.Parent.LookupField(f.Name); inherited {
+				c.addError(f.Token, fmt.Sprintf("field '%s' is already declared in a base class of %s", f.Name, decl.Name), "")
+				continue
+			}
+		}
+		ft := c.resolve(f.TypeAnnotation)
+		if f.DefaultValue != nil {
+			dt := c.expr(f.DefaultValue, sc, ft)
+			ne, ok := c.fit(ft, f.DefaultValue, dt)
+			if !ok {
+				c.addError(f.Token, fmt.Sprintf("default value of field '%s' has type %s, expected %s", f.Name, dt, ft), conversionHint(ft, dt))
+			}
+			f.DefaultValue = ne
+		}
+		st.Fields = append(st.Fields, Field{
+			Name:       f.Name,
+			Type:       ft,
+			HasDefault: f.DefaultValue != nil,
+			Visibility: f.Visibility,
+			IsConst:    f.IsConst,
+			Owner:      st,
+		})
+	}
+}
+
+// addClassMethods resolves method signatures, checks overrides and fills the
+// method table of a class type.
+func (c *Checker) addClassMethods(decl *ast.ClassDeclaration, sc *scope) {
+	if decl == nil || c.hoistedClasses[decl] {
+		return
+	}
+	c.hoistedClasses[decl] = true
+
+	st := c.structs[decl.Name]
+	if st == nil || !st.IsClass {
+		return
+	}
+	for _, m := range decl.Methods {
+		if m == nil || m.Func == nil {
+			continue
+		}
+		name := m.Func.Name
+		if _, dup := st.Methods[name]; dup {
+			c.addError(m.Func.Token, fmt.Sprintf("method '%s' is already defined in class %s", name, decl.Name), "")
+			continue
+		}
+		if _, field := st.LookupField(name); field {
+			c.addError(m.Func.Token, fmt.Sprintf("method '%s' conflicts with a field of class %s", name, decl.Name), "")
+			continue
+		}
+		sig := c.funcSig(m.Func)
+		if parentMethod, ok := st.Parent.LookupMethod(name); ok {
+			if parentMethod.Visibility == "private" {
+				c.addError(m.Func.Token, fmt.Sprintf("cannot redeclare private method '%s' from base class %s", name, parentMethod.Owner.Name),
+					"rename the method; private methods are not inherited")
+				continue
+			}
+			if !Equal(sig, parentMethod.Signature) {
+				c.addError(m.Func.Token, fmt.Sprintf("method '%s' overrides %s.%s with a different signature",
+					name, parentMethod.Owner.Name, name),
+					fmt.Sprintf("use the same parameters and return type as the base method: %s", parentMethod.Signature.String()))
+				continue
+			}
+			if parentMethod.Visibility != "private" && m.Visibility == "private" {
+				c.addError(m.Func.Token, fmt.Sprintf("cannot make inherited public method '%s' private", name), "")
+				continue
+			}
+		}
+		st.Methods[name] = &Method{
+			Name:       name,
+			Signature:  sig,
+			Visibility: m.Visibility,
+			Owner:      st,
+		}
+	}
+}
+
+func typeKind(isClass bool) string {
+	if isClass {
+		return "class"
+	}
+	return "struct"
+}
+
+// classesByDepth returns class declarations ordered from base classes to
+// derived classes, so inherited members exist before a child is processed.
+func (c *Checker) classesByDepth(classes []*ast.ClassDeclaration) []*ast.ClassDeclaration {
+	out := append([]*ast.ClassDeclaration(nil), classes...)
+	sort.SliceStable(out, func(i, j int) bool {
+		di, dj := 0, 0
+		if st := c.structs[out[i].Name]; st != nil {
+			for cur := st.Parent; cur != nil; cur = cur.Parent {
+				di++
+			}
+		}
+		if st := c.structs[out[j].Name]; st != nil {
+			for cur := st.Parent; cur != nil; cur = cur.Parent {
+				dj++
+			}
+		}
+		return di < dj
+	})
+	return out
 }
 
 func (c *Checker) funcSig(f *ast.FuncDeclaration) *FuncType {
@@ -347,23 +577,66 @@ func isIntLiteral(e ast.Expression) bool {
 	return false
 }
 
-// declare adds a variable to sc, rejecting redeclaration and shadowing.
+// declare adds a symbol to sc. Variables may shadow an existing binding as long
+// as the type is identical; functions and structs keep their unique names.
 func (c *Checker) declare(name string, tok token.Token, t Type, kind symKind, sc *scope) {
+	c.declareWithFlags(name, tok, t, kind, sc, false)
+}
+
+// declareVar declares a variable. Shadowing (and redeclaration in the same
+// scope) is allowed only when the new binding has exactly the same type; a
+// type mismatch is reported as a compile error.
+func (c *Checker) declareVar(name string, tok token.Token, t Type, sc *scope, isConst bool) {
+	c.declareWithFlags(name, tok, t, kVar, sc, isConst)
+}
+
+func (c *Checker) declareWithFlags(name string, tok token.Token, t Type, kind symKind, sc *scope, isConst bool) {
 	if name == "_" {
 		return
 	}
+
 	if prev, ok := sc.syms[name]; ok && prev.kind != kBuiltin {
-		c.addError(tok, fmt.Sprintf("'%s' is already declared in this scope", name), "")
-		return
-	}
-	if kind == kVar {
-		if prev, _ := sc.lookup(name); prev != nil && prev.kind != kBuiltin {
-			c.addError(tok, fmt.Sprintf("'%s' shadows an existing %s", name, kindName(prev.kind)),
-				"choose a different name; Alca does not allow shadowing")
+		if kind != kVar || (prev.kind != kVar && prev.kind != kParam) {
+			c.addError(tok, fmt.Sprintf("'%s' is already declared in this scope", name), "")
 			return
 		}
+		if prev.isConst {
+			c.addError(tok, fmt.Sprintf("cannot redeclare constant '%s'", name), "")
+			return
+		}
+		if !c.shadowTypesMatch(prev.declared, t) {
+			c.addError(tok, fmt.Sprintf("shadowing '%s' changes its type from %s to %s", name, prev.declared, t),
+				"shadowing is allowed only for the same type; choose a different name or convert the value explicitly")
+			return
+		}
+		sc.syms[name] = &symbol{kind: kind, typ: t, declared: t, isConst: isConst}
+		return
 	}
-	sc.syms[name] = &symbol{kind: kind, typ: t, declared: t}
+
+	if kind == kVar {
+		if prev, _ := sc.lookup(name); prev != nil && prev.kind != kBuiltin {
+			if prev.kind != kVar && prev.kind != kParam {
+				c.addError(tok, fmt.Sprintf("'%s' shadows an existing %s", name, kindName(prev.kind)),
+					"choose a different name")
+				return
+			}
+			if !c.shadowTypesMatch(prev.declared, t) {
+				c.addError(tok, fmt.Sprintf("shadowing '%s' changes its type from %s to %s", name, prev.declared, t),
+					"shadowing is allowed only for the same type; choose a different name or convert the value explicitly")
+				return
+			}
+		}
+	}
+	sc.syms[name] = &symbol{kind: kind, typ: t, declared: t, isConst: isConst}
+}
+
+// shadowTypesMatch applies strict type equality, while tolerating the same
+// int-literal-to-float widening the checker allows elsewhere.
+func (c *Checker) shadowTypesMatch(prev, next Type) bool {
+	if prev == nil || next == nil {
+		return true
+	}
+	return Equal(prev, next) || prev == Invalid || next == Invalid
 }
 
 func kindName(k symKind) string {
@@ -372,6 +645,8 @@ func kindName(k symKind) string {
 		return "function"
 	case kStruct:
 		return "struct"
+	case kClass:
+		return "class"
 	case kModule:
 		return "module"
 	case kParam:
@@ -419,6 +694,9 @@ func (c *Checker) stmt(st ast.Statement, sc *scope) {
 
 	case *ast.StructDeclaration:
 		// registered by hoist
+
+	case *ast.ClassDeclaration:
+		c.classBody(s, sc)
 
 	case *ast.ExpressionStatement:
 		c.expr(s.Expression, sc, nil)
@@ -521,13 +799,27 @@ func (c *Checker) stmt(st ast.Statement, sc *scope) {
 }
 
 func (c *Checker) varDecl(s *ast.VarDeclaration, sc *scope) {
+	if s.Name == nil {
+		return
+	}
+	if s.Visibility == "private" && c.private == 0 {
+		c.addError(s.Name.Token, "'private' is only allowed inside a function, method, lambda, or struct",
+			"use 'private' inside a function body, or declare the variable at top level without a modifier")
+	}
+	target := sc
+	if s.Visibility == "public" {
+		// A public binding lives in the program-wide scope. It is reachable from
+		// every function and block, even when it is declared inside a function.
+		target = c.global
+	}
+
 	var declared Type
 	if s.TypeAnnotation != nil {
 		declared = c.resolve(s.TypeAnnotation)
 	}
 	if s.Value == nil {
 		if declared != nil {
-			c.declare(s.Name.Value, s.Name.Token, declared, kVar, sc)
+			c.declareVar(s.Name.Value, s.Name.Token, declared, target, s.IsConst)
 		}
 		return
 	}
@@ -547,14 +839,14 @@ func (c *Checker) varDecl(s *ast.VarDeclaration, sc *scope) {
 		if lt, ok := vt.(*ListType); ok && lt.Elem == Never {
 			c.addError(s.Name.Token, "cannot infer the element type of an empty list", fmt.Sprintf("annotate it: '%s: list[int] = [];'", s.Name.Value))
 		}
-		c.declare(s.Name.Value, s.Name.Token, vt, kVar, sc)
+		c.declareVar(s.Name.Value, s.Name.Token, vt, target, s.IsConst)
 	default:
 		ne, ok := c.fit(declared, s.Value, vt)
 		if !ok {
 			c.addError(tokOf(s.Value), fmt.Sprintf("cannot initialize '%s' (%s) with a value of type %s", s.Name.Value, declared, vt), conversionHint(declared, vt))
 		}
 		s.Value = ne
-		c.declare(s.Name.Value, s.Name.Token, declared, kVar, sc)
+		c.declareVar(s.Name.Value, s.Name.Token, declared, target, s.IsConst)
 	}
 }
 
@@ -604,15 +896,87 @@ func (c *Checker) funcBody(f *ast.FuncDeclaration, sc *scope) {
 	}
 	savedFn, savedLoop := c.fn, c.loop
 	c.fn, c.loop = &funcCtx{name: f.Name, ret: ft.Ret}, 0
+	c.private++
 	if f.Body != nil {
 		c.hoist(f.Body.Statements, inner)
 		c.stmts(f.Body.Statements, inner)
-		if ft.Ret != Void && !blockTerminates(f.Body) {
+		if ft.Ret != Void && !blockTerminates(f.Body) && !f.IsShell {
+			// A shell function produces its value from the output of the
+			// commands it runs, so an explicit 'return' is optional there.
 			c.addError(f.Token, fmt.Sprintf("function '%s' must return %s on every path", f.Name, ft.Ret),
 				"add a 'return' (or 'err(...)') at the end, or declare the function without a return type")
 		}
 	}
+	c.private--
 	c.fn, c.loop = savedFn, savedLoop
+}
+
+func (c *Checker) classBody(decl *ast.ClassDeclaration, sc *scope) {
+	st := c.structs[decl.Name]
+	if st == nil || !st.IsClass {
+		return
+	}
+	for _, m := range decl.Methods {
+		if m == nil || m.Func == nil {
+			continue
+		}
+		c.methodBody(m, st, sc)
+	}
+}
+
+// methodBody checks a method as a function with an implicit immutable 'self'
+// parameter and, when the class has a base, an implicit 'super' value.
+func (c *Checker) methodBody(m *ast.MethodDeclaration, owner *StructType, sc *scope) {
+	f := m.Func
+	sig := owner.Methods[f.Name]
+	var ft *FuncType
+	if sig != nil {
+		ft = sig.Signature
+	}
+	if ft == nil {
+		ft = c.funcSig(f)
+	}
+
+	inner := newScope(sc)
+	inner.syms["self"] = &symbol{kind: kParam, typ: owner, declared: owner, isConst: true}
+	if owner.Parent != nil {
+		sp := &SuperType{Parent: owner.Parent}
+		inner.syms["super"] = &symbol{kind: kParam, typ: sp, declared: sp, isConst: true}
+	}
+
+	for i, p := range f.Params {
+		if p.Name == "self" || p.Name == "super" {
+			c.addError(p.Token, fmt.Sprintf("'%s' is reserved inside a method", p.Name), "rename the parameter")
+			continue
+		}
+		var pt Type = JSON
+		if i < len(ft.Params) {
+			pt = ft.Params[i].Type
+		}
+		if p.DefaultValue != nil {
+			dt := c.expr(p.DefaultValue, sc, pt)
+			ne, ok := c.fit(pt, p.DefaultValue, dt)
+			if !ok {
+				c.addError(p.Token, fmt.Sprintf("default value of '%s' has type %s, expected %s", p.Name, dt, pt), conversionHint(pt, dt))
+			}
+			p.DefaultValue = ne
+		}
+		inner.syms[p.Name] = &symbol{kind: kParam, typ: pt, declared: pt}
+	}
+
+	savedFn, savedLoop, savedClass := c.fn, c.loop, c.class
+	c.fn, c.loop, c.class = &funcCtx{name: owner.Name + "." + f.Name, ret: ft.Ret}, 0, owner
+	c.private++
+	if f.Body != nil {
+		c.hoist(f.Body.Statements, inner)
+		c.stmts(f.Body.Statements, inner)
+		if ft.Ret != Void && !blockTerminates(f.Body) && !f.IsShell {
+			c.addError(f.Token, fmt.Sprintf("method '%s.%s' must return %s on every path", owner.Name, f.Name, ft.Ret),
+				"add a 'return' (or 'err(...)') at the end, or declare the method without a return type")
+		}
+	}
+	c.private--
+	c.fn, c.loop, c.class = savedFn, savedLoop, savedClass
 }
 
 func (c *Checker) returnStmt(s *ast.ReturnStatement, sc *scope) {
@@ -886,19 +1250,19 @@ func containsBreak(b *ast.BlockStatement) bool {
 
 func (c *Checker) useStmt(s *ast.UseStatement, sc *scope) {
 	path := s.ModulePath
-	var mod *ModuleType
+	var modType *ModuleType
 	bind := s.Alias
 
 	if strings.HasPrefix(path, "std.") || path == "std" {
 		rest := strings.TrimPrefix(path, "std.")
 		segs := strings.Split(rest, ".")
 		if m, ok := moduleByName(segs[0]); ok && len(segs) == 1 {
-			mod = m
+			modType = m
 			if bind == "" {
 				bind = segs[0]
 			}
 		} else if ok {
-			mod = &ModuleType{Name: rest, Open: true}
+			modType = &ModuleType{Name: rest, Open: true}
 			if bind == "" {
 				bind = segs[len(segs)-1]
 			}
@@ -915,18 +1279,18 @@ func (c *Checker) useStmt(s *ast.UseStatement, sc *scope) {
 			return
 		}
 	} else {
-		mod = c.loadUserModule(path, s)
+		modType = c.loadUserModule(path, s)
 		if bind == "" {
-			bind = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+			bind = mod.BindingName(path)
 		}
 	}
 
 	if len(s.Imports) > 0 {
 		for _, name := range s.Imports {
 			var t Type = JSON
-			if mt, ok := mod.Members[name]; ok {
+			if mt, ok := modType.Members[name]; ok {
 				t = mt
-			} else if !mod.Open {
+			} else if !modType.Open {
 				c.addError(s.Token, fmt.Sprintf("module '%s' has no member '%s'", path, name), "")
 			} else {
 				t = &FuncType{Dynamic: true, Ret: JSON}
@@ -946,26 +1310,32 @@ func (c *Checker) useStmt(s *ast.UseStatement, sc *scope) {
 		return
 	}
 	if bind != "" {
-		sc.syms[bind] = &symbol{kind: kModule, typ: mod}
+		sc.syms[bind] = &symbol{kind: kModule, typ: modType}
 	}
 	// 'use std.math' also makes 'std.math' resolvable through the std namespace (already global).
 }
 
-// loadUserModule analyses an imported .al file and exposes its public API.
+// loadUserModule analyses an imported .al file and exposes its public API. It
+// resolves through the shared module resolver so the checker sees exactly the
+// same file the engines will load: a local file next to the importing file,
+// then the working directory, then an installed APM package.
 func (c *Checker) loadUserModule(path string, s *ast.UseStatement) *ModuleType {
 	open := &ModuleType{Name: path, Open: true}
-	if c.filename == "" {
+	if c.filename == "" || strings.HasPrefix(c.filename, "<") {
 		return open
 	}
-	file := path
-	if !strings.HasSuffix(file, ".al") {
-		file += ".al"
+	resolved, found, err := mod.Resolve(path, c.filename)
+	if err != nil {
+		c.addError(s.Token, fmt.Sprintf("cannot read module '%s'", path), err.Error())
+		return open
 	}
-	if !filepath.IsAbs(file) {
-		file = filepath.Join(filepath.Dir(c.filename), file)
+	if !found || resolved.SourcePath == "" {
+		c.addError(s.Token, fmt.Sprintf("cannot find module '%s'", path),
+			fmt.Sprintf("install it with 'apm install %s', or fix the import path", path))
+		return open
 	}
-	abs, err := filepath.Abs(file)
-	if err != nil || c.imported[abs] {
+	abs := resolved.SourcePath
+	if c.imported[abs] {
 		return open
 	}
 	data, err := os.ReadFile(abs)
@@ -977,7 +1347,7 @@ func (c *Checker) loadUserModule(path string, s *ast.UseStatement) *ModuleType {
 	p := parser.New(lexer.New(src))
 	prog := p.ParseProgram()
 	if len(p.SyntaxErrors()) > 0 {
-		c.addError(s.Token, fmt.Sprintf("module '%s' has syntax errors", path), "run 'alca check "+file+"'")
+		c.addError(s.Token, fmt.Sprintf("module '%s' has syntax errors", path), "run 'alca check "+abs+"'")
 		return open
 	}
 	sub := NewChecker(abs, src)
@@ -987,27 +1357,34 @@ func (c *Checker) loadUserModule(path string, s *ast.UseStatement) *ModuleType {
 	sub.imported[abs] = true
 	sub.Check(prog)
 	if len(sub.errors) > 0 {
-		c.addError(s.Token, fmt.Sprintf("module '%s' has %d type error(s)", path, len(sub.errors)), "run 'alca check "+file+"'")
+		c.addError(s.Token, fmt.Sprintf("module '%s' has %d type error(s)", path, len(sub.errors)), "run 'alca check "+abs+"'")
 	}
-	mod := &ModuleType{Name: path, Members: map[string]Type{}}
+	modType := &ModuleType{Name: path, Members: map[string]Type{}}
 	for _, st := range prog.Statements {
 		switch d := st.(type) {
 		case *ast.FuncDeclaration:
 			if sym, ok := sub.global.syms[d.Name]; ok {
-				mod.Members[d.Name] = sym.typ
+				modType.Members[d.Name] = sym.typ
 			}
 		case *ast.StructDeclaration:
 			if sym, ok := sub.global.syms[d.Name]; ok {
-				mod.Members[d.Name] = sym.typ
+				modType.Members[d.Name] = sym.typ
 				c.structs[d.Name] = sub.structs[d.Name]
+			}
+		case *ast.ClassDeclaration:
+			if d.IsPublic {
+				if sym, ok := sub.global.syms[d.Name]; ok {
+					modType.Members[d.Name] = sym.typ
+					c.structs[d.Name] = sub.structs[d.Name]
+				}
 			}
 		case *ast.VarDeclaration:
 			if sym, ok := sub.global.syms[d.Name.Value]; ok {
-				mod.Members[d.Name.Value] = sym.typ
+				modType.Members[d.Name.Value] = sym.typ
 			}
 		}
 	}
-	return mod
+	return modType
 }
 
 // sortedKeys returns map keys in deterministic order.

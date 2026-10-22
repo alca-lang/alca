@@ -276,6 +276,10 @@ func CleanErrorMessage(err error) string {
 		return "index out of bounds"
 	case strings.Contains(lower, "stack overflow"):
 		return "call stack overflow (infinite recursion detected)"
+	case strings.Contains(lower, "out of memory"):
+		// The memory guard reports the limit that was reached. Keep the text
+		// as it is, including the limit it mentions.
+		return raw
 	default:
 		// Remove Go-specific file path decorators like "open C:\...:"
 		if idx := strings.LastIndex(raw, ": "); idx != -1 && idx+2 < len(raw) {

@@ -8,7 +8,7 @@ import (
 )
 
 func TestBasicOperatorsAndDelimiters(t *testing.T) {
-	input := `= + - ! * / % ** == != < <= > >= , : ; . ( ) [ ] { } |> | -> ~ ~> @ ..`
+	input := `= + - ! * / % ** == === != < <= > >= , : ; . ( ) [ ] { } |> | -> ~ ~> @ ..`
 
 	tests := []struct {
 		expectedType    token.TokenType
@@ -23,6 +23,7 @@ func TestBasicOperatorsAndDelimiters(t *testing.T) {
 		{token.PERCENT, "%"},
 		{token.POWER, "**"},
 		{token.EQ, "=="},
+		{token.STRICT_EQ, "==="},
 		{token.NOT_EQ, "!="},
 		{token.LT, "<"},
 		{token.LT_EQ, "<="},
@@ -498,5 +499,82 @@ func TestRawBacktickStrings(t *testing.T) {
 	expected := `\b\d{1,3}\.\d{1,3}\b`
 	if tok.Literal != expected {
 		t.Fatalf("expected raw literal %q, got %q", expected, tok.Literal)
+	}
+}
+
+func TestMultilineAndRawAndFStringTokens(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantType    token.TokenType
+		wantLiteral string
+	}{
+		{
+			name:        "triple single quote",
+			input:       "'''line1\nline2'''",
+			wantType:    token.STRING,
+			wantLiteral: "line1\nline2",
+		},
+		{
+			name:        "raw triple double quotes",
+			input:       `r"""hello\nworld"""`,
+			wantType:    token.STRING,
+			wantLiteral: `hello\nworld`,
+		},
+		{
+			name:        "raw triple single quotes",
+			input:       `r'''hello\tworld'''`,
+			wantType:    token.STRING,
+			wantLiteral: `hello\tworld`,
+		},
+		{
+			name:        "raw single quote string",
+			input:       `r'C:\Users\foo\bar'`,
+			wantType:    token.STRING,
+			wantLiteral: `C:\Users\foo\bar`,
+		},
+		{
+			name:        "raw double quote string",
+			input:       `r"C:\Windows\System32"`,
+			wantType:    token.STRING,
+			wantLiteral: `C:\Windows\System32`,
+		},
+		{
+			name:        "fstring single quotes",
+			input:       `f"val = {x}"`,
+			wantType:    token.FSTRING,
+			wantLiteral: `val = {x}`,
+		},
+		{
+			name:        "fstring triple quotes",
+			input:       "f\"\"\"hello {name}\nworld\"\"\"",
+			wantType:    token.FSTRING,
+			wantLiteral: "hello {name}\nworld",
+		},
+		{
+			name:        "raw fstring rf",
+			input:       `rf"path: {p}\n"`,
+			wantType:    token.FSTRING,
+			wantLiteral: `path: {p}\n`,
+		},
+		{
+			name:        "raw fstring fr",
+			input:       `fr"path: {p}\t"`,
+			wantType:    token.FSTRING,
+			wantLiteral: `path: {p}\t`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			l := lexer.New(tc.input)
+			tok := l.NextToken()
+			if tok.Type != tc.wantType {
+				t.Fatalf("type: want %v, got %v", tc.wantType, tok.Type)
+			}
+			if tok.Literal != tc.wantLiteral {
+				t.Fatalf("literal: want %q, got %q", tc.wantLiteral, tok.Literal)
+			}
+		})
 	}
 }

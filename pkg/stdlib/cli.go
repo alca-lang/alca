@@ -3,10 +3,8 @@
 package stdlib
 
 import (
-	"bufio"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 
@@ -240,9 +238,8 @@ func RegisterCLIBuiltins(env *interpreter.Environment) {
 			}
 		}
 		fmt.Print(msg)
-		scanner := bufio.NewScanner(os.Stdin)
-		if scanner.Scan() {
-			val := scanner.Text()
+		if line, ok := interpreter.ReadStdinLine(); ok {
+			val := line
 			if strings.TrimSpace(val) == "" && defVal != "" {
 				return &interpreter.StringValue{Val: defVal}
 			}
@@ -282,9 +279,8 @@ func RegisterCLIBuiltins(env *interpreter.Environment) {
 		}
 		fmt.Print(msg + hint)
 
-		scanner := bufio.NewScanner(os.Stdin)
-		if scanner.Scan() {
-			ans := strings.ToLower(strings.TrimSpace(scanner.Text()))
+		if line, ok := interpreter.ReadStdinLine(); ok {
+			ans := strings.ToLower(strings.TrimSpace(line))
 			if ans == "" {
 				if defBool {
 					return interpreter.TRUE

@@ -2,8 +2,8 @@
 package interpreter
 
 import (
-	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,6 +18,8 @@ import (
 )
 
 var asyncWg sync.WaitGroup
+var asyncErrMu sync.Mutex
+var asyncErrors []error
 
 // streamHTTPClient re-checks the capability policy for every redirect.
 func streamHTTPClient() *http.Client {
@@ -32,9 +34,24 @@ func streamHTTPClient() *http.Client {
 	}
 }
 
-// WaitAll blocks until all asynchronous streaming, threads, and background workers finish.
-func WaitAll() {
+// WaitAll blocks until all asynchronous streaming, threads, and background workers finish,
+// then returns any errors reported by asynchronous stream writes.
+func WaitAll() error {
 	asyncWg.Wait()
+	asyncErrMu.Lock()
+	defer asyncErrMu.Unlock()
+	err := errors.Join(asyncErrors...)
+	asyncErrors = nil
+	return err
+}
+
+func recordAsyncError(err error) {
+	if err == nil {
+		return
+	}
+	asyncErrMu.Lock()
+	asyncErrors = append(asyncErrors, err)
+	asyncErrMu.Unlock()
 }
 
 // AddAsync increments the background async WaitGroup counter.
@@ -188,15 +205,14 @@ func HandleStream(source Value, operator string, target Value, env *Environment)
 			targetStr = CoerceToString(target)
 		}
 		if targetStr == "" || targetStr == "console" || targetStr == "stdin" {
-			scanner := bufio.NewScanner(os.Stdin)
-			if scanner.Scan() {
-				readVal := &StringValue{Val: scanner.Text()}
-				if source != nil && source.Type() == STRING_VAL {
-					env.Set(source.(*StringValue).Val, readVal)
-				}
-				return readVal, nil
+			readVal := &StringValue{Val: ""}
+			if line, ok := ReadStdinLine(); ok {
+				readVal = &StringValue{Val: line}
 			}
-			return &StringValue{Val: ""}, nil
+			if source != nil && source.Type() == STRING_VAL {
+				env.Set(source.(*StringValue).Val, readVal)
+			}
+			return readVal, nil
 		}
 		if err := sandbox.RequireRead(targetStr); err != nil {
 			return nil, err
@@ -247,8 +263,12 @@ func HandleStream(source Value, operator string, target Value, env *Environment)
 			}
 			path := CoerceToString(tgtVal)
 			content := CoerceToString(srcVal) + "\n"
-			if sandbox.RequireWrite(path) == nil {
-				_ = WriteFile(path, content, true)
+			if err := sandbox.RequireWrite(path); err != nil {
+				recordAsyncError(fmt.Errorf("asynchronous stream write to %q denied: %w", path, err))
+				return
+			}
+			if err := WriteFile(path, content, true); err != nil {
+				recordAsyncError(fmt.Errorf("asynchronous stream write to %q failed: %w", path, err))
 			}
 		}(source, target)
 		return source, nil
@@ -264,8 +284,12 @@ func HandleStream(source Value, operator string, target Value, env *Environment)
 			}
 			path := CoerceToString(tgtVal)
 			content := CoerceToString(srcVal) + "\n"
-			if sandbox.RequireWrite(path) == nil {
-				_ = WriteFile(path, content, true)
+			if err := sandbox.RequireWrite(path); err != nil {
+				recordAsyncError(fmt.Errorf("threaded stream write to %q denied: %w", path, err))
+				return
+			}
+			if err := WriteFile(path, content, true); err != nil {
+				recordAsyncError(fmt.Errorf("threaded stream write to %q failed: %w", path, err))
 			}
 		}(source, target)
 		return source, nil

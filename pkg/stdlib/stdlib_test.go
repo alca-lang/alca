@@ -8,8 +8,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 	"github.com/alca-lang/alca/pkg/stdlib"
 )
 
@@ -129,8 +131,8 @@ func TestPathModule(t *testing.T) {
 	// split
 	splitFn, _ := m.Get("split")
 	splitList := splitFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: joined}).(*interpreter.ListValue)
-	if len(splitList.Elements) != 2 {
-		t.Errorf("expected 2 elements in split, got %d", len(splitList.Elements))
+	if len(splitList.ElementsSlice()) != 2 {
+		t.Errorf("expected 2 elements in split, got %d", len(splitList.ElementsSlice()))
 	}
 
 	// matches
@@ -213,7 +215,7 @@ func TestPathManagement(t *testing.T) {
 	// 1. get_path
 	getPathFn, _ := envModule.Get("get_path")
 	pathsList := getPathFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
-	initialCount := len(pathsList.Elements)
+	initialCount := len(pathsList.ElementsSlice())
 	if initialCount == 0 {
 		t.Errorf("expected non-empty PATH in test environment")
 	}
@@ -245,8 +247,8 @@ func TestPathManagement(t *testing.T) {
 	}
 
 	updatedPaths := getPathFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
-	if len(updatedPaths.Elements) == 0 || updatedPaths.Elements[0].(*interpreter.StringValue).Val != testDir {
-		t.Errorf("expected prepended dir to be first in PATH, got %v", updatedPaths.Elements[0])
+	if len(updatedPaths.ElementsSlice()) == 0 || updatedPaths.ElementsSlice()[0].(*interpreter.StringValue).Val != testDir {
+		t.Errorf("expected prepended dir to be first in PATH, got %v", updatedPaths.ElementsSlice()[0])
 	}
 
 	// 5. remove_path
@@ -287,8 +289,8 @@ func TestPathManagement(t *testing.T) {
 
 	sampleJoined := "foo" + sep + "bar" + sep + "baz"
 	splitRes := splitListFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: sampleJoined}).(*interpreter.ListValue)
-	if len(splitRes.Elements) != 3 {
-		t.Errorf("expected 3 split items, got %d", len(splitRes.Elements))
+	if len(splitRes.ElementsSlice()) != 3 {
+		t.Errorf("expected 3 split items, got %d", len(splitRes.ElementsSlice()))
 	}
 
 	joinedRes := joinListFn.(*interpreter.BuiltinFunction).Fn(splitRes).(*interpreter.StringValue).Val
@@ -337,14 +339,14 @@ func TestRegexModule(t *testing.T) {
 		&interpreter.StringValue{Val: `(\w+)@(\w+\.\w+)`},
 		&interpreter.StringValue{Val: "contact admin@alca.dev for info"},
 	).(*interpreter.ListValue)
-	if len(groups.Elements) != 3 {
-		t.Fatalf("expected 3 elements in groups, got %d", len(groups.Elements))
+	if len(groups.ElementsSlice()) != 3 {
+		t.Fatalf("expected 3 elements in groups, got %d", len(groups.ElementsSlice()))
 	}
-	if groups.Elements[1].(*interpreter.StringValue).Val != "admin" {
-		t.Errorf("expected group 1 to be 'admin', got %v", groups.Elements[1])
+	if groups.ElementsSlice()[1].(*interpreter.StringValue).Val != "admin" {
+		t.Errorf("expected group 1 to be 'admin', got %v", groups.ElementsSlice()[1])
 	}
-	if groups.Elements[2].(*interpreter.StringValue).Val != "alca.dev" {
-		t.Errorf("expected group 2 to be 'alca.dev', got %v", groups.Elements[2])
+	if groups.ElementsSlice()[2].(*interpreter.StringValue).Val != "alca.dev" {
+		t.Errorf("expected group 2 to be 'alca.dev', got %v", groups.ElementsSlice()[2])
 	}
 
 	// replace
@@ -364,8 +366,8 @@ func TestRegexModule(t *testing.T) {
 		&interpreter.StringValue{Val: `[,;]\s*`},
 		&interpreter.StringValue{Val: "apple, banana; orange,grape"},
 	).(*interpreter.ListValue)
-	if len(sp.Elements) != 4 {
-		t.Errorf("expected 4 split items, got %d", len(sp.Elements))
+	if len(sp.ElementsSlice()) != 4 {
+		t.Errorf("expected 4 split items, got %d", len(sp.ElementsSlice()))
 	}
 }
 
@@ -399,8 +401,8 @@ func TestArchiveModule(t *testing.T) {
 	}
 
 	listRes := listFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: zipFile}).(*interpreter.ListValue)
-	if len(listRes.Elements) < 2 {
-		t.Errorf("expected at least 2 entries in zip list, got %d", len(listRes.Elements))
+	if len(listRes.ElementsSlice()) < 2 {
+		t.Errorf("expected at least 2 entries in zip list, got %d", len(listRes.ElementsSlice()))
 	}
 
 	extRes := zipExtFn.(*interpreter.BuiltinFunction).Fn(
@@ -458,10 +460,10 @@ func TestFormatsModule(t *testing.T) {
 
 	csvRaw := "id,name,role\n1,Alice,Dev\n2,Bob,Ops\n"
 	csvParsed := csvParseFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: csvRaw}).(*interpreter.ListValue)
-	if len(csvParsed.Elements) != 2 {
-		t.Fatalf("expected 2 parsed rows, got %d", len(csvParsed.Elements))
+	if len(csvParsed.ElementsSlice()) != 2 {
+		t.Fatalf("expected 2 parsed rows, got %d", len(csvParsed.ElementsSlice()))
 	}
-	row0 := csvParsed.Elements[0].(*interpreter.MapValue)
+	row0 := csvParsed.ElementsSlice()[0].(*interpreter.MapValue)
 	nameVal, _ := row0.Get("name")
 	if nameVal.(*interpreter.StringValue).Val != "Alice" {
 		t.Errorf("expected 'Alice', got %v", nameVal)
@@ -548,7 +550,7 @@ func TestSysModule(t *testing.T) {
 	// network_interfaces
 	netFn, _ := m.Get("network_interfaces")
 	ifaces := netFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
-	if len(ifaces.Elements) == 0 {
+	if len(ifaces.ElementsSlice()) == 0 {
 		t.Errorf("expected at least 1 network interface")
 	}
 }
@@ -740,10 +742,10 @@ func TestDBModule(t *testing.T) {
 		&interpreter.StringValue{Val: "alice"},
 	)
 	rowsList, ok := qRes.(*interpreter.ListValue)
-	if !ok || len(rowsList.Elements) != 1 {
+	if !ok || len(rowsList.ElementsSlice()) != 1 {
 		t.Fatalf("expected 1 row returned, got %v", qRes)
 	}
-	rowMap := rowsList.Elements[0].(*interpreter.MapValue)
+	rowMap := rowsList.ElementsSlice()[0].(*interpreter.MapValue)
 	nameVal, _ := rowMap.Get("username")
 	if nameVal.(*interpreter.StringValue).Val != "alice" {
 		t.Errorf("expected username 'alice', got %v", nameVal)
@@ -917,8 +919,8 @@ func TestSecurityAndPermissionLogging(t *testing.T) {
 		t.Fatalf("expected log.get_access_errors to be registered")
 	}
 	recordedList := getErrFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
-	if len(recordedList.Elements) < 2 {
-		t.Errorf("expected at least 2 recorded access errors, got %d", len(recordedList.Elements))
+	if len(recordedList.ElementsSlice()) < 2 {
+		t.Errorf("expected at least 2 recorded access errors, got %d", len(recordedList.ElementsSlice()))
 	}
 
 	// 5. log.audit builtin
@@ -1067,7 +1069,7 @@ func TestSystemTracking(t *testing.T) {
 		t.Fatalf("expected sys.process_list to be registered")
 	}
 	procs := procListFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
-	if len(procs.Elements) == 0 {
+	if len(procs.ElementsSlice()) == 0 {
 		t.Errorf("expected non-empty process list")
 	}
 
@@ -1077,7 +1079,7 @@ func TestSystemTracking(t *testing.T) {
 		t.Fatalf("expected sys.disk_partitions to be registered")
 	}
 	parts := partsFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
-	if len(parts.Elements) == 0 {
+	if len(parts.ElementsSlice()) == 0 {
 		t.Errorf("expected non-empty disk partitions list")
 	}
 
@@ -1176,11 +1178,11 @@ func TestAIModule(t *testing.T) {
 		&interpreter.IntegerValue{Val: 3},
 		&interpreter.FloatValue{Val: 1.5},
 	).(*interpreter.ListValue)
-	if len(mVal.Elements) != 2 {
-		t.Fatalf("expected 2 rows, got %d", len(mVal.Elements))
+	if len(mVal.ElementsSlice()) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(mVal.ElementsSlice()))
 	}
-	r0 := mVal.Elements[0].(*interpreter.ListValue)
-	if len(r0.Elements) != 3 || r0.Elements[0].(*interpreter.FloatValue).Val != 1.5 {
+	r0 := mVal.ElementsSlice()[0].(*interpreter.ListValue)
+	if len(r0.ElementsSlice()) != 3 || r0.ElementsSlice()[0].(*interpreter.FloatValue).Val != 1.5 {
 		t.Errorf("unexpected matrix contents: %+v", r0)
 	}
 
@@ -1195,10 +1197,10 @@ func TestAIModule(t *testing.T) {
 		interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 2}),
 	)
 	resMat := matmulFn.(*interpreter.BuiltinFunction).Fn(matA, matB).(*interpreter.ListValue)
-	row0 := resMat.Elements[0].(*interpreter.ListValue)
-	row1 := resMat.Elements[1].(*interpreter.ListValue)
-	if row0.Elements[0].(*interpreter.FloatValue).Val != 4 || row0.Elements[1].(*interpreter.FloatValue).Val != 4 ||
-		row1.Elements[0].(*interpreter.FloatValue).Val != 10 || row1.Elements[1].(*interpreter.FloatValue).Val != 8 {
+	row0 := resMat.ElementsSlice()[0].(*interpreter.ListValue)
+	row1 := resMat.ElementsSlice()[1].(*interpreter.ListValue)
+	if row0.ElementsSlice()[0].(*interpreter.FloatValue).Val != 4 || row0.ElementsSlice()[1].(*interpreter.FloatValue).Val != 4 ||
+		row1.ElementsSlice()[0].(*interpreter.FloatValue).Val != 10 || row1.ElementsSlice()[1].(*interpreter.FloatValue).Val != 8 {
 		t.Errorf("matmul result mismatch: row0=%+v, row1=%+v", row0, row1)
 	}
 
@@ -1227,7 +1229,7 @@ func TestAIModule(t *testing.T) {
 		interpreter.NewList(&interpreter.FloatValue{Val: 1.0}, &interpreter.FloatValue{Val: 2.0}, &interpreter.FloatValue{Val: 3.0}),
 	).(*interpreter.ListValue)
 	sum := 0.0
-	for _, e := range softRes.Elements {
+	for _, e := range softRes.ElementsSlice() {
 		sum += e.(*interpreter.FloatValue).Val
 	}
 	if math.Abs(sum-1.0) > 1e-6 {
@@ -1243,8 +1245,95 @@ func TestAIModule(t *testing.T) {
 	)
 	bias := interpreter.NewList(&interpreter.FloatValue{Val: 5}, &interpreter.FloatValue{Val: 10})
 	denseOut := denseFn.(*interpreter.BuiltinFunction).Fn(inMat, wMat, bias, &interpreter.StringValue{Val: "linear"}).(*interpreter.ListValue)
-	outRow := denseOut.Elements[0].(*interpreter.ListValue)
-	if outRow.Elements[0].(*interpreter.FloatValue).Val != 6.0 || outRow.Elements[1].(*interpreter.FloatValue).Val != 12.0 {
+	outRow := denseOut.ElementsSlice()[0].(*interpreter.ListValue)
+	if outRow.ElementsSlice()[0].(*interpreter.FloatValue).Val != 6.0 || outRow.ElementsSlice()[1].(*interpreter.FloatValue).Val != 12.0 {
 		t.Errorf("dense_forward mismatch: %+v", outRow)
+	}
+}
+
+func TestCompressAndCryptoAndHTTPBuiltins(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterCompressBuiltins(env)
+	stdlib.RegisterCryptoBuiltins(env)
+	stdlib.RegisterHTTPBuiltins(env)
+
+	// 1. Gzip
+	gzipComp, _ := env.Get("gzip_compress")
+	gzipDecomp, _ := env.Get("gzip_decompress")
+	original := "Hello Alca Compression!"
+	compRes := gzipComp.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: original})
+	decompRes := gzipDecomp.(*interpreter.BuiltinFunction).Fn(compRes)
+	if decompRes.(*interpreter.StringValue).Val != original {
+		t.Fatalf("gzip mismatch: got %q, want %q", decompRes.(*interpreter.StringValue).Val, original)
+	}
+
+	// 2. Zlib
+	zlibComp, _ := env.Get("zlib_compress")
+	zlibDecomp, _ := env.Get("zlib_decompress")
+	zcompRes := zlibComp.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: original})
+	zdecompRes := zlibDecomp.(*interpreter.BuiltinFunction).Fn(zcompRes)
+	if zdecompRes.(*interpreter.StringValue).Val != original {
+		t.Fatalf("zlib mismatch: got %q, want %q", zdecompRes.(*interpreter.StringValue).Val, original)
+	}
+
+	// 3. AES GCM
+	aesEnc, _ := env.Get("aes_encrypt")
+	aesDec, _ := env.Get("aes_decrypt")
+	key := "0123456789abcdef0123456789abcdef"
+	secretText := "Top Secret Alca Data 12345"
+	encRes := aesEnc.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: key}, &interpreter.StringValue{Val: secretText})
+	decRes := aesDec.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: key}, encRes)
+	if decRes.(*interpreter.StringValue).Val != secretText {
+		t.Fatalf("aes mismatch: got %q, want %q", decRes.(*interpreter.StringValue).Val, secretText)
+	}
+
+	// Wrong key fails
+	badDec := aesDec.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "wrong-key"}, encRes)
+	if _, isErr := badDec.(*interpreter.ErrorValue); !isErr {
+		t.Fatalf("aes decrypt with wrong key should fail, got %v", badDec)
+	}
+
+	// 4. HMAC SHA512
+	hmac512, _ := env.Get("hmac_sha512")
+	hRes := hmac512.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "key"}, &interpreter.StringValue{Val: "data"})
+	hStr := hRes.(*interpreter.StringValue).Val
+	if len(hStr) != 128 { // SHA512 is 64 bytes = 128 hex chars
+		t.Fatalf("hmac_sha512 bad length: got %d", len(hStr))
+	}
+
+	// 5. HTTP serve and request
+	prevPolicy := sandbox.CurrentPolicy()
+	sandbox.SetPolicy(sandbox.Policy{Net: sandbox.Capability{All: true}})
+	defer sandbox.SetPolicy(prevPolicy)
+
+	httpServe, _ := env.Get("http_serve")
+	httpReq, _ := env.Get("http_request")
+	handler := &interpreter.BuiltinFunction{
+		Name: "handler",
+		Fn: func(a ...interpreter.Value) interpreter.Value {
+			res := interpreter.NewMap()
+			res.Set("status", &interpreter.IntegerValue{Val: 200})
+			res.Set("body", &interpreter.StringValue{Val: "alca-http-ok"})
+			return res
+		},
+	}
+	serverVal := httpServe.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 29876}, handler)
+	serverMap, ok := serverVal.(*interpreter.MapValue)
+	if !ok {
+		t.Fatalf("expected server map, got %v", serverVal)
+	}
+	closeFn, _ := serverMap.Get("close")
+	defer closeFn.(*interpreter.BuiltinFunction).Fn()
+
+	time.Sleep(50 * time.Millisecond)
+
+	reqRes := httpReq.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "GET"}, &interpreter.StringValue{Val: "http://127.0.0.1:29876/test"})
+	respMap, ok := reqRes.(*interpreter.MapValue)
+	if !ok {
+		t.Fatalf("expected response map, got %v", reqRes)
+	}
+	bodyVal, _ := respMap.Get("body")
+	if bodyVal.(*interpreter.StringValue).Val != "alca-http-ok" {
+		t.Fatalf("expected body 'alca-http-ok', got %q", bodyVal.(*interpreter.StringValue).Val)
 	}
 }

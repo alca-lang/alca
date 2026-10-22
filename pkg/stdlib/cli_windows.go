@@ -3,12 +3,12 @@
 package stdlib
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 	"syscall"
 	"unsafe"
+
+	"github.com/alca-lang/alca/pkg/interpreter"
 )
 
 // readPasswordSecure reads a line from the console without echoing characters.
@@ -28,10 +28,10 @@ func readPasswordSecure() (string, error) {
 		}
 	}
 
-	text, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	text, ok := interpreter.ReadStdinLine()
 	fmt.Println()
-	if err != nil {
-		return "", err
+	if !ok {
+		return "", fmt.Errorf("could not read password")
 	}
-	return strings.TrimRight(text, "\r\n"), nil
+	return text, nil
 }

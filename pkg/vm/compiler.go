@@ -42,16 +42,21 @@ type Compiler struct {
 	optimizer   *Optimizer
 	loopStack   []*loopContext
 
-	funcs      map[string]*ast.FuncDeclaration
-	structs    map[string]*ast.StructDeclaration
-	tmpCounter int
-	assignStmt *ast.AssignExpression
-	err        error // first deferred compile error (e.g. jump overflow)
+	funcs         map[string]*ast.FuncDeclaration
+	structs       map[string]*ast.StructDeclaration
+	mathAliases   map[string]bool
+	stdlibAliases map[string]string
+	tmpCounter    int
+	assignStmt    *ast.AssignExpression
+	err           error // first deferred compile error (e.g. jump overflow)
 
 	// assignedNames records every variable name that is written somewhere in the
 	// function(s) compiled so far. compileForRange only uses the counter fast
 	// path when the loop variable is not among them (see writesLoopVariable).
 	assignedNames map[string]bool
+	// assignAsValue marks an assignment that is used as a value. Such an
+	// assignment leaves its result on the stack.
+	assignAsValue bool
 }
 
 // NewCompiler creates a new Compiler.
@@ -71,6 +76,8 @@ func NewCompiler() *Compiler {
 		loopStack:     []*loopContext{},
 		funcs:         map[string]*ast.FuncDeclaration{},
 		structs:       map[string]*ast.StructDeclaration{},
+		mathAliases:   map[string]bool{},
+		stdlibAliases: map[string]string{},
 		assignedNames: map[string]bool{},
 	}
 }
@@ -91,6 +98,15 @@ func (c *Compiler) Bytecode() *Bytecode {
 		Instructions: optIns,
 		Constants:    c.constants,
 	}
+}
+
+// GlobalNames returns the program's global slot names ordered by slot index.
+func (c *Compiler) GlobalNames() []string {
+	st := c.symbolTable
+	for st.Outer != nil {
+		st = st.Outer
+	}
+	return st.GlobalNames()
 }
 
 func (c *Compiler) currentInstructions() Instructions {
@@ -119,12 +135,24 @@ func (c *Compiler) leaveScope() Instructions {
 }
 
 func (c *Compiler) addConstant(val interpreter.Value) int {
+	if len(c.constants) > 0xFFFF {
+		if c.err == nil {
+			c.err = fmt.Errorf("program too large: constant index %d exceeds 65535", len(c.constants))
+		}
+		return 0
+	}
 	c.constants = append(c.constants, val)
 	return len(c.constants) - 1
 }
 
 func (c *Compiler) emit(op Opcode, operands ...int) int {
-	ins := Make(op, operands...)
+	ins, err := MakeChecked(op, operands...)
+	if err != nil {
+		if c.err == nil {
+			c.err = fmt.Errorf("bytecode compilation failed: %w", err)
+		}
+		return len(c.currentInstructions())
+	}
 	pos := c.addInstruction(ins)
 
 	c.setLastInstruction(op, pos)
@@ -163,8 +191,20 @@ func (c *Compiler) removeLastPop() {
 }
 
 func (c *Compiler) changeOperand(opPos int, operand int) {
+	if opPos < 0 || opPos >= len(c.currentInstructions()) {
+		if c.err == nil {
+			c.err = fmt.Errorf("invalid bytecode patch position %d", opPos)
+		}
+		return
+	}
 	op := Opcode(c.currentInstructions()[opPos])
-	newInstruction := Make(op, operand)
+	newInstruction, err := MakeChecked(op, operand)
+	if err != nil {
+		if c.err == nil {
+			c.err = fmt.Errorf("bytecode patch failed: %w", err)
+		}
+		return
+	}
 	for i := 0; i < len(newInstruction); i++ {
 		c.scopes[c.scopeIndex].instructions[opPos+i] = newInstruction[i]
 	}
@@ -172,6 +212,9 @@ func (c *Compiler) changeOperand(opPos int, operand int) {
 
 // Compile traverses an AST node and compiles it into bytecode.
 func (c *Compiler) Compile(node ast.Node) error {
+	if c.err != nil {
+		return c.err
+	}
 	if handled, err := c.compileExt(node); handled {
 		return err
 	}
@@ -208,11 +251,27 @@ func (c *Compiler) Compile(node ast.Node) error {
 		// evaluates a declaration with env.Set on the current call environment,
 		// so an inner declaration shadows (never writes) enclosing locals and
 		// globals, while a redeclaration in the same scope reuses the slot.
-		symbol, alreadyDefined := c.symbolTable.store[n.Name.Value]
-		if !alreadyDefined {
-			symbol = c.symbolTable.Define(n.Name.Value)
+		// 'public' declarations bind in the program-wide table instead.
+		var symbol Symbol
+		var alreadyDefined bool
+		if n.Visibility == "public" {
+			symbol = c.symbolTable.DefineGlobal(n.Name.Value)
+		} else {
+			symbol, alreadyDefined = c.symbolTable.store[n.Name.Value]
+			if !alreadyDefined {
+				symbol = c.symbolTable.Define(n.Name.Value)
+			}
 		}
 		c.assignedNames[n.Name.Value] = true
+
+		// A variable decorator such as @drop_on_oom applies to this binding.
+		if len(n.Decorators) > 0 {
+			slot := -1
+			if symbol.Scope == GlobalScope {
+				slot = symbol.Index
+			}
+			c.emitDecorators(n.Decorators, slot)
+		}
 
 		if n.Value != nil {
 			if alreadyDefined && canInPlace(symbol) {
@@ -230,7 +289,7 @@ func (c *Compiler) Compile(node ast.Node) error {
 							} else {
 								c.emit(OpIncLocal, symbol.Index)
 							}
-							return nil
+							return c.err
 						}
 						if err := c.Compile(otherExpr); err != nil {
 							return err
@@ -352,14 +411,27 @@ func (c *Compiler) Compile(node ast.Node) error {
 	case *ast.FuncDeclaration:
 		fnSymbol := c.symbolTable.Define(n.Name)
 
+		c.emitDecorators(n.Decorators, -1)
+
 		c.enterScope()
 		for _, p := range n.Params {
 			c.symbolTable.Define(p.Name)
 		}
 		c.predeclareLocals(n.Body)
+		if len(n.Params) > 0xFF {
+			c.err = fmt.Errorf("function %q has %d parameters; the bytecode limit is 255", n.Name, len(n.Params))
+			c.leaveScope()
+			return c.err
+		}
 
 		if err := c.Compile(n.Body); err != nil {
 			return err
+		}
+
+		if c.symbolTable.numDefinitions > 0x100 {
+			c.err = fmt.Errorf("function %q has %d local slots; the bytecode limit is 256", n.Name, c.symbolTable.numDefinitions)
+			c.leaveScope()
+			return c.err
 		}
 
 		if !c.lastInstructionIs(OpReturnValue) {
@@ -466,6 +538,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(OpPow)
 		case "==":
 			c.emit(OpEqual)
+		case "===":
+			c.emit(OpStrictEqual)
 		case "!=":
 			c.emit(OpNotEqual)
 		case ">":
@@ -502,6 +576,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(OpRange)
 
 	case *ast.AssignExpression:
+		asValue := c.assignAsValue
+		c.assignAsValue = false
 		if ident, ok := n.Target.(*ast.Identifier); ok {
 			// Assignment uses the interpreter's Update semantics: an existing
 			// binding (including one captured from an enclosing function) is
@@ -514,7 +590,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 			// Compound assignment optimization: ident = ident + expr or ident = expr + ident.
 			// Upvalues (free variables) take the generic read/modify/write path.
-			if canInPlace(symbol) {
+			// An assignment that is used as a value takes the generic path as
+			// well, because the specialised opcodes consume the value.
+			if canInPlace(symbol) && !asValue {
 				if inf, ok := n.Value.(*ast.InfixExpression); ok && inf.Operator == "+" {
 					var otherExpr ast.Expression
 					// Only 'x = x + e' maps onto in-place add; 'x = e + x' differs for strings/lists.
@@ -559,11 +637,17 @@ func (c *Compiler) Compile(node ast.Node) error {
 			if err := c.Compile(n.Value); err != nil {
 				return err
 			}
+			if asValue {
+				c.emit(OpDup)
+			}
 			c.emitSet(symbol)
 			return nil
 		} else if dot, ok := n.Target.(*ast.DotExpression); ok {
 			if err := c.Compile(n.Value); err != nil {
 				return err
+			}
+			if asValue {
+				c.emit(OpDup)
 			}
 			if err := c.Compile(dot.Left); err != nil {
 				return err
@@ -573,6 +657,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		} else if idxExpr, ok := n.Target.(*ast.IndexExpression); ok {
 			if err := c.Compile(n.Value); err != nil {
 				return err
+			}
+			if asValue {
+				c.emit(OpDup)
 			}
 			if err := c.Compile(idxExpr.Left); err != nil {
 				return err
@@ -834,6 +921,43 @@ func (c *Compiler) compileForRange(variable string, start, end ast.Expression, b
 		// Emit OpLoopGlobalLeInc: increments var and loops back to bodyStart if var <= end!
 		contPos := len(c.currentInstructions())
 		c.emit(OpLoopGlobalLeInc, varSymbol.Index, endSymbol.Index, bodyStart)
+
+		// Natural exit leaves the variable one past the last item; the
+		// interpreter leaves it at the last item. Restore it (break skips this
+		// because breaks jump past the fix-up to loopEnd).
+		c.changeOperand(jumpOut, len(c.currentInstructions()))
+		c.emitCounterExitFixup(varSymbol)
+
+		loopEnd := len(c.currentInstructions())
+		for _, brk := range ctx.breakJumps {
+			c.changeOperand(brk, loopEnd)
+		}
+		for _, cnt := range ctx.continueJumps {
+			c.changeOperand(cnt, contPos)
+		}
+
+		c.loopStack = c.loopStack[:len(c.loopStack)-1]
+		return nil
+	}
+
+	if varSymbol.Scope == LocalScope && endSymbol.Scope == LocalScope {
+		// Initial check before loop: if variable > @end_<variable>, jump to loopEnd
+		c.emit(OpGetLocal, varSymbol.Index)
+		c.emit(OpGetLocal, endSymbol.Index)
+		c.emit(OpLessEqual)
+		jumpOut := c.emit(OpJumpIfFalse, 9999)
+
+		ctx := &loopContext{}
+		c.loopStack = append(c.loopStack, ctx)
+
+		bodyStart := len(c.currentInstructions())
+		if err := c.Compile(body); err != nil {
+			return err
+		}
+
+		// Emit OpLoopLocalLeInc: increments var and loops back to bodyStart if var <= end!
+		contPos := len(c.currentInstructions())
+		c.emit(OpLoopLocalLeInc, varSymbol.Index, endSymbol.Index, bodyStart)
 
 		// Natural exit leaves the variable one past the last item; the
 		// interpreter leaves it at the last item. Restore it (break skips this

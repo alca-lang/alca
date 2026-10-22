@@ -8,7 +8,12 @@
 package stdlib
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	htmlstd "html"
+	"math"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -23,6 +28,7 @@ import (
 	"unsafe"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	webview2 "github.com/jchv/go-webview2"
 )
 
 var (
@@ -38,6 +44,9 @@ var (
 	procWaitForSingleObject *syscall.LazyProc
 	procCloseHandle         *syscall.LazyProc
 	procGetSystemMetrics    *syscall.LazyProc
+	procLoadWebviewIcon     *syscall.LazyProc
+	procSendWebviewIcon     *syscall.LazyProc
+	procDestroyWebviewIcon  *syscall.LazyProc
 )
 
 type shellExecuteInfoW struct {
@@ -71,6 +80,9 @@ func init() {
 		procOpenDesktopW = modUser32.NewProc("OpenDesktopW")
 		procSetThreadDesktop = modUser32.NewProc("SetThreadDesktop")
 		procGetSystemMetrics = modUser32.NewProc("GetSystemMetrics")
+		procLoadWebviewIcon = modUser32.NewProc("LoadImageW")
+		procSendWebviewIcon = modUser32.NewProc("SendMessageW")
+		procDestroyWebviewIcon = modUser32.NewProc("DestroyIcon")
 		modShell32 = syscall.NewLazyDLL("shell32.dll")
 		procShellExecuteW = modShell32.NewProc("ShellExecuteW")
 		procShellExecuteExW = modShell32.NewProc("ShellExecuteExW")
@@ -392,32 +404,69 @@ $bmp.Dispose()
 
 // WebviewApp represents a desktop application window rendering HTML/CSS/JS.
 type WebviewApp struct {
-	Title     string
-	Width     int
-	Height    int
-	ServerURL string
-	listener  net.Listener
-	server    *http.Server
-	cmd       *exec.Cmd
-	hProcess  uintptr
-	events    chan string
-	mu        sync.Mutex
+	Title        string
+	Width        int
+	Height       int
+	Engine       string
+	ServerURL    string
+	listener     net.Listener
+	server       *http.Server
+	serverDone   chan struct{}
+	cmd          *exec.Cmd
+	embedded     webview2.WebView
+	embeddedDone chan struct{}
+	iconHandle   uintptr
+	hProcess     uintptr
+	events       chan string
+	mu           sync.Mutex
 }
 
+type WebviewOptions struct {
+	Title  string
+	Icon   string
+	Engine string
+	Width  int
+	Height int
+}
+
+const defaultWebviewIcon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%239be564'/%3E%3Ctext x='32' y='46' text-anchor='middle' font-family='Arial,sans-serif' font-size='46' font-weight='700' fill='%23101820'%3EA%3C/text%3E%3C/svg%3E"
+
 // LaunchWebview starts an embedded local HTTP server and opens a dedicated borderless
-// app window with zero external dependencies (using MS Edge in app mode on Windows, Chromium on Linux).
-func LaunchWebview(title, htmlOrURL string, width, height int) (*WebviewApp, error) {
+// app window using an installed desktop browser.
+func LaunchWebview(title, htmlOrURL string, width, height int, configs ...WebviewOptions) (*WebviewApp, error) {
+	var options WebviewOptions
+	if len(configs) > 0 {
+		options = configs[0]
+	}
+	engine, err := normalizeWebviewEngine(options.Engine)
+	if err != nil {
+		return nil, err
+	}
+	if options.Title != "" {
+		title = options.Title
+	}
+	if options.Width > 0 {
+		width = options.Width
+	}
+	if options.Height > 0 {
+		height = options.Height
+	}
 	if width <= 0 {
 		width = 900
 	}
 	if height <= 0 {
 		height = 650
 	}
+	browserPath, selectedEngine, err := resolveWebviewBrowser(engine, runtime.GOOS, exec.LookPath, os.Stat)
+	if err != nil {
+		return nil, err
+	}
 
 	app := &WebviewApp{
 		Title:  title,
 		Width:  width,
 		Height: height,
+		Engine: selectedEngine,
 		events: make(chan string, 64),
 	}
 
@@ -437,6 +486,11 @@ func LaunchWebview(title, htmlOrURL string, width, height int) (*WebviewApp, err
 
 		// Inject lightweight Alca JavaScript IPC bridge into HTML if needed
 		htmlStr := string(content)
+		iconURL, err := webviewIconURL(options.Icon)
+		if err != nil {
+			return nil, err
+		}
+		htmlStr = injectWebviewMetadata(htmlStr, title, iconURL)
 		if !strings.Contains(htmlStr, "window.al") {
 			bridgeScript := `
 <script>
@@ -453,76 +507,113 @@ window.al = {
 				htmlStr += bridgeScript
 			}
 		}
-
-		tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("alca_app_%d.html", time.Now().UnixNano()))
-		if err := os.WriteFile(tmpFile, []byte(htmlStr), 0644); err == nil {
-			targetURL = "file:///" + filepath.ToSlash(tmpFile)
+		closeScript := `
+<script>
+window.addEventListener('pagehide', function() {
+  navigator.sendBeacon('/__alca_close__', '');
+});
+</script>
+`
+		if strings.Contains(htmlStr, "</body>") {
+			htmlStr = strings.Replace(htmlStr, "</body>", closeScript+"</body>", 1)
 		} else {
-			// Fallback: Start local server
-			ln, err := net.Listen("tcp", "127.0.0.1:0")
-			if err != nil {
-				return nil, fmt.Errorf("failed to bind local webview server: %w", err)
-			}
-			app.listener = ln
-			port := ln.Addr().(*net.TCPAddr).Port
-			targetURL = fmt.Sprintf("http://127.0.0.1:%d", port)
-
-			mux := http.NewServeMux()
-			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				_, _ = w.Write([]byte(htmlStr))
-			})
-			mux.HandleFunc("/__alca_ipc__", func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			})
-
-			app.server = &http.Server{Handler: mux}
-			go func() {
-				_ = app.server.Serve(ln)
-			}()
+			htmlStr += closeScript
 		}
+
+		// Start embedded local app server
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return nil, fmt.Errorf("failed to bind local webview server: %w", err)
+		}
+		app.listener = ln
+		app.serverDone = make(chan struct{})
+		port := ln.Addr().(*net.TCPAddr).Port
+		targetURL = fmt.Sprintf("http://127.0.0.1:%d", port)
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(htmlStr))
+		})
+		mux.HandleFunc("/api/processes", func(w http.ResponseWriter, r *http.Request) {
+			procs, _ := SystemProcesses()
+			data, _ := json.Marshal(procs)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(data)
+		})
+		mux.HandleFunc("/api/sysinfo", func(w http.ResponseWriter, r *http.Request) {
+			tot, free, used, pct, _ := RamUsageStats()
+			info := map[string]interface{}{
+				"cpu_count":  runtime.NumCPU(),
+				"platform":   runtime.GOOS,
+				"arch":       runtime.GOARCH,
+				"uptime_sec": int64(SystemUptime()),
+				"ram": map[string]interface{}{
+					"total_bytes":  tot,
+					"used_bytes":   used,
+					"free_bytes":   free,
+					"percent_used": pct,
+					"total_gb":     math.Round((float64(tot)/(1024*1024*1024))*10) / 10,
+					"used_gb":      math.Round((float64(used)/(1024*1024*1024))*10) / 10,
+				},
+			}
+			data, _ := json.Marshal(info)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(data)
+		})
+		mux.HandleFunc("/api/kill", func(w http.ResponseWriter, r *http.Request) {
+			pidStr := r.URL.Query().Get("pid")
+			pid, _ := strconv.Atoi(pidStr)
+			err := KillProcess(pid)
+			w.Header().Set("Content-Type", "application/json")
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(fmt.Sprintf(`{"ok":false,"error":%q}`, err.Error())))
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		})
+		mux.HandleFunc("/__alca_ipc__", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+		mux.HandleFunc("/__alca_close__", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+			go func() {
+				_ = app.server.Close()
+			}()
+		})
+
+		app.server = &http.Server{Handler: mux}
+		go func() {
+			_ = app.server.Serve(ln)
+			close(app.serverDone)
+		}()
 	}
 
 	app.ServerURL = targetURL
-
-	// Open in standalone application mode
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		// MS Edge in --app mode runs without browser UI, address bars or tabs
-		edgePaths := []string{
-			`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
-			`C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
-			filepath.Join(os.Getenv("LOCALAPPDATA"), `Microsoft\Edge\Application\msedge.exe`),
-			"msedge.exe",
+	if selectedEngine == "webview2" {
+		app.embeddedDone = make(chan struct{})
+		iconPath := options.Icon
+		if strings.HasPrefix(iconPath, "data:image/") || strings.HasPrefix(iconPath, "http://") || strings.HasPrefix(iconPath, "https://") {
+			iconPath = ""
 		}
-
-		edgeExe := ""
-		for _, ep := range edgePaths {
-			if _, err := os.Stat(ep); err == nil || ep == "msedge.exe" {
-				edgeExe = ep
-				break
+		if err := app.startWebView2(title, targetURL, iconPath); err != nil {
+			if app.server != nil {
+				_ = app.server.Close()
 			}
+			return nil, err
 		}
-
-		appArg := fmt.Sprintf("--app=%s", targetURL)
-		sizeArg := fmt.Sprintf("--window-size=%d,%d", width, height)
-		titleArg := fmt.Sprintf("--app-window-title=%s", title)
-		params := fmt.Sprintf("%s %s %s", appArg, sizeArg, titleArg)
-
-		hProc, err := launchViaShellExecute(edgeExe, params, false)
-		if err == nil {
-			app.hProcess = hProc
-			return app, nil
-		}
-
-		cmd = exec.Command(edgeExe, appArg, sizeArg, titleArg)
-	} else {
-		// Linux: Chromium or Chrome in app mode
-		cmd = exec.Command("google-chrome", fmt.Sprintf("--app=%s", targetURL), fmt.Sprintf("--window-size=%d,%d", width, height))
-		if err := cmd.Start(); err != nil {
-			cmd = exec.Command("chromium", fmt.Sprintf("--app=%s", targetURL), fmt.Sprintf("--window-size=%d,%d", width, height))
-		}
+		return app, nil
 	}
+
+	args := []string{
+		fmt.Sprintf("--app=%s", targetURL),
+		fmt.Sprintf("--window-size=%d,%d", width, height),
+	}
+	if runtime.GOOS == "windows" {
+		args = append(args, fmt.Sprintf("--app-window-title=%s", title))
+	}
+	cmd := exec.Command(browserPath, args...)
 
 	app.cmd = cmd
 	if err := cmd.Start(); err != nil {
@@ -535,9 +626,308 @@ window.al = {
 	return app, nil
 }
 
+func normalizeWebviewEngine(engine string) (string, error) {
+	engine = strings.ToLower(strings.TrimSpace(engine))
+	if engine == "" {
+		engine = "auto"
+	}
+	switch engine {
+	case "auto", "chrome", "chromium", "webview2":
+		return engine, nil
+	default:
+		return "", fmt.Errorf("unsupported WebView engine %q: choose auto, chrome, chromium, or webview2", engine)
+	}
+}
+
+func webviewBrowserCandidates(engine, goos string) []string {
+	var candidates []string
+	addChrome := func() {
+		switch goos {
+		case "windows":
+			for _, dir := range []string{os.Getenv("PROGRAMFILES"), os.Getenv("PROGRAMFILES(X86)"), os.Getenv("LOCALAPPDATA")} {
+				if dir != "" {
+					candidates = append(candidates, filepath.Join(dir, "Google", "Chrome", "Application", "chrome.exe"))
+				}
+			}
+			candidates = append(candidates, "chrome.exe")
+		case "darwin":
+			candidates = append(candidates,
+				"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+				"google-chrome",
+			)
+		default:
+			candidates = append(candidates, "google-chrome", "google-chrome-stable", "chrome")
+		}
+	}
+	addChromium := func() {
+		switch goos {
+		case "windows":
+			for _, dir := range []string{os.Getenv("PROGRAMFILES"), os.Getenv("LOCALAPPDATA")} {
+				if dir != "" {
+					candidates = append(candidates, filepath.Join(dir, "Chromium", "Application", "chrome.exe"))
+				}
+			}
+			candidates = append(candidates, "chromium.exe")
+		case "darwin":
+			candidates = append(candidates,
+				"/Applications/Chromium.app/Contents/MacOS/Chromium",
+				"chromium",
+			)
+		default:
+			candidates = append(candidates, "chromium", "chromium-browser")
+		}
+	}
+
+	switch engine {
+	case "chrome":
+		addChrome()
+	case "chromium":
+		addChromium()
+	default:
+		addChrome()
+		addChromium()
+	}
+	return candidates
+}
+
+func resolveWebviewBrowser(engine, goos string, lookPath func(string) (string, error), stat func(string) (os.FileInfo, error)) (string, string, error) {
+	normalized, err := normalizeWebviewEngine(engine)
+	if err != nil {
+		return "", "", err
+	}
+	if normalized == "webview2" {
+		if goos != "windows" {
+			return "", "", fmt.Errorf("WebView2 is only available on Windows")
+		}
+		return "", "webview2", nil
+	}
+	for _, candidate := range webviewBrowserCandidates(normalized, goos) {
+		if _, err := stat(candidate); err == nil {
+			selected := normalized
+			if selected == "auto" {
+				selected = "chrome"
+				if strings.Contains(strings.ToLower(candidate), "chromium") {
+					selected = "chromium"
+				}
+			}
+			return candidate, selected, nil
+		}
+		if path, err := lookPath(candidate); err == nil {
+			selected := normalized
+			if selected == "auto" {
+				selected = "chrome"
+				if strings.Contains(strings.ToLower(candidate), "chromium") {
+					selected = "chromium"
+				}
+			}
+			return path, selected, nil
+		}
+	}
+	if normalized == "auto" {
+		return "", "", fmt.Errorf("no supported WebView engine found: install Google Chrome or Chromium")
+	}
+	return "", "", fmt.Errorf("WebView engine %q is not installed", normalized)
+}
+
+func (app *WebviewApp) startWebView2(title, targetURL, iconPath string) error {
+	ready := make(chan error, 1)
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+
+		view := webview2.NewWithOptions(webview2.WebViewOptions{
+			AutoFocus: true,
+			WindowOptions: webview2.WindowOptions{
+				Title:  title,
+				Width:  uint(app.Width),
+				Height: uint(app.Height),
+				Center: true,
+			},
+		})
+		if view == nil {
+			ready <- fmt.Errorf("failed to initialize WebView2: install or repair the Microsoft Edge WebView2 Runtime")
+			close(app.embeddedDone)
+			return
+		}
+		if iconPath != "" {
+			handle, err := loadWebviewWindowIcon(view.Window(), iconPath)
+			if err != nil {
+				ready <- err
+				view.Destroy()
+				view.Run()
+				view.Destroy()
+				close(app.embeddedDone)
+				return
+			}
+			app.iconHandle = handle
+		}
+
+		app.mu.Lock()
+		app.embedded = view
+		app.mu.Unlock()
+		view.Navigate(targetURL)
+		ready <- nil
+		view.Run()
+		view.Destroy()
+		if app.iconHandle != 0 && procDestroyWebviewIcon != nil {
+			procDestroyWebviewIcon.Call(app.iconHandle)
+			app.iconHandle = 0
+		}
+
+		app.mu.Lock()
+		app.embedded = nil
+		app.mu.Unlock()
+		close(app.embeddedDone)
+	}()
+	return <-ready
+}
+
+func loadWebviewWindowIcon(hwnd unsafe.Pointer, path string) (uintptr, error) {
+	loadPath := path
+	cleanup := func() {}
+	if strings.HasPrefix(path, "embed:") {
+		data, err := ReadEmbeddedResource(strings.TrimPrefix(path, "embed:"))
+		if err != nil {
+			return 0, err
+		}
+		loadPath, cleanup, err = writeWebviewIconTemp(data)
+		if err != nil {
+			return 0, err
+		}
+	} else if data, resourceErr := ReadEmbeddedResource(path); resourceErr == nil {
+		tempPath, tempCleanup, tempErr := writeWebviewIconTemp(data)
+		if tempErr != nil {
+			return 0, tempErr
+		}
+		loadPath, cleanup = tempPath, tempCleanup
+	} else if _, statErr := os.Stat(path); statErr != nil {
+		return 0, fmt.Errorf("cannot read WebView2 window icon %q: %w", path, statErr)
+	}
+	defer cleanup()
+	if err := validateWebviewWindowIcon(loadPath); err != nil {
+		return 0, err
+	}
+	if procLoadWebviewIcon == nil || procSendWebviewIcon == nil {
+		return 0, fmt.Errorf("native window icon support is unavailable")
+	}
+	iconPath, err := syscall.UTF16PtrFromString(loadPath)
+	if err != nil {
+		return 0, fmt.Errorf("invalid WebView2 window icon path: %w", err)
+	}
+	icon, _, callErr := procLoadWebviewIcon.Call(
+		0,
+		uintptr(unsafe.Pointer(iconPath)),
+		1,
+		0,
+		0,
+		0x10|0x40,
+	)
+	if icon == 0 {
+		return 0, fmt.Errorf("cannot load WebView2 window icon %q: %w", path, callErr)
+	}
+	window := uintptr(hwnd)
+	procSendWebviewIcon.Call(window, 0x80, 0, icon)
+	procSendWebviewIcon.Call(window, 0x80, 1, icon)
+	return icon, nil
+}
+
+func writeWebviewIconTemp(data []byte) (string, func(), error) {
+	temp, err := os.CreateTemp("", "alca-window-icon-*.ico")
+	if err != nil {
+		return "", func() {}, fmt.Errorf("cannot prepare embedded window icon: %w", err)
+	}
+	loadPath := temp.Name()
+	cleanup := func() { _ = os.Remove(loadPath) }
+	if _, err := temp.Write(data); err != nil {
+		_ = temp.Close()
+		cleanup()
+		return "", func() {}, fmt.Errorf("cannot write embedded window icon: %w", err)
+	}
+	if err := temp.Close(); err != nil {
+		cleanup()
+		return "", func() {}, fmt.Errorf("cannot close embedded window icon: %w", err)
+	}
+	return loadPath, cleanup, nil
+}
+
+func validateWebviewWindowIcon(path string) error {
+	if strings.ToLower(filepath.Ext(path)) != ".ico" {
+		return fmt.Errorf("WebView2 window icon %q must be an .ico file", path)
+	}
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("cannot read WebView2 window icon %q: %w", path, err)
+	}
+	return nil
+}
+
+func webviewIconURL(icon string) (string, error) {
+	if icon == "" {
+		return defaultWebviewIcon, nil
+	}
+	if strings.HasPrefix(icon, "data:image/") || strings.HasPrefix(icon, "http://") || strings.HasPrefix(icon, "https://") {
+		return icon, nil
+	}
+	var data []byte
+	var err error
+	if strings.HasPrefix(icon, "embed:") {
+		data, err = ReadEmbeddedResource(strings.TrimPrefix(icon, "embed:"))
+	} else {
+		data, err = ReadEmbeddedResource(icon)
+		if err != nil {
+			data, err = os.ReadFile(icon)
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("cannot read WebView icon %q: %w", icon, err)
+	}
+	contentType := mime.TypeByExtension(filepath.Ext(icon))
+	if contentType == "" || !strings.HasPrefix(contentType, "image/") {
+		contentType = http.DetectContentType(data)
+	}
+	if !strings.HasPrefix(contentType, "image/") {
+		return "", fmt.Errorf("WebView icon %q is not a supported image", icon)
+	}
+	return "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(data), nil
+}
+
+func injectWebviewMetadata(source, title, iconURL string) string {
+	var metadata strings.Builder
+	if title != "" {
+		metadata.WriteString("<title>")
+		metadata.WriteString(htmlstd.EscapeString(title))
+		metadata.WriteString("</title>")
+	}
+	metadata.WriteString(`<link rel="icon" href="`)
+	metadata.WriteString(htmlstd.EscapeString(iconURL))
+	metadata.WriteString(`">`)
+
+	headStart := strings.Index(strings.ToLower(source), "<head")
+	if headStart >= 0 {
+		if headEnd := strings.Index(source[headStart:], ">"); headEnd >= 0 {
+			insertAt := headStart + headEnd + 1
+			return source[:insertAt] + metadata.String() + source[insertAt:]
+		}
+	}
+	return metadata.String() + source
+}
+
 // Wait blocks until the webview window is closed by the user.
 func (app *WebviewApp) Wait() {
-	if app.hProcess != 0 && procWaitForSingleObject != nil {
+	if app.Engine == "webview2" && app.embeddedDone != nil {
+		<-app.embeddedDone
+		if app.server != nil {
+			_ = app.server.Close()
+		}
+	} else if app.serverDone != nil {
+		<-app.serverDone
+		if app.hProcess != 0 && procCloseHandle != nil {
+			procCloseHandle.Call(app.hProcess)
+			app.hProcess = 0
+		}
+		if app.cmd != nil {
+			_ = app.cmd.Wait()
+		}
+	} else if app.hProcess != 0 && procWaitForSingleObject != nil {
 		procWaitForSingleObject.Call(app.hProcess, winInfinite)
 		if procCloseHandle != nil {
 			procCloseHandle.Call(app.hProcess)
@@ -553,6 +943,9 @@ func (app *WebviewApp) Close() {
 	app.mu.Lock()
 	defer app.mu.Unlock()
 
+	if app.embedded != nil {
+		app.embedded.Terminate()
+	}
 	if app.hProcess != 0 {
 		modKernel32 := syscall.NewLazyDLL("kernel32.dll")
 		procTerminateProcess := modKernel32.NewProc("TerminateProcess")
@@ -574,196 +967,9 @@ func (app *WebviewApp) Close() {
 // Mode 3: Native Desktop Windows & Controls (Pure Native Desktop Widgets)
 // -----------------------------------------------------------------------------
 
-// Widget represents a GUI control inside a native window.
-type Widget struct {
-	Type     string
-	Text     string
-	Value    string
-	Callback interpreter.Value
-}
-
-// NativeWindow represents a pure native desktop window with interactive widgets.
-type NativeWindow struct {
-	Title   string
-	Width   int
-	Height  int
-	Widgets []*Widget
-	mu      sync.Mutex
-}
-
-// NewNativeWindow creates a new native window specification.
-func NewNativeWindow(title string, width, height int) *NativeWindow {
-	if width <= 0 {
-		width = 500
-	}
-	if height <= 0 {
-		height = 400
-	}
-	return &NativeWindow{
-		Title:   title,
-		Width:   width,
-		Height:  height,
-		Widgets: make([]*Widget, 0),
-	}
-}
-
-// AddLabel adds a static text label.
-func (w *NativeWindow) AddLabel(text string) *Widget {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	widget := &Widget{Type: "label", Text: text}
-	w.Widgets = append(w.Widgets, widget)
-	return widget
-}
-
-// AddButton adds a clickable button with an optional action callback.
-func (w *NativeWindow) AddButton(text string, callback interpreter.Value) *Widget {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	widget := &Widget{Type: "button", Text: text, Callback: callback}
-	w.Widgets = append(w.Widgets, widget)
-	return widget
-}
-
-// AddInput adds a single-line text input field.
-func (w *NativeWindow) AddInput(placeholder string) *Widget {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	widget := &Widget{Type: "input", Text: placeholder}
-	w.Widgets = append(w.Widgets, widget)
-	return widget
-}
-
-// AddCheckbox adds a toggleable checkbox.
-func (w *NativeWindow) AddCheckbox(text string, checked bool) *Widget {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	val := "false"
-	if checked {
-		val = "true"
-	}
-	widget := &Widget{Type: "checkbox", Text: text, Value: val}
-	w.Widgets = append(w.Widgets, widget)
-	return widget
-}
-
-// AddProgressBar adds a progress bar with an initial percent value (0-100).
-func (w *NativeWindow) AddProgressBar(percent int) *Widget {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	widget := &Widget{Type: "progress", Value: strconv.Itoa(percent)}
-	w.Widgets = append(w.Widgets, widget)
-	return widget
-}
-
-// Run renders and displays the window on the desktop using native OS controls.
-func (w *NativeWindow) Run() error {
-	if runtime.GOOS == "windows" {
-		return w.runWindowsForm()
-	}
-	return w.runLinuxForm()
-}
-
-// runWindowsForm creates and renders a native Windows desktop GUI using System.Windows.Forms.
-func (w *NativeWindow) runWindowsForm() error {
-	var ps strings.Builder
-	// Write UTF-8 BOM so PowerShell properly renders Cyrillic and all Unicode text
-	ps.WriteString("\xEF\xBB\xBF")
-	ps.WriteString("Add-Type -AssemblyName System.Windows.Forms\n")
-	ps.WriteString("Add-Type -AssemblyName System.Drawing\n")
-	ps.WriteString(fmt.Sprintf("$form = New-Object System.Windows.Forms.Form\n"))
-	ps.WriteString(fmt.Sprintf("$form.Text = '%s'\n", escapePS(w.Title)))
-	ps.WriteString(fmt.Sprintf("$form.Size = New-Object System.Drawing.Size(%d, %d)\n", w.Width, w.Height))
-	ps.WriteString("$form.StartPosition = 'CenterScreen'\n")
-	ps.WriteString("$form.FormBorderStyle = 'FixedDialog'\n")
-	ps.WriteString("$form.MaximizeBox = $false\n")
-	ps.WriteString("$form.TopMost = $true\n")
-	ps.WriteString("$form.Add_Shown({$form.Activate()})\n")
-
-	yPos := 20
-	for idx, wg := range w.Widgets {
-		switch wg.Type {
-		case "label":
-			name := fmt.Sprintf("$lbl_%d", idx)
-			ps.WriteString(fmt.Sprintf("%s = New-Object System.Windows.Forms.Label\n", name))
-			ps.WriteString(fmt.Sprintf("%s.Text = '%s'\n", name, escapePS(wg.Text)))
-			ps.WriteString(fmt.Sprintf("%s.Location = New-Object System.Drawing.Point(30, %d)\n", name, yPos))
-			ps.WriteString(fmt.Sprintf("%s.Size = New-Object System.Drawing.Size(%d, 25)\n", name, w.Width-80))
-			ps.WriteString(fmt.Sprintf("$form.Controls.Add(%s)\n", name))
-			yPos += 35
-
-		case "button":
-			name := fmt.Sprintf("$btn_%d", idx)
-			ps.WriteString(fmt.Sprintf("%s = New-Object System.Windows.Forms.Button\n", name))
-			ps.WriteString(fmt.Sprintf("%s.Text = '%s'\n", name, escapePS(wg.Text)))
-			ps.WriteString(fmt.Sprintf("%s.Location = New-Object System.Drawing.Point(30, %d)\n", name, yPos))
-			ps.WriteString(fmt.Sprintf("%s.Size = New-Object System.Drawing.Size(%d, 35)\n", name, w.Width-80))
-			ps.WriteString(fmt.Sprintf("%s.Add_Click({ [System.Windows.Forms.MessageBox]::Show('Action executed: %s', '%s', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Information) })\n",
-				name, escapePS(wg.Text), escapePS(w.Title)))
-			ps.WriteString(fmt.Sprintf("$form.Controls.Add(%s)\n", name))
-			yPos += 45
-
-		case "input":
-			name := fmt.Sprintf("$txt_%d", idx)
-			ps.WriteString(fmt.Sprintf("%s = New-Object System.Windows.Forms.TextBox\n", name))
-			ps.WriteString(fmt.Sprintf("%s.Text = '%s'\n", name, escapePS(wg.Text)))
-			ps.WriteString(fmt.Sprintf("%s.Location = New-Object System.Drawing.Point(30, %d)\n", name, yPos))
-			ps.WriteString(fmt.Sprintf("%s.Size = New-Object System.Drawing.Size(%d, 25)\n", name, w.Width-80))
-			ps.WriteString(fmt.Sprintf("$form.Controls.Add(%s)\n", name))
-			yPos += 35
-
-		case "checkbox":
-			name := fmt.Sprintf("$chk_%d", idx)
-			ps.WriteString(fmt.Sprintf("%s = New-Object System.Windows.Forms.CheckBox\n", name))
-			ps.WriteString(fmt.Sprintf("%s.Text = '%s'\n", name, escapePS(wg.Text)))
-			ps.WriteString(fmt.Sprintf("%s.Checked = $%s\n", name, wg.Value))
-			ps.WriteString(fmt.Sprintf("%s.Location = New-Object System.Drawing.Point(30, %d)\n", name, yPos))
-			ps.WriteString(fmt.Sprintf("%s.Size = New-Object System.Drawing.Size(%d, 25)\n", name, w.Width-80))
-			ps.WriteString(fmt.Sprintf("$form.Controls.Add(%s)\n", name))
-			yPos += 35
-
-		case "progress":
-			name := fmt.Sprintf("$prg_%d", idx)
-			ps.WriteString(fmt.Sprintf("%s = New-Object System.Windows.Forms.ProgressBar\n", name))
-			ps.WriteString(fmt.Sprintf("%s.Location = New-Object System.Drawing.Point(30, %d)\n", name, yPos))
-			ps.WriteString(fmt.Sprintf("%s.Size = New-Object System.Drawing.Size(%d, 20)\n", name, w.Width-80))
-			ps.WriteString(fmt.Sprintf("%s.Value = %s\n", name, wg.Value))
-			ps.WriteString(fmt.Sprintf("$form.Controls.Add(%s)\n", name))
-			yPos += 30
-		}
-	}
-
-	ps.WriteString("[void]$form.ShowDialog()\n")
-
-	tmpScript := filepath.Join(os.TempDir(), fmt.Sprintf("alca_form_%d.ps1", time.Now().UnixNano()))
-	if err := os.WriteFile(tmpScript, []byte(ps.String()), 0644); err != nil {
-		return err
-	}
-	defer os.Remove(tmpScript)
-
-	params := fmt.Sprintf("-NoProfile -STA -ExecutionPolicy Bypass -File \"%s\"", tmpScript)
-	_, err := launchViaShellExecute("powershell.exe", params, true)
-	if err != nil {
-		cmd := exec.Command("powershell", "-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", tmpScript)
-		return cmd.Run()
-	}
-	return nil
-}
-
-// runLinuxForm creates and renders a native Linux form window via zenity / dialogs.
-func (w *NativeWindow) runLinuxForm() error {
-	args := []string{"--forms", "--title=" + w.Title}
-	for _, wg := range w.Widgets {
-		switch wg.Type {
-		case "label":
-			args = append(args, "--text="+wg.Text)
-		case "input":
-			args = append(args, "--add-entry="+wg.Text)
-		case "checkbox":
-			args = append(args, "--add-password="+wg.Text)
-		}
-	}
-	return exec.Command("zenity", args...).Run()
+// RunNativeTaskManager launches a pure native Windows Forms / Win32 Task Manager window with zero webview overhead.
+func RunNativeTaskManager(title string, width, height int) error {
+	return RunTrueNativeWin32TaskManager(title, width, height)
 }
 
 // -----------------------------------------------------------------------------
@@ -909,6 +1115,7 @@ func RegisterGUIBuiltins(env *interpreter.Environment) {
 		}
 		title := interpreter.CoerceToString(args[0])
 		target := interpreter.CoerceToString(args[1])
+		options := WebviewOptions{}
 		w := 900
 		h := 650
 		if len(args) >= 3 {
@@ -921,8 +1128,39 @@ func RegisterGUIBuiltins(env *interpreter.Environment) {
 				h = int(iv.Val)
 			}
 		}
+		if len(args) >= 5 {
+			optionsMap, ok := args[4].(*interpreter.MapValue)
+			if !ok {
+				return interpreter.NewError(400, "webview options must be a map")
+			}
+			for key, dest := range map[string]*string{
+				"title":  &options.Title,
+				"icon":   &options.Icon,
+				"engine": &options.Engine,
+			} {
+				if value, exists := optionsMap.Get(key); exists {
+					text, ok := value.(*interpreter.StringValue)
+					if !ok {
+						return interpreter.NewError(400, "webview option '"+key+"' must be a string")
+					}
+					*dest = text.Val
+				}
+			}
+			for key, dest := range map[string]*int{
+				"width":  &options.Width,
+				"height": &options.Height,
+			} {
+				if value, exists := optionsMap.Get(key); exists {
+					number, ok := value.(*interpreter.IntegerValue)
+					if !ok || number.Val < 1 || number.Val > 8192 {
+						return interpreter.NewError(400, "webview option '"+key+"' must be an integer between 1 and 8192")
+					}
+					*dest = int(number.Val)
+				}
+			}
+		}
 
-		app, err := LaunchWebview(title, target, w, h)
+		app, err := LaunchWebview(title, target, w, h, options)
 		if err != nil {
 			return interpreter.NewError(500, err.Error())
 		}
@@ -930,6 +1168,7 @@ func RegisterGUIBuiltins(env *interpreter.Environment) {
 		webviewObj := interpreter.NewMap()
 		webviewObj.Set("url", &interpreter.StringValue{Val: app.ServerURL})
 		webviewObj.Set("title", &interpreter.StringValue{Val: app.Title})
+		webviewObj.Set("engine", &interpreter.StringValue{Val: app.Engine})
 		webviewObj.Set("close", &interpreter.BuiltinFunction{
 			Name: "close",
 			Fn: func(a ...interpreter.Value) interpreter.Value {
@@ -947,114 +1186,85 @@ func RegisterGUIBuiltins(env *interpreter.Environment) {
 		return webviewObj
 	})
 
+	registerTaskMgr := func(name string) {
+		register(name, func(args ...interpreter.Value) interpreter.Value {
+			title := "Alca Task Manager"
+			w := 1040
+			h := 680
+			if len(args) >= 1 {
+				title = interpreter.CoerceToString(args[0])
+			}
+			if len(args) >= 2 {
+				if iv, ok := args[1].(*interpreter.IntegerValue); ok {
+					w = int(iv.Val)
+				}
+			}
+			if len(args) >= 3 {
+				if iv, ok := args[2].(*interpreter.IntegerValue); ok {
+					h = int(iv.Val)
+				}
+			}
+
+			if err := RunTrueNativeWin32TaskManager(title, w, h); err != nil {
+				return interpreter.NewError(500, err.Error())
+			}
+			return interpreter.TRUE
+		})
+	}
+	registerTaskMgr("task_manager")
+	registerTaskMgr("native_task_manager")
+
 	// 3. Native Windows & Widgets
+	makeWindow := func(forced string, args ...interpreter.Value) interpreter.Value {
+		title, width, height, backend := parseWindowArgs(args)
+		if forced != "" {
+			backend = forced
+		}
+		return windowValue(title, width, height, backend)
+	}
 	register("window", func(args ...interpreter.Value) interpreter.Value {
-		title := "Alca Desktop Window"
-		w := 500
-		h := 400
-		if len(args) >= 1 {
-			title = interpreter.CoerceToString(args[0])
-		}
-		if len(args) >= 2 {
-			if iv, ok := args[1].(*interpreter.IntegerValue); ok {
-				w = int(iv.Val)
-			}
-		}
-		if len(args) >= 3 {
-			if iv, ok := args[2].(*interpreter.IntegerValue); ok {
-				h = int(iv.Val)
-			}
-		}
-
-		win := NewNativeWindow(title, w, h)
-		winObj := interpreter.NewMap()
-		winObj.Set("title", &interpreter.StringValue{Val: title})
-
-		winObj.Set("add_label", &interpreter.BuiltinFunction{
-			Name: "add_label",
-			Fn: func(a ...interpreter.Value) interpreter.Value {
-				text := ""
-				if len(a) > 0 {
-					text = interpreter.CoerceToString(a[0])
-				}
-				win.AddLabel(text)
-				return winObj
-			},
-		})
-
-		winObj.Set("add_button", &interpreter.BuiltinFunction{
-			Name: "add_button",
-			Fn: func(a ...interpreter.Value) interpreter.Value {
-				text := "Button"
-				var cb interpreter.Value
-				if len(a) > 0 {
-					text = interpreter.CoerceToString(a[0])
-				}
-				if len(a) > 1 {
-					cb = a[1]
-				}
-				win.AddButton(text, cb)
-				return winObj
-			},
-		})
-
-		winObj.Set("add_input", &interpreter.BuiltinFunction{
-			Name: "add_input",
-			Fn: func(a ...interpreter.Value) interpreter.Value {
-				placeholder := ""
-				if len(a) > 0 {
-					placeholder = interpreter.CoerceToString(a[0])
-				}
-				win.AddInput(placeholder)
-				return winObj
-			},
-		})
-
-		winObj.Set("add_checkbox", &interpreter.BuiltinFunction{
-			Name: "add_checkbox",
-			Fn: func(a ...interpreter.Value) interpreter.Value {
-				text := ""
-				checked := false
-				if len(a) > 0 {
-					text = interpreter.CoerceToString(a[0])
-				}
-				if len(a) > 1 {
-					checked = interpreter.IsTruthy(a[1])
-				}
-				win.AddCheckbox(text, checked)
-				return winObj
-			},
-		})
-
-		winObj.Set("add_progress", &interpreter.BuiltinFunction{
-			Name: "add_progress",
-			Fn: func(a ...interpreter.Value) interpreter.Value {
-				pct := 50
-				if len(a) > 0 {
-					if iv, ok := a[0].(*interpreter.IntegerValue); ok {
-						pct = int(iv.Val)
-					}
-				}
-				win.AddProgressBar(pct)
-				return winObj
-			},
-		})
-
-		winObj.Set("run", &interpreter.BuiltinFunction{
-			Name: "run",
-			Fn: func(a ...interpreter.Value) interpreter.Value {
-				if err := win.Run(); err != nil {
-					return interpreter.NewError(500, err.Error())
-				}
-				return interpreter.TRUE
-			},
-		})
-
-		winObj.Set("show", winObj.Pairs["run"])
-
-		return winObj
+		return makeWindow("", args...)
+	})
+	register("tk_window", func(args ...interpreter.Value) interpreter.Value {
+		return makeWindow("tk", args...)
+	})
+	register("qt_window", func(args ...interpreter.Value) interpreter.Value {
+		return makeWindow("qt", args...)
 	})
 
+	// 4. GUI backend selection and capabilities
+	register("set_backend", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) > 0 {
+			SetDefaultGUIBackend(interpreter.CoerceToString(args[0]))
+		}
+		return interpreter.TRUE
+	})
+
+	register("backends", func(args ...interpreter.Value) interpreter.Value {
+		result := interpreter.NewMap()
+		for name, available := range BackendInfo() {
+			switch v := available.(type) {
+			case bool:
+				if v {
+					result.Set(name, interpreter.TRUE)
+				} else {
+					result.Set(name, interpreter.FALSE)
+				}
+			case string:
+				result.Set(name, &interpreter.StringValue{Val: v})
+			}
+		}
+		return result
+	})
+
+	register("width", func(args ...interpreter.Value) interpreter.Value {
+		w, _ := GetScreenSize()
+		return &interpreter.IntegerValue{Val: int64(w)}
+	})
+	register("height", func(args ...interpreter.Value) interpreter.Value {
+		_, h := GetScreenSize()
+		return &interpreter.IntegerValue{Val: int64(h)}
+	})
 	env.Set("gui", guiModule)
 	env.Set("std.gui", guiModule)
 }

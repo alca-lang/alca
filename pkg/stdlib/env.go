@@ -379,7 +379,7 @@ func RegisterEnvBuiltins(env *interpreter.Environment) {
 		}
 		var dirs []string
 		if lv, ok := args[0].(*interpreter.ListValue); ok {
-			for _, elem := range lv.Elements {
+			for _, elem := range lv.ElementsSlice() {
 				dirs = append(dirs, interpreter.CoerceToString(elem))
 			}
 		} else {

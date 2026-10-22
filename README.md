@@ -28,12 +28,14 @@ go build -o alca ./cmd/alca
 
 The VM is the default engine. Constructs the VM cannot compile are reported
 explicitly with `--vm`; without it, `alca run` falls back to the interpreter and
-prints a note. Both engines are covered by the same output-parity corpus.
+prints a note. Both engines are covered by the same output-parity corpus. The
+constructs that currently need the interpreter are listed in
+[docs/language.md](docs/language.md#engines).
 
 ## Language rules
 
 - Every simple statement ends with `;`. Block headers (`if`, `while`, `for`,
-  `func`, `struct`, `test`, `use`) end with `:` and no semicolon.
+  `func`, `struct`, `class`, `test`, `use`) end with `:` and no semicolon.
 - Types are strict and fixed after inference. There are no implicit
   conversions: use `string(x)`, `int(x)`, or `float(x)`.
 - Conditions must be `bool`; there is no truthiness in `if`/`while`.
@@ -43,11 +45,42 @@ prints a note. Both engines are covered by the same output-parity corpus.
 - Functions return only through `return`; a function body does not implicitly
   return its last expression.
 - Closures capture surrounding locals by reference, and `:=` declares a new
-  binding while `=` updates an existing one.
+  binding while `=` updates an existing one. A name that is already bound is
+  never shadowed: declaring it again in a nested scope updates the existing
+  binding and is only allowed with the same type. `public`, `private`, and
+  `const` declare visibility and immutability.
+- Classes support fields, methods and single inheritance (`class Dog extends
+  Animal:`), with `self`, `super`, dynamic dispatch and enforced `public` /
+  `private` / `const` members. See [docs/language.md](docs/language.md#classes-and-inheritance).
 - The type checker runs for `run`, `test`, `check`, `build`, and every REPL
   snippet.
 
 See [docs/language.md](docs/language.md) for the full language summary.
+
+  ## Crypto, HTTP, and optional numerical helpers
+
+  - `crypto.aes_encrypt` and `crypto.aes_decrypt` accept only raw AES keys that
+    are exactly 16, 24, or 32 bytes. For passwords, use
+    `crypto.aes_encrypt_password(password, plaintext)` and
+    `crypto.aes_decrypt_password(password, ciphertext)`; new ciphertexts use
+    PBKDF2-HMAC-SHA-256 (600,000 iterations), a fresh random salt, a versioned
+    format, and AES-GCM. Existing unversioned ciphertexts from the former
+    password-based `aes_encrypt` implementation can still be read by
+    `aes_decrypt_password`.
+  - `crypto.derive_key(password, salt, iterations, key_len)` derives a raw key
+    with PBKDF2-HMAC-SHA-256. `key_len` must be 16, 24, or 32 bytes, and
+    `iterations` must be between 1 and 1,000,000. Use a unique random salt and
+    an appropriately high iteration count for password-derived keys.
+  - `http.request(method, url, headers?, body?, options?)` and
+    `http_request(method, url, headers?, body?, options?)` limit response bodies to 16 MiB. The optional fifth
+    argument is an options map; `{"timeout": seconds}` overrides the 30-second
+    default, up to 300 seconds. Every response header is returned as a list of
+    strings. The `get`, `post`, `put`, `delete`, and `patch` helpers accept
+    `(url, headers?, body?, options?)`. HTTP servers use finite read, write, and
+    idle timeouts and reject request bodies over 16 MiB.
+  - `std.ai` is an optional standard-library module of pure-Go numerical helpers,
+    not an accelerated runtime subsystem. Its matrix functions convert Alca
+    lists to Go `[][]float64` values for calculations and convert results back.
 
 ## Commands
 
@@ -98,6 +131,39 @@ Standalone applications accept the same flags before script arguments:
 reader.exe --allow-read=./data input.txt
 ```
 
+## Package manager (APM)
+
+`apm` installs libraries so programs can `use` them without any path setup:
+
+```text
+go build -o apm ./cmd/apm
+
+apm install -u ./my-library     # from local sources
+apm install "json@^1.2.0"       # from a registry (built-in node, $ALCA_REGISTRY or --registry)
+apm show                        # installed libraries
+apm remove json
+
+apm register ann ann@example.com  # create an account; prints a one-time token
+apm login ann                     # new one-time token if it was lost
+apm whoami                        # the signed-in account and its tokens
+apm logout                        # revoke the saved token on the node
+```
+
+Installed libraries live in a local system registry under `$ALCA_HOME`
+(default `~/.alca`), including a compiled VM build per package that the VM
+loads automatically (sources remain the primary artifact and the fallback).
+The `alca.toml` manifest standard, layout, versioning and resolution rules are
+documented in [docs/apm.md](docs/apm.md). Account tokens are saved to
+`$ALCA_HOME/credentials.json` (mode `0600`) and reused by `apm publish`, so
+publishing after a one-time `apm register`/`apm login` needs no `--token`.
+
+A registry node for hosting libraries ships as `cmd/apm-registry`; deployment,
+API and security are covered in
+[docs/apm-registry.md](docs/apm-registry.md). With `allow_registration` enabled
+the node is self-service: users register, receive a one-time token, and publish.
+Publishing stays disabled unless the node enables it (accounts or operator
+tokens) and the client sets `APM_ENABLE_PUBLISH=1`.
+
 ## Cross-compilation
 
 A built executable is `runtime stub for the target + payload + footer`. The
@@ -110,6 +176,7 @@ go run ./cmd/alca build-runtimes --out runtimes
 alca targets
 alca build examples/hello.al --target linux/amd64 -o hello
 alca build examples/hello.al --target windows/arm64 -o hello
+alca build examples/gui.al --embed assets
 ```
 
 Supported targets: `linux/amd64`, `linux/arm64`, `darwin/amd64`,
@@ -117,6 +184,25 @@ Supported targets: `linux/amd64`, `linux/arm64`, `darwin/amd64`,
 the running `alca` binary, so a stale stub cannot be picked up accidentally.
 `ALCA_RUNTIMES=<dir>`, `<alca-dir>/runtimes`, `~/.alca/runtimes`, and
 `./runtimes` are searched for non-host runtimes.
+
+### Embedding application resources
+
+Files are not included automatically. Add only the files or directories your
+application needs with repeatable `--embed` options; paths are relative to the
+directory containing the entry `.al` file. Directory contents keep their
+relative paths in the executable:
+
+```text
+alca build app.al --embed assets --embed config/default.json
+```
+
+Standalone programs can read embedded resources with `use std.embed;` and
+`embed.read("assets/logo.png")`, check them with `embed.exists(path)`, or list
+them with `embed.list("assets")`. `gui.webview` can also load an embedded icon
+by giving its path as `icon: "assets/app.ico"` (the resource must have been
+included with `--embed assets`). WebView2 uses `.ico` files for the native
+window icon. Explicit embedding prevents unrelated files such as secrets,
+databases, and build outputs from being silently packaged.
 
 ## Development
 

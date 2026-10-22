@@ -2,9 +2,11 @@
 package interpreter
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -14,7 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
+
+	"github.com/alca-lang/alca/pkg/limits"
 )
 
 // PrintHook represents a hook function for capturing or redirecting standard print output.
@@ -50,6 +53,31 @@ func SetMethodEvaluator(ev MethodEvaluator) {
 	evaluatorMu.Lock()
 	defer evaluatorMu.Unlock()
 	activeEvaluator = ev
+}
+
+// HostCallable is implemented by function values that run on another engine
+// (for example a VM closure) but can still be invoked directly from host code.
+type HostCallable interface {
+	Call(args []Value) (Value, error)
+}
+
+// Invoke calls a user-defined function value from host code (for example a GUI
+// button callback). It reports an error when no interpreter is attached or the
+// value is not callable.
+func Invoke(fn Value, args []Value) (Value, error) {
+	if fn == nil {
+		return nil, errors.New("callback is nil")
+	}
+	if callable, ok := fn.(HostCallable); ok {
+		return callable.Call(args)
+	}
+	evaluatorMu.RLock()
+	ev := activeEvaluator
+	evaluatorMu.RUnlock()
+	if ev == nil {
+		return nil, errors.New("no interpreter is attached to this process")
+	}
+	return ev(fn, args)
 }
 
 // BuiltinFunctionMap contains all standard global built-in functions in Alca.
@@ -102,9 +130,9 @@ var BuiltinFunctionMap = map[string]*BuiltinFunction{
 			}
 			switch val := args[0].(type) {
 			case *StringValue:
-				return &IntegerValue{Val: int64(utf8.RuneCountInString(val.Val))}
+				return &IntegerValue{Val: int64(len(val.RuneSlice()))}
 			case *ListValue:
-				return &IntegerValue{Val: int64(len(val.Elements))}
+				return &IntegerValue{Val: int64(val.Len())}
 			case *MapValue:
 				return &IntegerValue{Val: int64(len(val.Pairs))}
 			case *BlobValue:
@@ -276,6 +304,7 @@ var BuiltinFunctionMap = map[string]*BuiltinFunction{
 			if !ok {
 				return NewError(400, "argument to pop must be a list")
 			}
+			listVal.Materialize()
 			if len(listVal.Elements) == 0 {
 				return NULL
 			}
@@ -383,9 +412,8 @@ var BuiltinFunctionMap = map[string]*BuiltinFunction{
 			if len(args) > 0 && args[0] != nil {
 				fmt.Print(CoerceToString(args[0]))
 			}
-			scanner := bufio.NewScanner(os.Stdin)
-			if scanner.Scan() {
-				return &StringValue{Val: scanner.Text()}
+			if line, ok := ReadStdinLine(); ok {
+				return &StringValue{Val: line}
 			}
 			return &StringValue{Val: ""}
 		},
@@ -620,6 +648,39 @@ func RunShellCommand(cmdStr string) (string, error) {
 	return string(out), err
 }
 
+// RunShellCommandStreaming runs a shell command and copies its output to w while
+// the command is still producing it, so the terminal shows the output as it
+// arrives. It returns the complete output and the exit code of the command.
+func RunShellCommandStreaming(cmdStr string, w io.Writer) (string, int) {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", cmdStr)
+	} else {
+		cmd = exec.Command("sh", "-c", cmdStr)
+	}
+
+	var buf bytes.Buffer
+	if w != nil {
+		cmd.Stdout = io.MultiWriter(w, &buf)
+		cmd.Stderr = io.MultiWriter(w, &buf)
+	} else {
+		cmd.Stdout = &buf
+		cmd.Stderr = &buf
+	}
+
+	err := cmd.Run()
+	code := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			code = exitErr.ExitCode()
+		} else {
+			code = 1
+		}
+	}
+	return buf.String(), code
+}
+
 func getNumericFloat(v Value) float64 {
 	switch val := v.(type) {
 	case *IntegerValue:
@@ -658,8 +719,9 @@ func ValueToNative(v Value) any {
 			"time":    val.Time,
 		}
 	case *ListValue:
-		res := make([]any, len(val.Elements))
-		for i, el := range val.Elements {
+		valElems := val.ElementsSlice()
+		res := make([]any, len(valElems))
+		for i, el := range valElems {
 			res[i] = ValueToNative(el)
 		}
 		return res
@@ -734,6 +796,11 @@ func CallMethod(obj Value, method string, args []Value) (Value, error) {
 		return callListMethod(target, method, args)
 	case *MapValue:
 		return callMapMethod(target, method, args)
+	case *FuncValue:
+		if method == "stream" {
+			return nil, fmt.Errorf("fn.stream() is not supported by the VM backend; run the program with the interpreter")
+		}
+		return nil, fmt.Errorf("value of type %s has no methods", obj.Type())
 	default:
 		return nil, fmt.Errorf("value of type %s has no methods", obj.Type())
 	}
@@ -793,7 +860,7 @@ func callStringMethod(s *StringValue, method string, args []Value) (Value, error
 		}
 		return FALSE, nil
 	case "len":
-		return &IntegerValue{Val: int64(utf8.RuneCountInString(s.Val))}, nil
+		return &IntegerValue{Val: int64(len(s.RuneSlice()))}, nil
 	default:
 		return nil, fmt.Errorf("string has no method %q", method)
 	}
@@ -808,31 +875,35 @@ func callListMethod(l *ListValue, method string, args []Value) (Value, error) {
 		l.Append(args[0])
 		return l, nil
 	case "pop":
+		l.Materialize()
 		if len(l.Elements) == 0 {
 			return NULL, nil
 		}
 		last := l.Elements[len(l.Elements)-1]
 		l.Elements = l.Elements[:len(l.Elements)-1]
+		limits.Refund(limits.CostValueSlot)
 		return last, nil
 	case "len":
-		return &IntegerValue{Val: int64(len(l.Elements))}, nil
+		return &IntegerValue{Val: int64(l.Len())}, nil
 	case "contains":
 		if len(args) == 0 {
 			return FALSE, nil
 		}
-		for _, el := range l.Elements {
+		for _, el := range l.ElementsSlice() {
 			if ValuesEqual(el, args[0]) {
 				return TRUE, nil
 			}
 		}
 		return FALSE, nil
 	case "reverse":
+		l.Materialize()
 		n := len(l.Elements)
 		for i := 0; i < n/2; i++ {
 			l.Elements[i], l.Elements[n-1-i] = l.Elements[n-1-i], l.Elements[i]
 		}
 		return l, nil
 	case "sort":
+		l.Materialize()
 		sort.SliceStable(l.Elements, func(i, j int) bool {
 			a, b := l.Elements[i], l.Elements[j]
 			if a.Type() == INTEGER_VAL && b.Type() == INTEGER_VAL {
@@ -849,8 +920,9 @@ func callListMethod(l *ListValue, method string, args []Value) (Value, error) {
 		if len(args) > 0 {
 			sep = CoerceToString(args[0])
 		}
-		parts := make([]string, len(l.Elements))
-		for i, el := range l.Elements {
+		elems := l.ElementsSlice()
+		parts := make([]string, len(elems))
+		for i, el := range elems {
 			parts[i] = CoerceToString(el)
 		}
 		return &StringValue{Val: strings.Join(parts, sep)}, nil
@@ -859,8 +931,9 @@ func callListMethod(l *ListValue, method string, args []Value) (Value, error) {
 			return nil, fmt.Errorf(".map() requires a function argument")
 		}
 		fn := args[0]
-		res := make([]Value, len(l.Elements))
-		for i, el := range l.Elements {
+		elems := l.ElementsSlice()
+		res := make([]Value, len(elems))
+		for i, el := range elems {
 			ret, err := invokeCallable(fn, []Value{el})
 			if err != nil {
 				return nil, err
@@ -874,7 +947,7 @@ func callListMethod(l *ListValue, method string, args []Value) (Value, error) {
 		}
 		fn := args[0]
 		res := make([]Value, 0)
-		for _, el := range l.Elements {
+		for _, el := range l.ElementsSlice() {
 			ret, err := invokeCallable(fn, []Value{el})
 			if err != nil {
 				return nil, err

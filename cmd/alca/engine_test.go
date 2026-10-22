@@ -6,6 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/alca-lang/alca/pkg/ast"
+	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 // runCaptured executes src on the given engine and returns stdout and the exit code.
@@ -16,6 +20,7 @@ func runCaptured(t *testing.T, src string, eng engine) (string, int) {
 	if err := os.WriteFile(file, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
+
 	prog, content, ok := loadProgram(file)
 	if !ok {
 		t.Fatalf("program failed to parse/type-check")
@@ -29,6 +34,26 @@ func runCaptured(t *testing.T, src string, eng engine) (string, int) {
 	w.Close()
 	os.Stdout = old
 	return <-done, code
+}
+
+func TestExecuteWaitsForAndReportsAsyncStreamErrors(t *testing.T) {
+	previous := sandbox.CurrentPolicy()
+	sandbox.SetPolicy(sandbox.DenyAll())
+	defer sandbox.SetPolicy(previous)
+
+	if _, err := interpreter.HandleStream(
+		&interpreter.StringValue{Val: "output"},
+		"&>>",
+		&interpreter.StringValue{Val: "denied.txt"},
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _ := execute("async.al", "", &ast.Program{}, engineInterp, true)
+	if code != 1 {
+		t.Fatalf("execute exit code = %d, want 1 when a background write fails", code)
+	}
 }
 
 // corpus is run on BOTH engines; the output must match the expectation on each.
@@ -800,6 +825,22 @@ println(i());
 println(v());
 println(i());
 `, "1\n20\n3\n"},
+
+	{"q33_declaration_modifiers_and_shadowing", `
+public int: shared = 10;
+const int: limit = 32;
+func publish() -> int:
+    private int: local = 5;
+    public int: exported = shared + local;
+    return exported;
+println(publish());
+println(exported);
+x := 1;
+x := 2;
+if x + limit > 0:
+    x := 3;
+println(x);
+`, "15\n15\n3\n"},
 }
 
 func TestEnginesAgree(t *testing.T) {
@@ -856,6 +897,31 @@ func TestUnsupportedFeatureFallsBackToInterpreter(t *testing.T) {
 	os.Stdout = old
 	if usedVM {
 		t.Fatal("threads blocks are not VM-compilable; the interpreter must be used")
+	}
+}
+
+func TestClassProgramRunsOnTheVM(t *testing.T) {
+	src := "class Greeter:\n    public string: name;\n    public func hello() -> string:\n        return \"hi \" + self.name;\n\ng := Greeter(\"Alca\");\nprintln(g.hello());\n"
+	file := filepath.Join(t.TempDir(), "p.al")
+	_ = os.WriteFile(file, []byte(src), 0o644)
+	prog, content, ok := loadProgram(file)
+	if !ok {
+		t.Fatal("class program failed to load")
+	}
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	done := make(chan string)
+	go func() { b, _ := io.ReadAll(r); done <- string(b) }()
+	_, usedVM := execute(file, content, prog, engineAuto, true)
+	w.Close()
+	os.Stdout = old
+	out := <-done
+	if !usedVM {
+		t.Fatal("class programs must run on the VM")
+	}
+	if out != "hi Alca\n" {
+		t.Fatalf("output = %q, want %q", out, "hi Alca\n")
 	}
 }
 

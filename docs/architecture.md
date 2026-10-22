@@ -39,7 +39,9 @@ may contain only comments and still be a valid empty body.
 - declared function and stdlib signatures, including optional, variadic, and
   nullable parameters/returns;
 - generic element fitting for `append`/`push`/`pop` and collections;
-- no shadowing and no `any` in declarations.
+- no shadowing: a name that is already bound keeps its binding, and a
+  redeclaration with another type is an error;
+- no `any` in declarations (`json` is the dynamic type).
 
 `pkg/typecheck/builtins_table.go` is the canonical stdlib signature table used
 by the checker, LSP, and completion. Signatures are verified against real
@@ -70,9 +72,21 @@ cannot compile. It must never silently skip a statement or emit code with
 different semantics. `alca run` uses that error to fall back to the interpreter;
 `--vm` reports it to the user.
 
-Unsupported today includes decorators, shell functions, `ba`/`threads`/`tx`/
-`watch`/`mock`/`wait` blocks, timeout expressions, capture streams used as
-values, and some keyword-argument edge cases.
+Unsupported today includes shell functions, `ba`/`threads`/`watch` blocks,
+timeout expressions, capture streams used as values, and keyword arguments in
+a call whose callee is only known at run time. The concurrent constructs need
+a virtual machine that can run more than one frame stack at a time; the
+interpreter forks an environment per task, the virtual machine does not have
+that yet.
+
+A closure is a copy of its template that only differs in the values it
+captured. The JIT compiles the code of the template once and shares the
+artifact between all instances of that closure, so a program that creates many
+closures does not compile the same code again and again. The captured values
+stay per instance: the runtime helpers read them from the closure that is
+executing, not from the shared template. The number of compiled artifacts is
+bounded (`jit.Config.MaxArtifacts`, 4096 by default); the functions that do not
+fit are executed by the bytecode VM.
 
 ## Engine parity
 
@@ -83,6 +97,27 @@ regression test when setup such as a sandbox policy is required).
 
 `cmd/alca/examples_test.go` additionally type-checks every shipped `.al` file,
 rejects the negative fixtures, and runs deterministic examples on both engines.
+
+## Priorities
+
+The order of work is deliberate, and it is not "more features":
+
+1. **Engine parity.** Every construct the interpreter supports should reach the
+   bytecode VM and the JIT tiers. The list of exceptions in
+   [language.md](language.md#engines) is the backlog: shell functions, the
+   concurrent blocks (`ba`, `threads`, `watch`) and timeout expressions, which
+   need a virtual machine that can run several frame stacks at once.
+2. **One predictable rule per operation.** Equality, coercion, error values
+   and the memory guard follow a written table instead of a set of special
+   cases. A rule that is documented but not implemented is a bug in the same
+   sense as a failing test.
+3. **Documentation that matches the implementation.** The two engines are
+   compared by the output-parity corpus, and every behaviour that differs
+   between them is listed. A claim in `README.md` that the VM does not keep
+   is fixed in the README, not left to the reader.
+4. **New features last.** A feature that only the interpreter supports adds a
+   second implementation of the same semantics, so it is only worth it when
+   the rules it depends on are already settled.
 
 ## Compiler and bundles
 
@@ -127,6 +162,28 @@ modules provide trusted host access and are intentionally outside the
 read/write/network policy. SQL statements are also not inspected; granting a
 database connection lets that engine access its own resources. Do not run
 untrusted code with those facilities.
+
+## Memory accounting
+
+`pkg/limits` holds the process-wide memory meter. It keeps two numbers: the
+memory an Alca program currently holds (list elements, map entries, strings,
+environment bindings, the fixed structures of a virtual machine, and compiled
+JIT artifacts) and the total it has allocated. The counters are updated where
+the values are created, so the estimate follows the data of the program.
+
+The meter does not try to catch a Go out-of-memory condition: that error is
+fatal and cannot be recovered. The guard therefore works ahead of the
+allocator. The engines check the meter periodically - every few hundred
+instructions in the bytecode VM and the tree-walking interpreter, and at every
+helper boundary in the JIT, which is where the native tiers allocate - and
+raise a regular Alca error (code 507) when a limit was reached. The error can
+be handled by the program with `?>>>`.
+
+`cmd/alca` installs the limits from `--max-memory` and `--max-allocation`.
+The meter is process-wide, which matches the command line tool and the
+standalone runtime: one program per process. Hosts that embed several
+interpreters share the budget and should call `limits.Reset()` between
+programs.
 
 Denied operations return a `sandbox.DeniedError`, which unwraps to
 `os.ErrPermission`, is classified by `stdlib.IsPermissionError`, and is surfaced

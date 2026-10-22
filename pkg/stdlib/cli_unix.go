@@ -3,11 +3,11 @@
 package stdlib
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
+
+	"github.com/alca-lang/alca/pkg/interpreter"
 )
 
 // readPasswordSecure reads a line from the terminal with echo disabled (stty).
@@ -25,10 +25,10 @@ func readPasswordSecure() (string, error) {
 	}
 	defer restore()
 
-	text, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	text, ok := interpreter.ReadStdinLine()
 	fmt.Println()
-	if err != nil {
-		return "", err
+	if !ok {
+		return "", fmt.Errorf("could not read password")
 	}
-	return strings.TrimRight(text, "\r\n"), nil
+	return text, nil
 }

@@ -2,9 +2,23 @@
   "Use Standard Module": {
     "prefix": "use",
     "body": [
-      "use std.${1|math,time,crypto,path,io,net,db,log,metrics,sys,env,regex,csv,http,json|};"
+      "use std.${1|ai,archive,cli,compress,crypto,csv,db,env,ffi,formats,gui,http,ini,io,log,math,metrics,net,path,process,re,regex,sys,time,zip|};"
     ],
     "description": "Import a standard library module"
+  },
+  "Import Local File": {
+    "prefix": "usefile",
+    "body": [
+      "use \"./${1:module}.al\";"
+    ],
+    "description": "Import a relative Alca source file"
+  },
+  "Import Library": {
+    "prefix": "uselib",
+    "body": [
+      "use ${1:library};"
+    ],
+    "description": "Import an APM-installed Alca library"
   },
   "Function Declaration": {
     "prefix": "func",
@@ -13,6 +27,13 @@
       "    return ${5:0};"
     ],
     "description": "Declare a typed function in Alca"
+  },
+  "Lambda": {
+    "prefix": "lambda",
+    "body": [
+      "${1:inc} := |${2:x}: ${3:int}| ${2:x} + ${4:1};"
+    ],
+    "description": "Declare a lambda expression"
   },
   "Shell Function Declaration": {
     "prefix": "shfunc",
@@ -31,6 +52,66 @@
       "    ${4:active}: bool = true;"
     ],
     "description": "Declare a structure with typed fields"
+  },
+  "Class Declaration": {
+    "prefix": "class",
+    "body": [
+      "class ${1:Name}:",
+      "    public ${2:string}: ${3:name};",
+      "",
+      "    public func ${4:describe}() -> string:",
+      "        return self.${3:name};"
+    ],
+    "description": "Declare a class with a public field and a method"
+  },
+  "Class with Inheritance": {
+    "prefix": "classextends",
+    "body": [
+      "class ${1:Child} extends ${2:Parent}:",
+      "    public ${3:string}: ${4:name};",
+      "",
+      "    public func ${5:describe}() -> string:",
+      "        return super.${6:describe}() + \" \" + self.${4:name};"
+    ],
+    "description": "Declare a subclass that extends a parent class"
+  },
+  "Method": {
+    "prefix": "method",
+    "body": [
+      "public func ${1:name}(${2:value}: ${3:int}) -> ${4:void}:",
+      "    ${0:// body}"
+    ],
+    "description": "Declare a method inside a class body"
+  },
+  "Public Field": {
+    "prefix": "field",
+    "body": [
+      "public ${1:string}: ${2:name};"
+    ],
+    "description": "Declare a public field inside a class or struct"
+  },
+  "Private Field": {
+    "prefix": "fieldprivate",
+    "body": [
+      "private ${1:int}: ${2:count} = ${3:0};"
+    ],
+    "description": "Declare a private field inside a class or struct"
+  },
+  "Const Field": {
+    "prefix": "fieldconst",
+    "body": [
+      "public const ${1:string}: ${2:kind} = \"${3:value}\";"
+    ],
+    "description": "Declare an immutable field inside a class or struct"
+  },
+  "Nested Struct": {
+    "prefix": "nestedstruct",
+    "body": [
+      "public struct ${1:Point}:",
+      "    ${2:x}: int;",
+      "    ${3:y}: int;"
+    ],
+    "description": "Declare a struct nested inside a class body"
   },
   "Variable Declaration": {
     "prefix": "var",
@@ -52,6 +133,27 @@
       "${1:name}: ${2:string} | null = null;"
     ],
     "description": "Declare a nullable variable (T | null)"
+  },
+  "Public Variable": {
+    "prefix": "varpublic",
+    "body": [
+      "public ${1:int}: ${2:name} = ${3:0};"
+    ],
+    "description": "Declare a binding visible to the whole program"
+  },
+  "Private Variable": {
+    "prefix": "varprivate",
+    "body": [
+      "private ${1:int}: ${2:name} = ${3:0};"
+    ],
+    "description": "Declare a private binding inside a function, method, or struct"
+  },
+  "Const Variable": {
+    "prefix": "varconst",
+    "body": [
+      "const ${1:int}: ${2:NAME} = ${3:0};"
+    ],
+    "description": "Declare an immutable binding"
   },
   "If Statement": {
     "prefix": "if",
@@ -98,6 +200,14 @@
       "    ${0:// body}"
     ],
     "description": "Numeric range loop (inclusive on both ends)"
+  },
+  "Loop": {
+    "prefix": "loop",
+    "body": [
+      "loop:",
+      "    ${0:// body}"
+    ],
+    "description": "Infinite loop; leave with break"
   },
   "Match Statement": {
     "prefix": "match",
@@ -151,6 +261,21 @@
     ],
     "description": "Run statements on parallel threads"
   },
+  "Wait Statement": {
+    "prefix": "wait",
+    "body": [
+      "wait;"
+    ],
+    "description": "Wait for outstanding background work"
+  },
+  "Watch Block": {
+    "prefix": "watch",
+    "body": [
+      "watch ${1:path}:",
+      "    ${0:// react to changes}"
+    ],
+    "description": "Watch a file or resource and run a block"
+  },
   "Test Block": {
     "prefix": "test",
     "body": [
@@ -159,6 +284,28 @@
       "    assert ${2:value == 10};"
     ],
     "description": "Alca integration test block"
+  },
+  "Assert": {
+    "prefix": "assert",
+    "body": [
+      "assert ${1:condition};"
+    ],
+    "description": "Assert a condition inside a test"
+  },
+  "Mock": {
+    "prefix": "mock",
+    "body": [
+      "mock(${1:target}, ${2:replacement});"
+    ],
+    "description": "Replace a function or value in a test"
+  },
+  "Transaction": {
+    "prefix": "tx",
+    "body": [
+      "tx(${1:connection}):",
+      "    ${0:// transactional work}"
+    ],
+    "description": "Run a database transaction block"
   },
   "SQLite Database": {
     "prefix": "sqlite",
@@ -198,5 +345,14 @@
       "log.info(\"${1:Service started}\", {\"${2:port}\": ${3:8080}});"
     ],
     "description": "Structured JSON logging via std.log"
+  },
+  "Decorator": {
+    "prefix": "decorator",
+    "body": [
+      "@${1:memoize}",
+      "func ${2:name}(${3:value}: ${4:int}) -> ${5:int}:",
+      "    ${0:// body}"
+    ],
+    "description": "Attach a decorator to a function"
   }
 }

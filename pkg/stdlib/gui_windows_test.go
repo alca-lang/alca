@@ -27,7 +27,9 @@ func TestRegisterGUIBuiltins(t *testing.T) {
 	expectedMethods := []string{
 		"alert", "msgbox", "confirm", "prompt",
 		"open_file", "save_file", "notify",
-		"webview", "window",
+		"screen_size", "width", "height", "backends", "set_backend",
+		"webview", "window", "tk_window", "qt_window",
+		"task_manager", "native_task_manager",
 	}
 
 	for _, m := range expectedMethods {

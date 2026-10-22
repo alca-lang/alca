@@ -130,6 +130,40 @@ func TestStructAndMatch(t *testing.T) {
 	}
 }
 
+func TestClassDeclaration(t *testing.T) {
+	src := `class Dog extends Animal:
+    public string: name;
+    private int: age = 0;
+
+    public func speak() -> string:
+        return self.name;
+
+    private func grow() -> int:
+        self.age = self.age + 1;
+        return self.age;
+
+    public struct Toy:
+        public string: label;
+`
+	prog := mustParse(t, src)
+	class, ok := prog.Statements[0].(*ast.ClassDeclaration)
+	if !ok {
+		t.Fatalf("want ClassDeclaration, got %T", prog.Statements[0])
+	}
+	if class.Name != "Dog" || class.Parent != "Animal" {
+		t.Fatalf("class = %q extends %q, want Dog extends Animal", class.Name, class.Parent)
+	}
+	if len(class.Fields) != 2 || class.Fields[0].Name != "name" || class.Fields[1].Visibility != "private" {
+		t.Fatalf("unexpected fields: %+v", class.Fields)
+	}
+	if len(class.Methods) != 2 || class.Methods[0].Name() != "speak" || class.Methods[1].Visibility != "private" {
+		t.Fatalf("unexpected methods: %+v", class.Methods)
+	}
+	if len(class.NestedStructs) != 1 || class.NestedStructs[0].Name != "Toy" {
+		t.Fatalf("unexpected nested structs: %+v", class.NestedStructs)
+	}
+}
+
 // A block whose body is only comment lines produces no INDENT token (comments
 // are invisible to the lexer). It must parse as an empty block so that the
 // following else/elif/case still binds to the statement.
@@ -194,5 +228,275 @@ func TestUnindentedStatementIsNotABlockBody(t *testing.T) {
 	}
 	if _, ok := prog.Statements[2].(*ast.VarDeclaration); !ok {
 		t.Fatalf("statement 2: want VarDeclaration, got %T", prog.Statements[2])
+	}
+}
+
+func TestMultilineStringParsing(t *testing.T) {
+	src := "s := \"\"\"line 1\nline 2\"\"\";\nraw := r\"\"\"raw\\nline\"\"\";\n"
+	prog := mustParse(t, src)
+	if len(prog.Statements) != 2 {
+		t.Fatalf("want 2 statements, got %d", len(prog.Statements))
+	}
+	sDecl := prog.Statements[0].(*ast.VarDeclaration)
+	strLit, ok := sDecl.Value.(*ast.StringLiteral)
+	if !ok || strLit.Value != "line 1\nline 2" {
+		t.Fatalf("unexpected value: %v", sDecl.Value)
+	}
+
+	rawDecl := prog.Statements[1].(*ast.VarDeclaration)
+	rawLit, ok := rawDecl.Value.(*ast.StringLiteral)
+	if !ok || rawLit.Value != "raw\\nline" {
+		t.Fatalf("unexpected raw value: %v", rawDecl.Value)
+	}
+}
+
+func TestFStringParsing(t *testing.T) {
+	t.Run("literal only with escaped braces", func(t *testing.T) {
+		src := "s := f\"{{hello}} world\";\n"
+		prog := mustParse(t, src)
+		decl := prog.Statements[0].(*ast.VarDeclaration)
+		lit, ok := decl.Value.(*ast.StringLiteral)
+		if !ok || lit.Value != "{hello} world" {
+			t.Fatalf("expected literal '{hello} world', got %v", decl.Value)
+		}
+	})
+
+	t.Run("single interpolation", func(t *testing.T) {
+		src := "s := f\"hello {name}!\";\n"
+		prog := mustParse(t, src)
+		decl := prog.Statements[0].(*ast.VarDeclaration)
+		// Expect: ("hello " + string(name)) + "!"
+		infix, ok := decl.Value.(*ast.InfixExpression)
+		if !ok || infix.Operator != "+" {
+			t.Fatalf("expected infix +, got %T", decl.Value)
+		}
+		rightLit, ok := infix.Right.(*ast.StringLiteral)
+		if !ok || rightLit.Value != "!" {
+			t.Fatalf("expected right literal '!', got %v", infix.Right)
+		}
+		leftInfix, ok := infix.Left.(*ast.InfixExpression)
+		if !ok || leftInfix.Operator != "+" {
+			t.Fatalf("expected left infix +, got %v", infix.Left)
+		}
+		call, ok := leftInfix.Right.(*ast.CallExpression)
+		if !ok {
+			t.Fatalf("expected CallExpression, got %T", leftInfix.Right)
+		}
+		fnIdent, ok := call.Function.(*ast.Identifier)
+		if !ok || fnIdent.Value != "string" {
+			t.Fatalf("expected function 'string', got %v", call.Function)
+		}
+	})
+}
+
+func TestSyntaxErrorDiagnosticsAndSuggestions(t *testing.T) {
+	tests := []struct {
+		name           string
+		src            string
+		wantErrSubstr  string
+		wantHelpSubstr string
+	}{
+		{
+			name:           "stray closing paren",
+			src:            ");\n",
+			wantErrSubstr:  "unexpected closing ')'",
+			wantHelpSubstr: "unclosed '(' earlier",
+		},
+		{
+			name:           "stray closing bracket",
+			src:            "];\n",
+			wantErrSubstr:  "unexpected closing ']'",
+			wantHelpSubstr: "unclosed '[' earlier",
+		},
+		{
+			name:           "stray closing brace",
+			src:            "};\n",
+			wantErrSubstr:  "unexpected closing '}'",
+			wantHelpSubstr: "unclosed '{' earlier",
+		},
+		{
+			name:           "stray plus operator",
+			src:            "+ 1 2;\n",
+			wantErrSubstr:  "stray arithmetic operator",
+			wantHelpSubstr: "provide an expression to the left",
+		},
+		{
+			name:           "stray asterisk operator",
+			src:            "* 10;\n",
+			wantErrSubstr:  "stray arithmetic operator",
+			wantHelpSubstr: "provide an expression to the left",
+		},
+		{
+			name:           "stray equality operator",
+			src:            "== 5;\n",
+			wantErrSubstr:  "comparison operator",
+			wantHelpSubstr: "comparison operators require a left-hand expression",
+		},
+		{
+			name:           "stray logical and",
+			src:            "and true;\n",
+			wantErrSubstr:  "logical operator",
+			wantHelpSubstr: "provide a boolean expression to the left",
+		},
+		{
+			name:           "stray pipe operator",
+			src:            "|> println;\n",
+			wantErrSubstr:  "pipeline operator",
+			wantHelpSubstr: "passes it to the function",
+		},
+		{
+			name:           "stray colon",
+			src:            ": 123;\n",
+			wantErrSubstr:  "unexpected ':'",
+			wantHelpSubstr: "use ':' only at the end of block headers",
+		},
+		{
+			name:           "stray comma",
+			src:            ", 123;\n",
+			wantErrSubstr:  "unexpected ','",
+			wantHelpSubstr: "remove the extra comma",
+		},
+		{
+			name:           "empty semicolon statement",
+			src:            ";\n",
+			wantErrSubstr:  "unexpected ';'",
+			wantHelpSubstr: "remove the stray semicolon",
+		},
+		{
+			name:           "missing if condition",
+			src:            "if:\n    x := 1;\n",
+			wantErrSubstr:  "missing condition in 'if'",
+			wantHelpSubstr: "provide a boolean condition",
+		},
+		{
+			name:           "missing while condition",
+			src:            "while:\n    break;\n",
+			wantErrSubstr:  "missing condition in 'while'",
+			wantHelpSubstr: "provide a loop condition",
+		},
+		{
+			name:           "missing match expression",
+			src:            "match:\n    case 1:\n        x := 1;\n",
+			wantErrSubstr:  "missing expression in 'match'",
+			wantHelpSubstr: "provide a match expression",
+		},
+		{
+			name:           "missing case pattern",
+			src:            "match n:\n    case:\n        x := 1;\n",
+			wantErrSubstr:  "missing pattern in 'case'",
+			wantHelpSubstr: "provide a pattern to match",
+		},
+		{
+			name:           "missing for variable",
+			src:            "for in [1, 2, 3]:\n    println(1);\n",
+			wantErrSubstr:  "expected loop variable name",
+			wantHelpSubstr: "specify a variable name",
+		},
+		{
+			name:           "missing foreach variable",
+			src:            "foreach in [1, 2, 3]:\n    println(1);\n",
+			wantErrSubstr:  "expected loop variable name",
+			wantHelpSubstr: "specify a variable name",
+		},
+		{
+			name:           "missing function name",
+			src:            "func (): \n    return 1;\n",
+			wantErrSubstr:  "expected function name",
+			wantHelpSubstr: "provide a valid function name",
+		},
+		{
+			name:           "missing struct name",
+			src:            "struct :\n    a: int;\n",
+			wantErrSubstr:  "expected struct name",
+			wantHelpSubstr: "provide a struct name",
+		},
+		{
+			name:           "missing decorator name",
+			src:            "@ 123\nfunc f():\n    return 1;\n",
+			wantErrSubstr:  "expected identifier after '@'",
+			wantHelpSubstr: "provide a decorator name",
+		},
+		{
+			name:           "missing colon in parameter type",
+			src:            "func f(x int):\n    return 1;\n",
+			wantErrSubstr:  "missing ':' before type annotation for parameter",
+			wantHelpSubstr: "write parameter types with a colon",
+		},
+		{
+			name:           "missing identifier after dot",
+			src:            "x := obj. ;\n",
+			wantErrSubstr:  "expected identifier after '.'",
+			wantHelpSubstr: "provide a valid field or method name",
+		},
+		{
+			name:           "unclosed paren",
+			src:            "x := (1 + 2;\n",
+			wantErrSubstr:  "expected ')' to close parenthesis",
+			wantHelpSubstr: "unclosed '(' from line 1, col 6",
+		},
+		{
+			name:           "unclosed bracket index",
+			src:            "x := a[10;\n",
+			wantErrSubstr:  "expected ']' to close list or index",
+			wantHelpSubstr: "unclosed '[' from line 1, col 7",
+		},
+		{
+			name:           "unclosed map literal",
+			src:            "x := {\"key\": 1;\n",
+			wantErrSubstr:  "expected '}' to close block or map",
+			wantHelpSubstr: "unclosed '{' from line 1, col 6",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := parser.New(lexer.New(tc.src))
+			p.ParseProgram()
+			syntaxErrs := p.SyntaxErrors()
+			if len(syntaxErrs) == 0 {
+				t.Fatalf("expected syntax error for source:\n%s", tc.src)
+			}
+
+			foundErr := false
+			foundHelp := false
+			var errMsgs []string
+			var suggestions []string
+
+			for _, err := range syntaxErrs {
+				errMsgs = append(errMsgs, err.Message)
+				suggestions = append(suggestions, err.Suggestion)
+				if strings.Contains(err.Message, tc.wantErrSubstr) {
+					foundErr = true
+				}
+				if strings.Contains(err.Suggestion, tc.wantHelpSubstr) {
+					foundHelp = true
+				}
+			}
+
+			if !foundErr {
+				t.Errorf("missing expected error substring %q; got errors: %v", tc.wantErrSubstr, errMsgs)
+			}
+			if !foundHelp {
+				t.Errorf("missing expected suggestion substring %q; got suggestions: %v", tc.wantHelpSubstr, suggestions)
+			}
+		})
+	}
+}
+
+func TestNoCascadingSemicolonOnBadExpression(t *testing.T) {
+	// A bad expression should report an error for the invalid token,
+	// but NOT a secondary cascading "expected ';' at end of statement".
+	src := "* 1 2;\nx := 10;\n"
+	p := parser.New(lexer.New(src))
+	prog := p.ParseProgram()
+	errs := p.SyntaxErrors()
+
+	for _, err := range errs {
+		if strings.Contains(err.Message, "expected ';'") {
+			t.Fatalf("cascading 'expected ;' error was reported: %s", err.Message)
+		}
+	}
+	if len(prog.Statements) != 1 {
+		t.Fatalf("expected parser to recover and parse subsequent statement, got %d statements", len(prog.Statements))
 	}
 }

@@ -221,7 +221,7 @@ func RegisterPathBuiltins(env *interpreter.Environment) {
 		var parts []string
 		if len(args) == 1 {
 			if lv, ok := args[0].(*interpreter.ListValue); ok {
-				for _, elem := range lv.Elements {
+				for _, elem := range lv.ElementsSlice() {
 					parts = append(parts, interpreter.CoerceToString(elem))
 				}
 				return &interpreter.StringValue{Val: strings.Join(parts, string(os.PathListSeparator))}

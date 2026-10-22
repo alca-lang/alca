@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +16,8 @@ import (
 
 	"github.com/alca-lang/alca/pkg/ast"
 	"github.com/alca-lang/alca/pkg/diag"
+	"github.com/alca-lang/alca/pkg/limits"
+	"github.com/alca-lang/alca/pkg/mod"
 )
 
 // ModuleParser is a function type that parses source code into an AST Program.
@@ -35,20 +37,23 @@ func SetModuleParser(mp ModuleParser) {
 
 // Interpreter is the core tree-walking evaluation engine for Alca.
 type Interpreter struct {
-	env         *Environment
-	globals     *Environment
-	errors      []ErrorValue
-	errorLog    string           // global error log path from @error_log
-	oomMax      int64            // max bytes from @oom_guard
-	oomPolicy   string           // oom policy strategy (e.g. "heaviest")
-	memUsed     int64            // approximate memory tracking
-	mocks       map[string]Value // for test mocking
-	dropOnOOM   map[string]bool  // variables marked with @drop_on_oom
-	cache       map[string]Value // memoization cache for @cache
-	filename    string           // active source file being executed
-	source      string           // full source text for error reporting
-	currentNode ast.Node         // currently executing AST node
-	mu          sync.RWMutex
+	env          *Environment
+	globals      *Environment
+	errors       []ErrorValue
+	errorLog     string           // global error log path from @error_log
+	oomMax       int64            // max bytes from @oom_guard
+	oomPolicy    string           // oom policy strategy (e.g. "heaviest")
+	memUsed      int64            // approximate memory tracking
+	mocks        map[string]Value // for test mocking
+	dropOnOOM    map[string]bool  // variables marked with @drop_on_oom
+	cache        map[string]Value // memoization cache for @cache
+	filename     string           // active source file being executed
+	source       string           // full source text for error reporting
+	currentNode  ast.Node         // currently executing AST node
+	testMode     bool             // collect PASS/FAIL and continue after a failed test
+	TestPasses   int              // successful test blocks in test mode
+	TestFailures int              // failed test blocks in test mode
+	mu           sync.RWMutex
 }
 
 // SetFilename sets the active filename for diagnostic reporting.
@@ -59,6 +64,12 @@ func (i *Interpreter) SetFilename(filename string) {
 // SetSource sets the full source code for diagnostic context and error previews.
 func (i *Interpreter) SetSource(source string) {
 	i.source = source
+}
+
+// SetTestMode makes test blocks report PASS/FAIL and continue after a failure.
+// It is used by 'alca test' when a program uses constructs the VM cannot run.
+func (i *Interpreter) SetTestMode(enabled bool) {
+	i.testMode = enabled
 }
 
 // New creates and initializes a new Alca interpreter instance with built-in functions.
@@ -186,18 +197,38 @@ func (i *Interpreter) recordError(errVal *ErrorValue) {
 }
 
 // trackMemory updates memory usage estimates and triggers OOM policies if threshold exceeded.
+//
+// The accounting itself lives in the limits package, which every engine
+// shares. This helper is kept for the interpreter's own bookkeeping and is
+// now only used to report the interpreter-local usage.
 func (i *Interpreter) trackMemory(delta int64) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
 	i.memUsed += delta
-	if i.oomMax > 0 && i.memUsed > i.oomMax {
-		// Trigger OOM mitigation
-		for varName := range i.dropOnOOM {
-			i.env.Delete(varName)
-		}
-		// Reset approximate counter
-		i.memUsed = i.oomMax / 2
+}
+
+// memoryLimitError builds the error value for an exceeded memory limit. The
+// variables marked with @drop_on_oom are released first, because dropping
+// them is the only mitigation the language offers, and the limit error is
+// reported afterwards.
+func (i *Interpreter) memoryLimitError() *ErrorValue {
+	i.dropOOMVariables()
+	errVal := NewError(507, limits.Message())
+	i.recordError(errVal)
+	return errVal
+}
+
+// dropOOMVariables deletes the variables that were marked with @drop_on_oom.
+func (i *Interpreter) dropOOMVariables() {
+	i.mu.Lock()
+	names := make([]string, 0, len(i.dropOnOOM))
+	for name := range i.dropOnOOM {
+		names = append(names, name)
+	}
+	i.mu.Unlock()
+	for _, name := range names {
+		i.env.Delete(name)
 	}
 }
 
@@ -205,6 +236,12 @@ func (i *Interpreter) trackMemory(delta int64) {
 func (i *Interpreter) Eval(node ast.Node) Value {
 	if node == nil {
 		return NULL
+	}
+
+	// The memory guard is checked periodically: the tick is a single atomic
+	// increment, and the meter is only read every CheckInterval ticks.
+	if limits.Tick() && limits.Exceeded() {
+		return i.memoryLimitError()
 	}
 
 	switch n := node.(type) {
@@ -222,6 +259,9 @@ func (i *Interpreter) Eval(node ast.Node) Value {
 
 	case *ast.StructDeclaration:
 		return i.evalStructDeclaration(n)
+
+	case *ast.ClassDeclaration:
+		return i.evalClassDeclaration(n)
 
 	case *ast.IfStatement:
 		return i.evalIfStatement(n)
@@ -279,7 +319,11 @@ func (i *Interpreter) Eval(node ast.Node) Value {
 		return i.evalThreadsStatement(n)
 
 	case *ast.WaitStatement:
-		WaitAll()
+		if err := WaitAll(); err != nil {
+			errVal := NewError(500, err.Error())
+			i.recordError(errVal)
+			return errVal
+		}
 		return NULL
 
 	case *ast.AssertStatement:
@@ -304,7 +348,7 @@ func (i *Interpreter) Eval(node ast.Node) Value {
 		return i.evalIdentifier(n)
 
 	case *ast.IntegerLiteral:
-		return &IntegerValue{Val: n.Value}
+		return NewInteger(n.Value)
 
 	case *ast.FloatLiteral:
 		return &FloatValue{Val: n.Value}
@@ -323,10 +367,21 @@ func (i *Interpreter) Eval(node ast.Node) Value {
 
 	case *ast.ListLiteral:
 		elems := make([]Value, len(n.Elements))
+		allInts := true
 		for idx, el := range n.Elements {
 			elems[idx] = i.Eval(el)
+			if _, ok := elems[idx].(*IntegerValue); !ok {
+				allInts = false
+			}
 		}
 		i.trackMemory(int64(len(elems) * 16))
+		if allInts {
+			ints := make([]int64, len(elems))
+			for idx, el := range elems {
+				ints[idx] = el.(*IntegerValue).Val
+			}
+			return NewIntList(ints)
+		}
 		return NewList(elems...)
 
 	case *ast.MapLiteral:
@@ -506,7 +561,17 @@ func (i *Interpreter) evalVarDeclaration(node *ast.VarDeclaration) Value {
 		}
 	}
 
-	i.env.Set(name, val)
+	target := i.env
+	if node.Visibility == "public" {
+		// Public bindings live in the program-wide environment, so code in any
+		// function or block can read and update them.
+		target = i.globals
+	}
+	if node.IsConst {
+		target.SetConst(name, val)
+	} else {
+		target.Set(name, val)
+	}
 	i.trackMemory(int64(len(name) + 32))
 	return val
 }
@@ -536,6 +601,13 @@ func (i *Interpreter) evalFuncDeclaration(node *ast.FuncDeclaration) Value {
 				argStr := CoerceToString(i.Eval(arg))
 				if strings.HasPrefix(argStr, "max=") {
 					i.oomMax = parseMemorySize(strings.TrimPrefix(argStr, "max="))
+					// The guard covers the whole session, so the limit is
+					// installed on the shared meter. A program may tighten
+					// the limit of its host, but it must not raise it.
+					liveLimit, allocLimit := limits.Limits()
+					if liveLimit == 0 || i.oomMax < liveLimit {
+						limits.SetLimits(i.oomMax, allocLimit)
+					}
 				} else if strings.HasPrefix(argStr, "policy=") {
 					i.oomPolicy = strings.TrimPrefix(argStr, "policy=")
 				}
@@ -551,9 +623,79 @@ func (i *Interpreter) evalStructDeclaration(node *ast.StructDeclaration) Value {
 	sDef := &StructDef{
 		Name:   node.Name,
 		Fields: node.Fields,
+		Env:    i.env,
 	}
 	i.env.Set(node.Name, sDef)
 	return sDef
+}
+
+func (i *Interpreter) evalClassDeclaration(node *ast.ClassDeclaration) Value {
+	def := &StructDef{
+		Name:    node.Name,
+		Fields:  node.Fields,
+		IsClass: true,
+		Methods: map[string]*MethodDef{},
+		Env:     i.env,
+		Nested:  map[string]*StructDef{},
+	}
+
+	if node.Parent != "" {
+		parentVal, ok := i.env.Get(node.Parent)
+		if !ok {
+			return NewError(400, fmt.Sprintf("unknown base class '%s'", node.Parent))
+		}
+		parent, ok := parentVal.(*StructDef)
+		if !ok || !parent.IsClass {
+			return NewError(400, fmt.Sprintf("'%s' is not a class and cannot be extended", node.Parent))
+		}
+		def.Parent = parent
+	}
+
+	for _, nested := range node.NestedStructs {
+		if nested == nil {
+			continue
+		}
+		val := i.evalStructDeclaration(nested)
+		if sd, ok := val.(*StructDef); ok {
+			def.Nested[sd.Name] = sd
+		}
+	}
+
+	for _, m := range node.Methods {
+		if m == nil || m.Func == nil {
+			continue
+		}
+		def.Methods[m.Func.Name] = &MethodDef{
+			Name:       m.Func.Name,
+			Decl:       m.Func,
+			Visibility: m.Visibility,
+			Owner:      def,
+		}
+	}
+
+	i.env.Set(node.Name, def)
+	return def
+}
+
+// bindMethod creates a callable closure with 'self' (and 'super', when the
+// declaring class has a base) bound to the receiver.
+func (i *Interpreter) bindMethod(inst *StructInstance, method *MethodDef) *FuncValue {
+	env := method.Owner.Env
+	if env == nil {
+		env = i.globals
+	}
+	bound := NewEnclosedEnvironment(env)
+	bound.Set("self", inst)
+	if method.Owner.Parent != nil {
+		bound.Set("super", &SuperValue{Instance: inst, Start: method.Owner.Parent})
+	}
+	return &FuncValue{
+		Name:       method.Owner.Name + "." + method.Name,
+		Params:     method.Decl.Params,
+		Body:       method.Decl.Body,
+		ReturnType: method.Decl.ReturnType,
+		Env:        bound,
+	}
 }
 
 func (i *Interpreter) evalIfStatement(node *ast.IfStatement) Value {
@@ -697,9 +839,21 @@ func (i *Interpreter) evalUseStatement(node *ast.UseStatement) Value {
 		}
 	}
 
-	// Handle local/relative modules (e.g. models.user -> models/user.al)
-	relPath := strings.ReplaceAll(modPath, ".", string(filepath.Separator)) + ".al"
-	content, err := ReadFile(relPath)
+	// Resolve the module path: a local .al file next to the importing file,
+	// then the working directory, then the installed APM registry.
+	resolved, found, err := mod.Resolve(modPath, i.filename)
+	if err != nil {
+		errVal := NewError(403, fmt.Sprintf("cannot load module %q: %s", modPath, err.Error()))
+		i.recordError(errVal)
+		return errVal
+	}
+	if !found || resolved.SourcePath == "" {
+		errVal := NewError(404, fmt.Sprintf("cannot load module %q: not found locally or in the APM registry (install it with: apm install %s)", modPath, modPath))
+		i.recordError(errVal)
+		return errVal
+	}
+
+	content, err := ReadFile(resolved.SourcePath)
 	if err != nil {
 		errVal := NewError(404, fmt.Sprintf("cannot load module %q: %s", modPath, err.Error()))
 		i.recordError(errVal)
@@ -727,32 +881,71 @@ func (i *Interpreter) evalUseStatement(node *ast.UseStatement) Value {
 	}
 
 	subInterp := i.Fork(modEnv)
+	// Nested imports inside the module resolve relative to the module file.
+	subInterp.SetFilename(resolved.SourcePath)
 	if err := subInterp.Execute(prog); err != nil {
 		errVal := NewError(500, err.Error())
 		i.recordError(errVal)
 		return errVal
 	}
 
-	// Selective imports or alias binding
-	if len(node.Imports) > 0 {
-		for _, sym := range node.Imports {
-			if val, ok := modEnv.Get(sym); ok {
-				i.env.Set(sym, val)
+	BindModule(i.env, node, ExportModuleMap(modEnv))
+	return NULL
+}
+
+// ExportModuleMap collects a loaded module's public bindings: every top-level
+// definition except the core builtins that seed the module environment.
+func ExportModuleMap(modEnv *Environment) *MapValue {
+	out := NewMap()
+	for name, val := range modEnv.All() {
+		if _, isBuiltin := BuiltinFunctionMap[name]; isBuiltin {
+			continue
+		}
+		out.Set(name, val)
+	}
+	return out
+}
+
+// BindModule applies the binding rules of a `use` statement to env with the
+// module's exported map. Both engines use this so alias, selective import and
+// module-object bindings behave identically:
+//
+//	use m;            -> binds the module object as `m` (last path segment)
+//	use pkg.sub;      -> binds the module object as `sub`
+//	use m as alias;   -> binds the module object as `alias`
+//	use m(a, b);      -> binds the listed members without a module object
+//
+// Members are additionally flattened as convenience globals when no alias or
+// selective import is used, never shadowing an existing binding.
+func BindModule(env *Environment, stmt *ast.UseStatement, modMap *MapValue) {
+	if env == nil || modMap == nil || stmt == nil {
+		return
+	}
+	if len(stmt.Imports) > 0 {
+		for _, imp := range stmt.Imports {
+			if val, ok := modMap.Get(imp); ok {
+				env.Set(imp, val)
 			}
 		}
-	} else if node.Alias != "" {
-		aliasMap := NewMap()
-		for k, v := range modEnv.All() {
-			aliasMap.Set(k, v)
-		}
-		i.env.Set(node.Alias, aliasMap)
-	} else {
-		for k, v := range modEnv.All() {
-			i.env.Set(k, v)
-		}
+		return
 	}
-
-	return NULL
+	binding := stmt.Alias
+	if binding == "" {
+		binding = mod.BindingName(stmt.ModulePath)
+	}
+	if binding != "" {
+		env.Set(binding, modMap)
+	}
+	if stmt.Alias != "" {
+		return
+	}
+	for _, k := range modMap.Keys() {
+		if _, exists := env.Get(k); exists {
+			continue
+		}
+		val, _ := modMap.Get(k)
+		env.Set(k, val)
+	}
 }
 
 func (i *Interpreter) loadStdModule(node *ast.UseStatement) Value {
@@ -857,9 +1050,20 @@ func (i *Interpreter) evalTestStatement(node *ast.TestStatement) Value {
 	res := childInterp.Eval(node.Body)
 	if errVal, ok := res.(*ErrorValue); ok {
 		fmt.Printf("[FAIL] Test: %s - %s\n", node.Name, errVal.Message)
+		if i.testMode {
+			i.mu.Lock()
+			i.TestFailures++
+			i.mu.Unlock()
+			return TRUE
+		}
 		return errVal
 	}
 	fmt.Printf("[PASS] Test: %s\n", node.Name)
+	if i.testMode {
+		i.mu.Lock()
+		i.TestPasses++
+		i.mu.Unlock()
+	}
 	return TRUE
 }
 
@@ -1073,13 +1277,19 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 
 	switch node.Operator {
 	case "==":
-		if ValuesEqual(left, right) {
+		if LooseEqual(left, right) {
 			return TRUE
 		}
 		return FALSE
 
 	case "!=":
-		if !ValuesEqual(left, right) {
+		if !LooseEqual(left, right) {
+			return TRUE
+		}
+		return FALSE
+
+	case "===":
+		if StrictEqual(left, right) {
 			return TRUE
 		}
 		return FALSE
@@ -1087,26 +1297,32 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 	case "+":
 		// String concatenation
 		if left.Type() == STRING_VAL || right.Type() == STRING_VAL {
-			return &StringValue{Val: CoerceToString(left) + CoerceToString(right)}
+			return &StringValue{Val: Concat(CoerceToString(left), CoerceToString(right))}
 		}
 		// List concatenation
 		if left.Type() == LIST_VAL && right.Type() == LIST_VAL {
 			l1 := left.(*ListValue)
 			l2 := right.(*ListValue)
-			combined := make([]Value, 0, len(l1.Elements)+len(l2.Elements))
-			combined = append(combined, l1.Elements...)
-			combined = append(combined, l2.Elements...)
+			if l1.Ints != nil && l2.Ints != nil {
+				combined := make([]int64, 0, len(l1.Ints)+len(l2.Ints))
+				combined = append(combined, l1.Ints...)
+				combined = append(combined, l2.Ints...)
+				return NewIntList(combined)
+			}
+			combined := make([]Value, 0, len(l1.ElementsSlice())+len(l2.ElementsSlice()))
+			combined = append(combined, l1.ElementsSlice()...)
+			combined = append(combined, l2.ElementsSlice()...)
 			return NewList(combined...)
 		}
 		// Numeric addition
 		if left.Type() == INTEGER_VAL && right.Type() == INTEGER_VAL {
-			return &IntegerValue{Val: left.(*IntegerValue).Val + right.(*IntegerValue).Val}
+			return NewInteger(left.(*IntegerValue).Val + right.(*IntegerValue).Val)
 		}
 		return &FloatValue{Val: getNumericFloat(left) + getNumericFloat(right)}
 
 	case "-":
 		if left.Type() == INTEGER_VAL && right.Type() == INTEGER_VAL {
-			return &IntegerValue{Val: left.(*IntegerValue).Val - right.(*IntegerValue).Val}
+			return NewInteger(left.(*IntegerValue).Val - right.(*IntegerValue).Val)
 		}
 		return &FloatValue{Val: getNumericFloat(left) - getNumericFloat(right)}
 
@@ -1119,14 +1335,22 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 		if left.Type() == LIST_VAL && right.Type() == INTEGER_VAL {
 			l := left.(*ListValue)
 			times := int(right.(*IntegerValue).Val)
-			repeated := make([]Value, 0, len(l.Elements)*times)
+			if l.Ints != nil {
+				repeated := make([]int64, 0, len(l.Ints)*times)
+				for idx := 0; idx < times; idx++ {
+					repeated = append(repeated, l.Ints...)
+				}
+				return NewIntList(repeated)
+			}
+			lElems := l.ElementsSlice()
+			repeated := make([]Value, 0, len(lElems)*times)
 			for idx := 0; idx < times; idx++ {
-				repeated = append(repeated, l.Elements...)
+				repeated = append(repeated, lElems...)
 			}
 			return NewList(repeated...)
 		}
 		if left.Type() == INTEGER_VAL && right.Type() == INTEGER_VAL {
-			return &IntegerValue{Val: left.(*IntegerValue).Val * right.(*IntegerValue).Val}
+			return NewInteger(left.(*IntegerValue).Val * right.(*IntegerValue).Val)
 		}
 		return &FloatValue{Val: getNumericFloat(left) * getNumericFloat(right)}
 
@@ -1138,7 +1362,10 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 			if i2 == 0 {
 				return NewError(400, "division by zero")
 			}
-			return &IntegerValue{Val: i1 / i2}
+			if i1 == -9223372036854775808 && i2 == -1 {
+				return NewInteger(-9223372036854775808)
+			}
+			return NewInteger(i1 / i2)
 		}
 		f2 := getNumericFloat(right)
 		if f2 == 0 {
@@ -1148,11 +1375,15 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 
 	case "%":
 		if left.Type() == INTEGER_VAL && right.Type() == INTEGER_VAL {
+			i1 := left.(*IntegerValue).Val
 			i2 := right.(*IntegerValue).Val
 			if i2 == 0 {
 				return NewError(400, "modulo by zero")
 			}
-			return &IntegerValue{Val: left.(*IntegerValue).Val % i2}
+			if i1 == -9223372036854775808 && i2 == -1 {
+				return NewInteger(0)
+			}
+			return NewInteger(i1 % i2)
 		}
 		return NewError(400, "modulo requires integer operands")
 
@@ -1162,7 +1393,7 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 			if exp < 0 {
 				return NewError(400, "negative exponent for integer power; use float operands")
 			}
-			return &IntegerValue{Val: IntPow(left.(*IntegerValue).Val, exp)}
+			return NewInteger(IntPow(left.(*IntegerValue).Val, exp))
 		}
 		return &FloatValue{Val: math.Pow(getNumericFloat(left), getNumericFloat(right))}
 
@@ -1171,27 +1402,51 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 
 	case "<":
 		if left.Type() == STRING_VAL && right.Type() == STRING_VAL {
-			return &BoolValue{Val: left.(*StringValue).Val < right.(*StringValue).Val}
+			if left.(*StringValue).Val < right.(*StringValue).Val {
+				return TRUE
+			}
+			return FALSE
 		}
-		return &BoolValue{Val: getNumericFloat(left) < getNumericFloat(right)}
+		if getNumericFloat(left) < getNumericFloat(right) {
+			return TRUE
+		}
+		return FALSE
 
 	case ">":
 		if left.Type() == STRING_VAL && right.Type() == STRING_VAL {
-			return &BoolValue{Val: left.(*StringValue).Val > right.(*StringValue).Val}
+			if left.(*StringValue).Val > right.(*StringValue).Val {
+				return TRUE
+			}
+			return FALSE
 		}
-		return &BoolValue{Val: getNumericFloat(left) > getNumericFloat(right)}
+		if getNumericFloat(left) > getNumericFloat(right) {
+			return TRUE
+		}
+		return FALSE
 
 	case "<=":
 		if left.Type() == STRING_VAL && right.Type() == STRING_VAL {
-			return &BoolValue{Val: left.(*StringValue).Val <= right.(*StringValue).Val}
+			if left.(*StringValue).Val <= right.(*StringValue).Val {
+				return TRUE
+			}
+			return FALSE
 		}
-		return &BoolValue{Val: getNumericFloat(left) <= getNumericFloat(right)}
+		if getNumericFloat(left) <= getNumericFloat(right) {
+			return TRUE
+		}
+		return FALSE
 
 	case ">=":
 		if left.Type() == STRING_VAL && right.Type() == STRING_VAL {
-			return &BoolValue{Val: left.(*StringValue).Val >= right.(*StringValue).Val}
+			if left.(*StringValue).Val >= right.(*StringValue).Val {
+				return TRUE
+			}
+			return FALSE
 		}
-		return &BoolValue{Val: getNumericFloat(left) >= getNumericFloat(right)}
+		if getNumericFloat(left) >= getNumericFloat(right) {
+			return TRUE
+		}
+		return FALSE
 
 	default:
 		return NewError(400, fmt.Sprintf("unknown infix operator %s", node.Operator))
@@ -1207,7 +1462,7 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 func InOp(left, right Value) Value {
 	switch coll := right.(type) {
 	case *ListValue:
-		for _, el := range coll.Elements {
+		for _, el := range coll.ElementsSlice() {
 			if ValuesEqual(left, el) {
 				return TRUE
 			}
@@ -1242,11 +1497,11 @@ func (i *Interpreter) evalCallExpression(node *ast.CallExpression) Value {
 				return ev
 			}
 		}
-		res, err := CallMethod(target, dot.Field, args)
-		if err == nil {
-			return res
+		// Streaming call: fn.stream() runs the shell commands of a shfunc live.
+		if fnVal, isFn := target.(*FuncValue); isFn && dot.Field == "stream" {
+			return i.streamFunction(fnVal, args)
 		}
-		// If CallMethod didn't find a built-in method, check struct instance fields
+		// Class/struct method or callable field dispatch.
 		if inst, ok := target.(*StructInstance); ok {
 			if fVal, exists := inst.Fields[dot.Field]; exists {
 				ret, invErr := i.invokeFunction(fVal, args, node.KwArgs)
@@ -1255,6 +1510,26 @@ func (i *Interpreter) evalCallExpression(node *ast.CallExpression) Value {
 				}
 				return ret
 			}
+			if method := inst.Def.LookupMethod(dot.Field); method != nil {
+				ret, invErr := i.invokeFunction(i.bindMethod(inst, method), args, node.KwArgs)
+				if invErr != nil {
+					return NewError(500, invErr.Error())
+				}
+				return ret
+			}
+		}
+		if sp, ok := target.(*SuperValue); ok && sp.Start != nil {
+			if method := sp.Start.LookupMethod(dot.Field); method != nil {
+				ret, invErr := i.invokeFunction(i.bindMethod(sp.Instance, method), args, node.KwArgs)
+				if invErr != nil {
+					return NewError(500, invErr.Error())
+				}
+				return ret
+			}
+		}
+		res, err := CallMethod(target, dot.Field, args)
+		if err == nil {
+			return res
 		}
 		// Check map entries for callable values (modules, UI objects, etc.)
 		if m, ok := target.(*MapValue); ok {
@@ -1398,33 +1673,108 @@ func (i *Interpreter) executeShellFunc(fn *FuncValue, args []Value) Value {
 	return &StringValue{Val: strings.Join(outputs, "\n")}
 }
 
-func (i *Interpreter) instantiateStruct(sDef *StructDef, args []Value, kwArgs map[string]ast.Expression) Value {
-	fields := make(map[string]Value, len(sDef.Fields))
+// streamFunction invokes a function in streaming mode. A shell function runs its
+// commands as soon as they are printed and echoes their output live; a plain
+// function is called normally.
+func (i *Interpreter) streamFunction(fn *FuncValue, args []Value) Value {
+	if !fn.IsShell {
+		res, err := i.invokeFunction(fn, args, nil)
+		if err != nil {
+			return NewError(500, err.Error())
+		}
+		return res
+	}
+	return i.executeStreamingShellFunc(fn, args)
+}
 
-	// Initialize default values
-	for _, f := range sDef.Fields {
-		if f.DefaultValue != nil {
-			fields[f.Name] = i.Eval(f.DefaultValue)
+// executeStreamingShellFunc runs the commands of a shell function immediately
+// instead of deferring them until the body has finished. Every command's output
+// is echoed live to the terminal as soon as the command completes. The value of
+// the function is the explicit 'return' value when the body has one, otherwise
+// the output of the last command.
+func (i *Interpreter) executeStreamingShellFunc(fn *FuncValue, args []Value) Value {
+	var lastOutput string
+	executed := 0
+	prevHook := activePrintHook
+
+	SetPrintHook(func(out string) {
+		clean := strings.TrimSpace(out)
+		if clean == "" {
+			return
+		}
+		executed++
+		var cmdOut string
+		if prevHook != nil {
+			// An enclosing shell function is capturing the output: it cannot
+			// be streamed, so collect it and hand it over instead.
+			cmdOut, _ = RunShellCommand(clean)
+			cmdOut = strings.TrimRight(cmdOut, "\r\n")
+			prevHook(cmdOut)
 		} else {
-			fields[f.Name] = NULL
+			// Stream the command output to the terminal while it is produced.
+			cmdOut, _ = RunShellCommandStreaming(clean, os.Stdout)
+		}
+		lastOutput = strings.TrimRight(cmdOut, "\r\n")
+	})
+	defer func() {
+		if prevHook != nil {
+			SetPrintHook(prevHook)
+		} else {
+			ResetPrintHook()
+		}
+	}()
+
+	callEnv := NewEnclosedEnvironment(fn.Env)
+	for idx, param := range fn.Params {
+		if idx < len(args) {
+			callEnv.Set(param.Name, args[idx])
+		} else if param.DefaultValue != nil {
+			callEnv.Set(param.Name, i.Eval(param.DefaultValue))
 		}
 	}
 
-	// Populate positional arguments in order
+	oldEnv := i.env
+	i.env = callEnv
+	res := i.Eval(fn.Body)
+	i.env = oldEnv
+
+	if ret, ok := res.(*ReturnValue); ok {
+		return ret.Val
+	}
+	if executed > 0 {
+		return &StringValue{Val: lastOutput}
+	}
+	return NULL
+}
+
+func (i *Interpreter) instantiateStruct(sDef *StructDef, args []Value, kwArgs map[string]ast.Expression) Value {
+	fields := sDef.AllFields()
+	values := make(map[string]Value, len(fields))
+
+	// Initialize default values
+	for _, f := range fields {
+		if f.DefaultValue != nil {
+			values[f.Name] = i.Eval(f.DefaultValue)
+		} else {
+			values[f.Name] = NULL
+		}
+	}
+
+	// Populate positional arguments in order (base-class fields first)
 	for idx, a := range args {
-		if idx < len(sDef.Fields) {
-			fields[sDef.Fields[idx].Name] = a
+		if idx < len(fields) {
+			values[fields[idx].Name] = a
 		}
 	}
 
 	// Populate keyword arguments
 	for k, kwExpr := range kwArgs {
-		fields[k] = i.Eval(kwExpr)
+		values[k] = i.Eval(kwExpr)
 	}
 
 	return &StructInstance{
 		Def:    sDef,
-		Fields: fields,
+		Fields: values,
 	}
 }
 
@@ -1439,7 +1789,28 @@ func (i *Interpreter) evalIndexExpression(node *ast.IndexExpression) Value {
 			return NewError(400, "list index must be an integer")
 		}
 		idx := iv.Val
-		n := int64(len(target.Elements))
+		var n int64
+		if target.Ints != nil {
+			n = int64(len(target.Ints))
+			if idx < 0 {
+				idx += n
+			}
+			if idx < 0 || idx >= n {
+				return NewError(400, fmt.Sprintf("index %d out of bounds (len %d)", iv.Val, n))
+			}
+			return &IntegerValue{Val: target.Ints[idx]}
+		}
+		if target.Runes != nil {
+			n = int64(len(target.Runes))
+			if idx < 0 {
+				idx += n
+			}
+			if idx < 0 || idx >= n {
+				return NewError(400, fmt.Sprintf("index %d out of bounds (len %d)", iv.Val, n))
+			}
+			return SingleRuneString(target.Runes[idx])
+		}
+		n = int64(len(target.Elements))
 		if idx < 0 {
 			idx += n
 		}
@@ -1461,7 +1832,7 @@ func (i *Interpreter) evalIndexExpression(node *ast.IndexExpression) Value {
 		if !ok {
 			return NewError(400, "string index must be an integer")
 		}
-		runes := []rune(target.Val)
+		runes := target.RuneSlice()
 		idx := iv.Val
 		n := int64(len(runes))
 		if idx < 0 {
@@ -1484,6 +1855,20 @@ func (i *Interpreter) evalDotExpression(node *ast.DotExpression) Value {
 	case *StructInstance:
 		if val, exists := target.Fields[node.Field]; exists {
 			return val
+		}
+		if method := target.Def.LookupMethod(node.Field); method != nil {
+			return i.bindMethod(target, method)
+		}
+		return NULL
+
+	case *SuperValue:
+		if val, exists := target.Instance.Fields[node.Field]; exists {
+			return val
+		}
+		if target.Start != nil {
+			if method := target.Start.LookupMethod(node.Field); method != nil {
+				return i.bindMethod(target.Instance, method)
+			}
 		}
 		return NULL
 
@@ -1520,6 +1905,9 @@ func (i *Interpreter) evalAssignExpression(node *ast.AssignExpression) Value {
 
 	switch target := node.Target.(type) {
 	case *ast.Identifier:
+		if i.env.IsConst(target.Value) {
+			return NewError(400, fmt.Sprintf("cannot assign to constant '%s'", target.Value))
+		}
 		// Instant memory release if null is assigned to an existing variable
 		if val.Type() == NULL_VAL {
 			i.env.Delete(target.Value)
@@ -1533,8 +1921,18 @@ func (i *Interpreter) evalAssignExpression(node *ast.AssignExpression) Value {
 	case *ast.DotExpression:
 		left := i.Eval(target.Left)
 		if inst, ok := left.(*StructInstance); ok {
+			if f, found := inst.Def.LookupField(target.Field); found {
+				if f.IsConst {
+					return NewError(400, fmt.Sprintf("cannot assign to constant field '%s'", target.Field))
+				}
+			} else if inst.Def.IsClass {
+				return NewError(400, fmt.Sprintf("class %s has no field '%s'", inst.Def.Name, target.Field))
+			}
 			inst.Fields[target.Field] = val
 			return val
+		}
+		if _, ok := left.(*SuperValue); ok {
+			return NewError(400, "cannot assign through 'super'; assign to 'self."+target.Field+"'")
 		}
 		if m, ok := left.(*MapValue); ok {
 			m.Set(target.Field, val)
@@ -1549,6 +1947,28 @@ func (i *Interpreter) evalAssignExpression(node *ast.AssignExpression) Value {
 		if l, ok := left.(*ListValue); ok {
 			if iv, ok := idx.(*IntegerValue); ok {
 				iVal := iv.Val
+				if l.Ints != nil {
+					n := int64(len(l.Ints))
+					if iVal < 0 {
+						iVal += n
+					}
+					if iVal >= 0 && iVal < n {
+						if iv2, ok := val.(*IntegerValue); ok {
+							l.Ints[iVal] = iv2.Val
+							return val
+						}
+						// non-int assignment: convert to boxed
+						elems := make([]Value, len(l.Ints))
+						for j, v := range l.Ints {
+							elems[j] = &IntegerValue{Val: v}
+						}
+						l.Elements = elems
+						l.Ints = nil
+						// fall through to boxed path
+					} else {
+						return NewError(400, "invalid list index for assignment")
+					}
+				}
 				n := int64(len(l.Elements))
 				if iVal < 0 {
 					iVal += n
@@ -1626,7 +2046,7 @@ func (i *Interpreter) evalTimeoutExpression(node *ast.TimeoutExpression) Value {
 func extractIterableItems(v Value) []Value {
 	switch val := v.(type) {
 	case *ListValue:
-		return val.Elements
+		return val.ElementsSlice()
 	case *MapValue:
 		keys := val.Keys()
 		items := make([]Value, len(keys))
@@ -1635,10 +2055,10 @@ func extractIterableItems(v Value) []Value {
 		}
 		return items
 	case *StringValue:
-		runes := []rune(val.Val)
+		runes := val.RuneSlice()
 		items := make([]Value, len(runes))
 		for idx, r := range runes {
-			items[idx] = &StringValue{Val: string(r)}
+			items[idx] = SingleRuneString(r)
 		}
 		return items
 	case *IntegerValue:
@@ -1670,17 +2090,17 @@ func EvalRange(start, end Value) Value {
 		step = -1
 	}
 
-	elems := make([]Value, 0)
-	if step > 0 {
-		for v := sInt.Val; v <= eInt.Val; v += step {
-			elems = append(elems, &IntegerValue{Val: v})
-		}
-	} else {
-		for v := sInt.Val; v >= eInt.Val; v += step {
-			elems = append(elems, &IntegerValue{Val: v})
-		}
+	n := (eInt.Val-sInt.Val)*step + 1
+	if n <= 0 {
+		return NewIntList(nil)
 	}
-	return NewList(elems...)
+	ints := make([]int64, 0, n)
+	v := sInt.Val
+	for i := int64(0); i < n; i++ {
+		ints = append(ints, v)
+		v += step
+	}
+	return NewIntList(ints)
 }
 
 func evalRange(start, end Value) Value {
@@ -1756,9 +2176,13 @@ func validateType(val Value, ta *ast.TypeAnnotation) bool {
 				return true
 			}
 		default:
-			// Check user-defined struct type name
-			if inst, ok := val.(*StructInstance); ok && inst.Def.Name == expected {
-				return true
+			// Check user-defined struct or class type name, including bases.
+			if inst, ok := val.(*StructInstance); ok {
+				for def := inst.Def; def != nil; def = def.Parent {
+					if def.Name == expected {
+						return true
+					}
+				}
 			}
 		}
 	}
@@ -1808,15 +2232,20 @@ func parseMemorySize(raw string) int64 {
 	return num * multiplier
 }
 
-// hoistDeclarations returns stmts with function/struct declarations first (stable order),
-// so they can be used before their textual definition (the type checker allows this).
+// hoistDeclarations returns stmts with class, function and struct declarations
+// first (stable order), so they can be used before their textual definition
+// (the type checker allows this). Classes are ordered base-first so inheritance
+// links resolve when a child is declared before its parent.
 func hoistDeclarations(stmts []ast.Statement) []ast.Statement {
 	needs := false
 	seenOther := false
 	for _, st := range stmts {
 		switch st.(type) {
-		case *ast.FuncDeclaration, *ast.StructDeclaration:
+		case *ast.FuncDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration:
 			if seenOther {
+				needs = true
+			}
+			if _, isClass := st.(*ast.ClassDeclaration); isClass {
 				needs = true
 			}
 		default:
@@ -1826,7 +2255,44 @@ func hoistDeclarations(stmts []ast.Statement) []ast.Statement {
 	if !needs {
 		return stmts
 	}
+
+	var classes []*ast.ClassDeclaration
+	for _, st := range stmts {
+		if c, ok := st.(*ast.ClassDeclaration); ok {
+			classes = append(classes, c)
+		}
+	}
+	if len(classes) > 0 {
+		byName := make(map[string]*ast.ClassDeclaration, len(classes))
+		for _, c := range classes {
+			byName[c.Name] = c
+		}
+		depth := make(map[string]int, len(classes))
+		var depthOf func(string, map[string]bool) int
+		depthOf = func(name string, seen map[string]bool) int {
+			if d, ok := depth[name]; ok {
+				return d
+			}
+			c := byName[name]
+			if c == nil || c.Parent == "" || seen[name] {
+				return 0
+			}
+			seen[name] = true
+			d := depthOf(c.Parent, seen) + 1
+			delete(seen, name)
+			depth[name] = d
+			return d
+		}
+		for _, c := range classes {
+			depthOf(c.Name, map[string]bool{})
+		}
+		sort.SliceStable(classes, func(i, j int) bool { return depth[classes[i].Name] < depth[classes[j].Name] })
+	}
+
 	out := make([]ast.Statement, 0, len(stmts))
+	for _, c := range classes {
+		out = append(out, c)
+	}
 	for _, st := range stmts {
 		switch st.(type) {
 		case *ast.FuncDeclaration, *ast.StructDeclaration:
@@ -1835,7 +2301,7 @@ func hoistDeclarations(stmts []ast.Statement) []ast.Statement {
 	}
 	for _, st := range stmts {
 		switch st.(type) {
-		case *ast.FuncDeclaration, *ast.StructDeclaration:
+		case *ast.FuncDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration:
 		default:
 			out = append(out, st)
 		}

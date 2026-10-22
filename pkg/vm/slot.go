@@ -24,7 +24,7 @@ type StackSlot struct {
 func (s *StackSlot) ToValue() interpreter.Value {
 	switch s.tag {
 	case SlotInt:
-		return &interpreter.IntegerValue{Val: s.i64}
+		return interpreter.NewInteger(s.i64)
 	case SlotFloat:
 		return &interpreter.FloatValue{Val: s.f64}
 	case SlotBool:
@@ -63,3 +63,41 @@ func FromValue(v interpreter.Value) StackSlot {
 		return StackSlot{tag: SlotVal, obj: v}
 	}
 }
+
+// Helper methods on StackSlot
+
+func (s *StackSlot) Tag() int8          { return s.tag }
+func (s *StackSlot) IsInt() bool        { return s.tag == SlotInt }
+func (s *StackSlot) IsFloat() bool      { return s.tag == SlotFloat }
+func (s *StackSlot) IsBool() bool       { return s.tag == SlotBool }
+func (s *StackSlot) IsNull() bool       { return s.tag == SlotNull }
+func (s *StackSlot) Int() int64         { return s.i64 }
+func (s *StackSlot) Float() float64     { return s.f64 }
+func (s *StackSlot) Bool() bool         { return s.i64 != 0 }
+func (s *StackSlot) SetInt(v int64)     { s.tag = SlotInt; s.i64 = v; s.obj = nil }
+func (s *StackSlot) SetFloat(v float64) { s.tag = SlotFloat; s.f64 = v; s.obj = nil }
+func (s *StackSlot) SetBool(v bool) {
+	s.tag = SlotBool
+	if v {
+		s.i64 = 1
+	} else {
+		s.i64 = 0
+	}
+	s.obj = nil
+}
+func (s *StackSlot) SetNull()   { s.tag = SlotNull; s.i64 = 0; s.f64 = 0; s.obj = nil }
+func (s *StackSlot) IsFalsy() bool {
+	return s.tag == SlotNull || (s.tag == SlotBool && s.i64 == 0)
+}
+
+// Slot constructor helpers
+
+func FromInt(v int64) StackSlot { return StackSlot{tag: SlotInt, i64: v} }
+func FromFloat(v float64) StackSlot { return StackSlot{tag: SlotFloat, f64: v} }
+func FromBool(v bool) StackSlot {
+	if v {
+		return StackSlot{tag: SlotBool, i64: 1}
+	}
+	return StackSlot{tag: SlotBool, i64: 0}
+}
+func NullSlot() StackSlot { return StackSlot{tag: SlotNull} }

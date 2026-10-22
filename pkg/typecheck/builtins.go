@@ -101,6 +101,33 @@ func matchParen(s string) int {
 
 var moduleCache = map[string]*ModuleType{}
 
+var httpRouterStaticType = &StructType{
+	Name: "HTTPRouter",
+	Methods: map[string]*Method{
+		"get":     {Name: "get", Signature: &FuncType{Params: []Param{{Type: String}, {Type: Any}, {Type: &MapType{Key: String, Val: JSON}, Optional: true}}, Ret: Bool}},
+		"post":    {Name: "post", Signature: &FuncType{Params: []Param{{Type: String}, {Type: Any}, {Type: &MapType{Key: String, Val: JSON}, Optional: true}}, Ret: Bool}},
+		"put":     {Name: "put", Signature: &FuncType{Params: []Param{{Type: String}, {Type: Any}, {Type: &MapType{Key: String, Val: JSON}, Optional: true}}, Ret: Bool}},
+		"patch":   {Name: "patch", Signature: &FuncType{Params: []Param{{Type: String}, {Type: Any}, {Type: &MapType{Key: String, Val: JSON}, Optional: true}}, Ret: Bool}},
+		"delete":  {Name: "delete", Signature: &FuncType{Params: []Param{{Type: String}, {Type: Any}, {Type: &MapType{Key: String, Val: JSON}, Optional: true}}, Ret: Bool}},
+		"head":    {Name: "head", Signature: &FuncType{Params: []Param{{Type: String}, {Type: Any}, {Type: &MapType{Key: String, Val: JSON}, Optional: true}}, Ret: Bool}},
+		"options": {Name: "options", Signature: &FuncType{Params: []Param{{Type: String}, {Type: Any}, {Type: &MapType{Key: String, Val: JSON}, Optional: true}}, Ret: Bool}},
+		"route":   {Name: "route", Signature: &FuncType{Params: []Param{{Type: String}, {Type: String}, {Type: Any}, {Type: &MapType{Key: String, Val: JSON}, Optional: true}}, Ret: Bool}},
+		"use":     {Name: "use", Signature: &FuncType{Params: []Param{{Type: Any}}, Ret: Bool}},
+		"serve":   {Name: "serve", Signature: &FuncType{Params: []Param{{Type: Int}}, Ret: httpServerStaticType}},
+		"openapi": {Name: "openapi", Signature: &FuncType{Params: []Param{{Type: String, Optional: true}}, Ret: JSON}},
+	},
+}
+
+var httpServerStaticType = &StructType{
+	Name: "HTTPServer",
+	Fields: []Field{
+		{Name: "port", Type: Int, Visibility: "public"},
+	},
+	Methods: map[string]*Method{
+		"close": {Name: "close", Signature: &FuncType{Ret: Bool}},
+	},
+}
+
 // moduleByName returns the typed std module (canonical or alias name).
 func moduleByName(name string) (*ModuleType, bool) {
 	if canon, ok := moduleAliases[name]; ok {
@@ -116,6 +143,12 @@ func moduleByName(name string) (*ModuleType, bool) {
 	m := &ModuleType{Name: name, Members: make(map[string]Type, len(members))}
 	for member, sig := range members {
 		m.Members[member] = parseSig(sig)
+	}
+	if name == "http" {
+		m.Members["router"] = &FuncType{Ret: httpRouterStaticType}
+	}
+	if name == "http" {
+		m.Members["http_serve"] = &FuncType{Params: []Param{{Type: Int}, {Type: Any}}, Ret: httpServerStaticType}
 	}
 	moduleCache[name] = m
 	return m, true

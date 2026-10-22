@@ -1,6 +1,5 @@
-// Package stdlib provides the AI standard library module for the Alca programming language.
-// It includes accelerated 2D matrix mathematics, vector operations, neural network activation functions,
-// loss functions, and forward/backward propagation primitives for training ML models natively.
+// Package stdlib provides optional pure-Go numerical helpers for the Alca programming language.
+// Its matrix operations convert interpreter lists to Go slices for calculation and back.
 package stdlib
 
 import (
@@ -18,7 +17,7 @@ func toFloatMatrix(val interpreter.Value) ([][]float64, error) {
 	if !ok {
 		return nil, fmt.Errorf("expected 2D list matrix")
 	}
-	rows := len(list.Elements)
+	rows := len(list.ElementsSlice())
 	if rows == 0 {
 		return [][]float64{}, nil
 	}
@@ -26,19 +25,19 @@ func toFloatMatrix(val interpreter.Value) ([][]float64, error) {
 	matrix := make([][]float64, rows)
 	cols := -1
 
-	for i, rowVal := range list.Elements {
+	for i, rowVal := range list.ElementsSlice() {
 		rowList, ok := rowVal.(*interpreter.ListValue)
 		if !ok {
 			return nil, fmt.Errorf("row %d is not a list", i)
 		}
 		if cols == -1 {
-			cols = len(rowList.Elements)
-		} else if len(rowList.Elements) != cols {
+			cols = len(rowList.ElementsSlice())
+		} else if len(rowList.ElementsSlice()) != cols {
 			return nil, fmt.Errorf("inconsistent matrix column width at row %d", i)
 		}
 
 		matrix[i] = make([]float64, cols)
-		for j, elem := range rowList.Elements {
+		for j, elem := range rowList.ElementsSlice() {
 			switch num := elem.(type) {
 			case *interpreter.FloatValue:
 				matrix[i][j] = num.Val
@@ -71,8 +70,8 @@ func toFloatSlice(val interpreter.Value) ([]float64, error) {
 	if !ok {
 		return nil, fmt.Errorf("expected list")
 	}
-	res := make([]float64, len(list.Elements))
-	for i, elem := range list.Elements {
+	res := make([]float64, len(list.ElementsSlice()))
+	for i, elem := range list.ElementsSlice() {
 		switch num := elem.(type) {
 		case *interpreter.FloatValue:
 			res[i] = num.Val

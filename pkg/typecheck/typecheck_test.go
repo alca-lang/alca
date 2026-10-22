@@ -34,6 +34,11 @@ func older(p: P) -> int:
     return p.age + 1;
 q := P("a");
 n: int = older(q);`,
+		"embedded resources": `
+use std.embed;
+exists: bool = embed.exists("assets/icon.ico");
+files: list[string] = embed.list("assets");
+data: string = embed.read("assets/icon.ico");`,
 		"hoisting": `
 println(twice(2));
 func twice(n: int) -> int:
@@ -75,6 +80,61 @@ for k in keys(m):
 use std.math;
 r: float = math.sqrt(9) + 1.5;
 c: int = math.floor(2.7);`,
+		"loose and strict equality across types": `
+loose: bool = "1" == 1;
+strict: bool = "1" === 1;
+mixed: bool = null === 0;
+nested: bool = [1] === [1.0];
+`,
+		"crypto global aliases": `
+a: string = sha256("value");
+b: bool = constant_time_equal(a, a);
+c: string = hex_encode(base64_decode(base64_encode("value")));
+d: int = random_int(1, 10);
+e: string = random_string(8);
+f: string = gzip_decompress(gzip_compress("value"));
+u: string = uuid();
+`,
+		"HTTP timeout options": `
+use std.http;
+headers: map[string, string] = {"Accept": "text/plain"};
+options: map[string, json] = {"timeout": 1.5};
+response := http.request("GET", "https://example.test", headers, "", options);
+response2 := http.get("https://example.test", headers, "", options);`,
+		"HTTP router API": `
+use std.http;
+router := http.router();
+handler := |request: map[string, json]| http.json({"path": request["path"]});
+router.get("/health", handler);
+bodyFields := {"name": "string"};
+bodySchema: map[string, json] = {"body": bodyFields};
+routeOptions: map[string, json] = {"schema": bodySchema, "summary": "Create item"};
+router.post("/items", handler, routeOptions);
+dependency := |request: map[string, json]| request["path"];
+dependencies: map[string, json] = {"current_path": dependency};
+dependencyOptions: map[string, json] = {"dependencies": dependencies};
+router.get("/with-dependency", handler, dependencyOptions);
+router.use(|request: map[string, json], next: json| next(request));
+server := router.serve(8080);
+openapi := router.openapi();
+documentRoute := router.openapi("/openapi.json");
+response := http.response(201, "created");
+jsonResponse := http.json({"ok": true});
+port: int = server.port;
+server.close();
+`,
+		"urllib2 URL and HTTP API": `
+use std.urllib2;
+parts := urllib2.parse("https://example.test/a?q=1");
+path: string = string(parts["path"]);
+encoded: string = urllib2.urlencode({"q": "alca lang"});
+decoded: string = urllib2.unquote(urllib2.quote(path));
+joined: string = urllib2.join("https://example.test/a", "../b");
+params := urllib2.parse_qs("tag=one&tag=two");
+headers: map[string, string] = {};
+response := urllib2.request("GET", "https://example.test", null, headers, 5.0);
+status: int = int(response["status"]);
+`,
 		"match": `
 n: int = 2;
 match n:
@@ -90,6 +150,27 @@ match n:
 use std.formats;
 d: json = json_decode("{}");
 n: int = int(d["a"]);`,
+		"shadowing with same type": `
+x: int = 1;
+x: int = 2;
+func f() -> int:
+    x: int = 3;
+    if x > 0:
+        x := 4;
+        println(x);
+    return x;
+println(f());`,
+		"declaration modifiers": `
+public int: shared = 10;
+const int: limit = 42;
+func worker() -> int:
+    private int: local = 1;
+    public int: published = shared + local;
+    local = local + 1;
+    return local;
+println(worker());
+println(published);
+println(limit);`,
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -420,8 +501,10 @@ func TestRejectedPrograms(t *testing.T) {
 		{"undeclared assignment", `x = 10;`, "undeclared variable"},
 		{"undefined name", `println(nope);`, "undefined name"},
 		{"typo suggestion", "counter: int = 1;\nprintln(countr);", "did you mean 'counter'"},
-		{"redeclaration", `a: int = 1; a: int = 2;`, "already declared"},
-		{"shadowing", "a: int = 1;\nfunc f():\n    a: int = 2;", "shadows"},
+		{"redeclaration with a different type", `a: int = 1; a: string = "two";`, "changes its type"},
+		{"shadowing with a different type", "a: int = 1;\nfunc f():\n    a: string = \"two\";", "changes its type"},
+		{"const reassignment", `const int: limit = 10; limit = 11;`, "cannot assign to constant"},
+		{"private at top level", `private int: secret = 1;`, "'private' is only allowed"},
 		{"wrong arg type", "func f(a: int) -> int:\n    return a;\nf(\"s\");", "has type string, expected int"},
 		{"too many args", "func f(a: int) -> int:\n    return a;\nf(1, 2);", "too many arguments"},
 		{"missing arg", "func f(a: int, b: int) -> int:\n    return a;\nf(1);", "missing argument"},

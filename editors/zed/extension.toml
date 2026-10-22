@@ -1,0 +1,11 @@
+id = "alca-icons"
+name = "Alca Icons"
+version = "1.0.0"
+schema_version = 1
+description = "Official Alca file icons for Zed Editor."
+repository = "https://github.com/alca-lang/alca"
+authors = ["Alca Team <alca@example.com>"]
+themes = []
+icon_themes = [
+    "icon_themes/alca.json"
+]

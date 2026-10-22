@@ -18,6 +18,8 @@ import (
 	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
+var errHTTPBodyTooLarge = errors.New("HTTP response body exceeds the configured limit")
+
 // policyHTTPClient returns an HTTP client that re-checks the capability policy
 // for every redirect, not only the URL the program supplied.
 func policyHTTPClient(timeout time.Duration) *http.Client {
@@ -30,6 +32,17 @@ func policyHTTPClient(timeout time.Duration) *http.Client {
 			return sandbox.RequireURL(req.URL.String())
 		},
 	}
+}
+
+func readLimitedHTTPBody(body io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(body, maxHTTPBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxHTTPBodyBytes {
+		return nil, fmt.Errorf("%w of %d bytes", errHTTPBodyTooLarge, maxHTTPBodyBytes)
+	}
+	return data, nil
 }
 
 // SimpleServer wraps an HTTP server with programmatic control.
@@ -111,7 +124,7 @@ func HTTPGet(url string) (string, int, error) {
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readLimitedHTTPBody(resp.Body)
 	if err != nil {
 		return "", resp.StatusCode, err
 	}
@@ -130,7 +143,7 @@ func HTTPPost(url, contentType, body string) (string, int, error) {
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readLimitedHTTPBody(resp.Body)
 	if err != nil {
 		return "", resp.StatusCode, err
 	}
@@ -220,12 +233,6 @@ func Ping(host string) (bool, error) {
 		}
 	}
 
-	// Also attempt host IP resolution
-	_, lookupErr := net.LookupHost(host)
-	if lookupErr == nil {
-		return true, nil
-	}
-
 	return false, err
 }
 
@@ -282,6 +289,9 @@ func RegisterNetBuiltins(env *interpreter.Environment) {
 		url := interpreter.CoerceToString(args[0])
 		body, code, err := HTTPGet(url)
 		if err != nil {
+			if errors.Is(err, errHTTPBodyTooLarge) {
+				return interpreter.NewError(413, err.Error())
+			}
 			return handleIOError("http_get", url, err)
 		}
 		res := interpreter.NewMap()
@@ -299,6 +309,9 @@ func RegisterNetBuiltins(env *interpreter.Environment) {
 		body := interpreter.CoerceToString(args[2])
 		respBody, code, err := HTTPPost(url, contentType, body)
 		if err != nil {
+			if errors.Is(err, errHTTPBodyTooLarge) {
+				return interpreter.NewError(413, err.Error())
+			}
 			return handleIOError("http_post", url, err)
 		}
 		res := interpreter.NewMap()
@@ -348,6 +361,76 @@ func RegisterNetBuiltins(env *interpreter.Environment) {
 			return handleIOError("download_file", url, err)
 		}
 		return interpreter.TRUE
+	})
+
+	register("tcp_connect", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) < 1 {
+			return interpreter.NewError(400, "tcp_connect requires an address argument (e.g. 'localhost:8080')")
+		}
+		addr := interpreter.CoerceToString(args[0])
+		conn, err := TCPConnect(addr)
+		if err != nil {
+			return handleIOError("tcp_connect", addr, err)
+		}
+		m := interpreter.NewMap()
+		m.Set("write", &interpreter.BuiltinFunction{
+			Name: "write",
+			Fn: func(a ...interpreter.Value) interpreter.Value {
+				if len(a) < 1 {
+					return interpreter.NewError(400, "write requires data argument")
+				}
+				data := []byte(interpreter.CoerceToString(a[0]))
+				n, err := conn.Write(data)
+				if err != nil {
+					return interpreter.NewError(500, err.Error())
+				}
+				return &interpreter.IntegerValue{Val: int64(n)}
+			},
+		})
+		m.Set("read", &interpreter.BuiltinFunction{
+			Name: "read",
+			Fn: func(a ...interpreter.Value) interpreter.Value {
+				max := 4096
+				if len(a) >= 1 {
+					if iv, ok := a[0].(*interpreter.IntegerValue); ok {
+						max = int(iv.Val)
+					}
+				}
+				data, err := conn.Read(max)
+				if err != nil {
+					return interpreter.NewError(500, err.Error())
+				}
+				return &interpreter.StringValue{Val: string(data)}
+			},
+		})
+		m.Set("close", &interpreter.BuiltinFunction{
+			Name: "close",
+			Fn: func(a ...interpreter.Value) interpreter.Value {
+				_ = conn.Close()
+				return interpreter.TRUE
+			},
+		})
+		return m
+	})
+
+	register("tcp_listen", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) < 1 {
+			return interpreter.NewError(400, "tcp_listen requires an address argument (e.g. ':8080')")
+		}
+		addr := interpreter.CoerceToString(args[0])
+		ln, err := TCPListen(addr)
+		if err != nil {
+			return handleIOError("tcp_listen", addr, err)
+		}
+		m := interpreter.NewMap()
+		m.Set("close", &interpreter.BuiltinFunction{
+			Name: "close",
+			Fn: func(a ...interpreter.Value) interpreter.Value {
+				_ = ln.Close()
+				return interpreter.TRUE
+			},
+		})
+		return m
 	})
 
 	env.Set("net", netModule)

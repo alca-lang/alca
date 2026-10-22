@@ -262,7 +262,7 @@ func RegisterMetricsBuiltins(env *interpreter.Environment) {
 			var buckets []float64
 			if len(args) > 2 {
 				if bl, ok := args[2].(*interpreter.ListValue); ok {
-					for _, item := range bl.Elements {
+					for _, item := range bl.ElementsSlice() {
 						if iv, ok := item.(*interpreter.IntegerValue); ok {
 							buckets = append(buckets, float64(iv.Val))
 						} else if fv, ok := item.(*interpreter.FloatValue); ok {

@@ -72,16 +72,16 @@ func stringifyCSV(data interpreter.Value, explicitHeaders []string) (string, err
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 
-	if len(lv.Elements) == 0 {
+	if len(lv.ElementsSlice()) == 0 {
 		return "", nil
 	}
 
 	// Check if elements are maps
-	if _, isMap := lv.Elements[0].(*interpreter.MapValue); isMap {
+	if _, isMap := lv.ElementsSlice()[0].(*interpreter.MapValue); isMap {
 		headers := explicitHeaders
 		if len(headers) == 0 {
 			// Auto-discover headers from first map
-			firstMap := lv.Elements[0].(*interpreter.MapValue)
+			firstMap := lv.ElementsSlice()[0].(*interpreter.MapValue)
 			headers = firstMap.Order
 		}
 
@@ -89,7 +89,7 @@ func stringifyCSV(data interpreter.Value, explicitHeaders []string) (string, err
 			return "", err
 		}
 
-		for _, elem := range lv.Elements {
+		for _, elem := range lv.ElementsSlice() {
 			if m, ok := elem.(*interpreter.MapValue); ok {
 				row := make([]string, len(headers))
 				for i, h := range headers {
@@ -106,10 +106,10 @@ func stringifyCSV(data interpreter.Value, explicitHeaders []string) (string, err
 		}
 	} else {
 		// List of lists
-		for _, elem := range lv.Elements {
+		for _, elem := range lv.ElementsSlice() {
 			if rowList, ok := elem.(*interpreter.ListValue); ok {
-				row := make([]string, len(rowList.Elements))
-				for i, cell := range rowList.Elements {
+				row := make([]string, len(rowList.ElementsSlice()))
+				for i, cell := range rowList.ElementsSlice() {
 					row[i] = interpreter.CoerceToString(cell)
 				}
 				if err := writer.Write(row); err != nil {
@@ -224,7 +224,7 @@ func convertAlcaValueToGo(v interpreter.Value) interface{} {
 		return out
 	case *interpreter.ListValue:
 		out := make([]interface{}, val.Len())
-		for i, el := range val.Elements {
+		for i, el := range val.ElementsSlice() {
 			out[i] = convertAlcaValueToGo(el)
 		}
 		return out
@@ -365,7 +365,14 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 		}
 
 		var r io.Reader
-		if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
+		fi, statErr := os.Stat(target)
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return handleIOError("csv_read", target, statErr)
+		}
+		if statErr == nil && fi.IsDir() {
+			return interpreter.NewError(400, "csv.read target is a directory")
+		}
+		if statErr == nil {
 			if err := sandbox.RequireRead(target); err != nil {
 				return handleIOError("csv_read", target, err)
 			}
@@ -389,7 +396,17 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 		return res
 	}
 	csvModule.Set("read", &interpreter.BuiltinFunction{Name: "read", Fn: csvReadFn})
-	csvModule.Set("parse", &interpreter.BuiltinFunction{Name: "parse", Fn: csvReadFn})
+	csvModule.Set("parse", &interpreter.BuiltinFunction{Name: "parse", Fn: func(args ...interpreter.Value) interpreter.Value {
+		if len(args) < 1 {
+			return interpreter.NewError(400, "csv.parse requires CSV content")
+		}
+		hasHeader := len(args) < 2 || interpreter.IsTruthy(args[1])
+		result, err := parseCSVReader(strings.NewReader(interpreter.CoerceToString(args[0])), hasHeader)
+		if err != nil {
+			return interpreter.NewError(400, "invalid CSV: "+err.Error())
+		}
+		return result
+	}})
 
 	csvWriteFn := func(args ...interpreter.Value) interpreter.Value {
 		if len(args) < 2 {
@@ -400,7 +417,7 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 		var headers []string
 		if len(args) >= 3 {
 			if hList, ok := args[2].(*interpreter.ListValue); ok {
-				for _, h := range hList.Elements {
+				for _, h := range hList.ElementsSlice() {
 					headers = append(headers, interpreter.CoerceToString(h))
 				}
 			}
@@ -428,7 +445,7 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 		var headers []string
 		if len(args) >= 2 {
 			if hList, ok := args[1].(*interpreter.ListValue); ok {
-				for _, h := range hList.Elements {
+				for _, h := range hList.ElementsSlice() {
 					headers = append(headers, interpreter.CoerceToString(h))
 				}
 			}
@@ -449,17 +466,31 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 		}
 		target := interpreter.CoerceToString(args[0])
 		content := target
-		if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
+		fi, statErr := os.Stat(target)
+		if statErr != nil && !os.IsNotExist(statErr) {
+			return handleIOError("ini_read", target, statErr)
+		}
+		if statErr == nil && fi.IsDir() {
+			return interpreter.NewError(400, "ini.read target is a directory")
+		}
+		if statErr == nil {
 			if err := sandbox.RequireRead(target); err != nil {
 				return handleIOError("ini_read", target, err)
 			}
-			if data, err := os.ReadFile(target); err == nil {
-				content = string(data)
+			data, err := os.ReadFile(target)
+			if err != nil {
+				return handleIOError("ini_read", target, err)
 			}
+			content = string(data)
 		}
 		return parseINI(content)
 	}
-	iniModule.Set("parse", &interpreter.BuiltinFunction{Name: "parse", Fn: iniParseFn})
+	iniModule.Set("parse", &interpreter.BuiltinFunction{Name: "parse", Fn: func(args ...interpreter.Value) interpreter.Value {
+		if len(args) != 1 {
+			return interpreter.NewError(400, "ini.parse requires INI content")
+		}
+		return parseINI(interpreter.CoerceToString(args[0]))
+	}})
 	iniModule.Set("read", &interpreter.BuiltinFunction{Name: "read", Fn: iniParseFn})
 
 	iniWriteFn := func(args ...interpreter.Value) interpreter.Value {
@@ -507,7 +538,7 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 
 		if sv, ok := target.(*interpreter.StringValue); ok {
 			if err := json.Unmarshal([]byte(sv.Val), &rawData); err != nil {
-				return interpreter.NULL
+				return interpreter.NewError(400, "invalid JSON: "+err.Error())
 			}
 		} else {
 			// Already an Alca map/list/scalar: convert it natively so paths
@@ -520,23 +551,80 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 	}
 	jsonModule.Set("query", &interpreter.BuiltinFunction{Name: "query", Fn: jsonQueryFn})
 
+	jsonModule.Set("parse", &interpreter.BuiltinFunction{Name: "parse", Fn: func(args ...interpreter.Value) interpreter.Value {
+		if len(args) != 1 {
+			return interpreter.NewError(400, "json.parse requires one JSON string")
+		}
+		text, ok := args[0].(*interpreter.StringValue)
+		if !ok {
+			return interpreter.NewError(400, "json.parse input must be a string")
+		}
+		var raw interface{}
+		if err := json.Unmarshal([]byte(text.Val), &raw); err != nil {
+			return interpreter.NewError(400, "invalid JSON: "+err.Error())
+		}
+		return convertGoValueToAlca(raw)
+	}})
+	jsonEncodeFn := func(args ...interpreter.Value) interpreter.Value {
+		if len(args) != 1 {
+			return interpreter.NewError(400, "json.encode requires one value")
+		}
+		data, err := json.Marshal(convertAlcaValueToGo(args[0]))
+		if err != nil {
+			return interpreter.NewError(400, "JSON encoding failed: "+err.Error())
+		}
+		return &interpreter.StringValue{Val: string(data)}
+	}
+	jsonModule.Set("encode", &interpreter.BuiltinFunction{Name: "encode", Fn: jsonEncodeFn})
+	jsonModule.Set("stringify", &interpreter.BuiltinFunction{Name: "stringify", Fn: jsonEncodeFn})
+	jsonModule.Set("validate", &interpreter.BuiltinFunction{Name: "validate", Fn: func(args ...interpreter.Value) interpreter.Value {
+		if len(args) != 1 {
+			return interpreter.NewError(400, "json.validate requires one JSON string")
+		}
+		text, ok := args[0].(*interpreter.StringValue)
+		if !ok {
+			return interpreter.NewError(400, "json.validate input must be a string")
+		}
+		if json.Valid([]byte(text.Val)) {
+			return interpreter.TRUE
+		}
+		return interpreter.FALSE
+	}})
+
 	jsonPrettifyFn := func(args ...interpreter.Value) interpreter.Value {
 		if len(args) < 1 {
 			return &interpreter.StringValue{Val: ""}
 		}
-		rawStr := interpreter.CoerceToString(args[0])
+		var raw []byte
+		if text, ok := args[0].(*interpreter.StringValue); ok {
+			raw = []byte(text.Val)
+		} else {
+			var err error
+			raw, err = json.Marshal(convertAlcaValueToGo(args[0]))
+			if err != nil {
+				return interpreter.NewError(400, "JSON encoding failed: "+err.Error())
+			}
+		}
 		indent := "  "
 		if len(args) >= 2 {
 			indent = interpreter.CoerceToString(args[1])
 		}
 
 		var buf bytes.Buffer
-		if err := json.Indent(&buf, []byte(rawStr), "", indent); err != nil {
-			return &interpreter.StringValue{Val: rawStr}
+		if err := json.Indent(&buf, raw, "", indent); err != nil {
+			return interpreter.NewError(400, "invalid JSON: "+err.Error())
 		}
 		return &interpreter.StringValue{Val: buf.String()}
 	}
 	jsonModule.Set("prettify", &interpreter.BuiltinFunction{Name: "prettify", Fn: jsonPrettifyFn})
+	legacyJSONPrettifyFn := func(args ...interpreter.Value) interpreter.Value {
+		if len(args) > 0 {
+			if _, ok := args[0].(*interpreter.StringValue); !ok {
+				return &interpreter.StringValue{Val: interpreter.CoerceToString(args[0])}
+			}
+		}
+		return jsonPrettifyFn(args...)
+	}
 
 	// Register submodules into Formats module
 	formatsModule.Set("csv", csvModule)
@@ -552,7 +640,9 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 
 	env.Set("ini", iniModule)
 	env.Set("std.ini", iniModule)
+	env.Set("json", jsonModule)
+	env.Set("std.json", jsonModule)
 
 	env.Set("json_query", &interpreter.BuiltinFunction{Name: "json_query", Fn: jsonQueryFn})
-	env.Set("json_prettify", &interpreter.BuiltinFunction{Name: "json_prettify", Fn: jsonPrettifyFn})
+	env.Set("json_prettify", &interpreter.BuiltinFunction{Name: "json_prettify", Fn: legacyJSONPrettifyFn})
 }

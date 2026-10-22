@@ -117,10 +117,11 @@ func render(src string, toks []token.Token, normalize bool) string {
 	infos := make([]lineInfo, len(raw))
 	pos := 0
 	for i, line := range raw {
+		sourceLine := line
 		line = strings.TrimRight(line, "\r")
 		raw[i] = line
 		infos[i] = lineInfo{start: pos, end: pos + len(line)}
-		pos += len(line) + 1 // the newline byte
+		pos += len(sourceLine) + 1 // include carriage return in CRLF source offsets
 	}
 
 	// Split the token stream into logical lines and record indentation depth.
@@ -403,7 +404,7 @@ func unaryContext(toks []token.Token, i int) bool {
 // following '(' or '[' binds to it without a space.
 func isValueLike(t token.TokenType) bool {
 	switch t {
-	case token.IDENT, token.INT, token.FLOAT, token.STRING, token.TRUE, token.FALSE,
+	case token.IDENT, token.INT, token.FLOAT, token.STRING, token.FSTRING, token.TRUE, token.FALSE,
 		token.NULL, token.ERR, token.RPAREN, token.RBRACKET, token.RBRACE,
 		token.TYPE_STRING, token.TYPE_INT, token.TYPE_FLOAT, token.TYPE_BOOL,
 		token.TYPE_LIST, token.TYPE_MAP, token.TYPE_BLOB, token.TYPE_SECRET,

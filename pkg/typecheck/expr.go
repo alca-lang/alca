@@ -370,7 +370,8 @@ func (c *Checker) widenLiterals(n *ast.InfixExpression, lt, rt Type) (Type, Type
 func (c *Checker) infix(n *ast.InfixExpression, sc *scope) Type {
 	lt := c.expr(n.Left, sc, nil)
 	var rexp Type
-	if lt == Float || lt == Int || lt == String {
+	if n.Operator != "==" && n.Operator != "!=" && n.Operator != "===" &&
+		(lt == Float || lt == Int || lt == String) {
 		rexp = lt
 	}
 	rt := c.expr(n.Right, sc, rexp)
@@ -394,16 +395,8 @@ func (c *Checker) infix(n *ast.InfixExpression, sc *scope) Type {
 		}
 		return Bool
 
-	case "==", "!=":
-		lt, rt = c.widenLiterals(n, lt, rt)
-		if Assignable(lt, rt) || Assignable(rt, lt) || lt == JSON || rt == JSON {
-			if (lt == Null && !Nullable(rt)) || (rt == Null && !Nullable(lt)) {
-				return bad(fmt.Sprintf("comparing %s with null is always %t", nonNullSide(lt, rt), op == "!="),
-					"declare the variable as 'T | null' if it can be null")
-			}
-			return Bool
-		}
-		return bad(fmt.Sprintf("cannot compare %s with %s", lt, rt), conversionHint(lt, rt))
+	case "==", "!=", "===":
+		return Bool
 
 	case "<", ">", "<=", ">=", "LT_EQ", "GT_EQ", "<=>":
 		lt, rt = c.widenLiterals(n, lt, rt)
@@ -478,6 +471,13 @@ func (c *Checker) assign(n *ast.AssignExpression, sc *scope) Type {
 	case *ast.Identifier:
 		sym, _ := sc.lookup(tgt.Value)
 		if sym == nil {
+			if c.snippet {
+				// A REPL snippet may introduce a name by assigning to it; the
+				// interpreter creates the binding, so declare it here too.
+				vt := c.expr(n.Value, sc, nil)
+				c.declare(tgt.Value, tgt.Token, vt, kVar, sc)
+				return vt
+			}
 			hint := fmt.Sprintf("declare it first: '%s: type = value;' or '%s := value;'", tgt.Value, tgt.Value)
 			if s := suggest(tgt.Value, sc.names()); s != "" {
 				hint = fmt.Sprintf("did you mean '%s'? (to declare a new variable write '%s: type = value;')", s, tgt.Value)
@@ -488,6 +488,12 @@ func (c *Checker) assign(n *ast.AssignExpression, sc *scope) Type {
 		}
 		if sym.kind != kVar && sym.kind != kParam {
 			c.addError(tgt.Token, fmt.Sprintf("cannot assign to %s '%s'", kindName(sym.kind), tgt.Value), "")
+			c.expr(n.Value, sc, nil)
+			return JSON
+		}
+		if sym.isConst {
+			c.addError(tgt.Token, fmt.Sprintf("cannot assign to constant '%s'", tgt.Value),
+				"constants are immutable; declare a normal variable if the value must change")
 			c.expr(n.Value, sc, nil)
 			return JSON
 		}
@@ -533,10 +539,31 @@ func (c *Checker) assign(n *ast.AssignExpression, sc *scope) Type {
 		ot := c.expr(tgt.Left, sc, nil)
 		var ft Type = JSON
 		if st, ok := ot.(*StructType); ok {
-			f, found := st.Field(tgt.Field)
+			f, found := st.LookupField(tgt.Field)
 			if !found {
-				c.addError(tgt.Token, fmt.Sprintf("struct %s has no field '%s'", st.Name, tgt.Field), c.fieldHint(st, tgt.Field))
+				if _, method := st.LookupMethod(tgt.Field); method {
+					c.addError(tgt.Token, fmt.Sprintf("cannot assign to method '%s' of %s", tgt.Field, st.Name), "")
+				} else {
+					c.addError(tgt.Token, fmt.Sprintf("%s %s has no field '%s'", typeKind(st.IsClass), st.Name, tgt.Field), c.fieldHint(st, tgt.Field))
+				}
 			} else {
+				if f.Visibility == "private" && c.class != f.Owner {
+					owner := st.Name
+					if f.Owner != nil {
+						owner = f.Owner.Name
+					}
+					c.addError(tgt.Token, fmt.Sprintf("field '%s' of %s is private", tgt.Field, owner), "")
+				}
+				if f.IsConst {
+					c.addError(tgt.Token, fmt.Sprintf("cannot assign to constant field '%s'", tgt.Field),
+						"a const field is immutable after construction")
+				}
+				ft = f.Type
+			}
+		} else if sp, ok := ot.(*SuperType); ok {
+			c.addError(tgt.Token, fmt.Sprintf("cannot assign through 'super'; use 'self.%s'", tgt.Field),
+				"super is only for calling base-class methods")
+			if f, found := sp.Parent.LookupField(tgt.Field); found {
 				ft = f.Type
 			}
 		} else if ot != JSON {
@@ -550,15 +577,20 @@ func (c *Checker) assign(n *ast.AssignExpression, sc *scope) Type {
 		n.Value = ne
 		return ft
 	}
-	c.addError(n.Token, "invalid assignment target", "")
+	c.addError(n.Token, "invalid assignment target", "assignments require a variable name ('x = 1'), index ('a[0] = 1'), or field ('s.f = 1') on the left-hand side")
 	c.expr(n.Value, sc, nil)
 	return JSON
 }
 
 func (c *Checker) fieldHint(st *StructType, name string) string {
 	var cands []string
-	for _, f := range st.Fields {
+	for _, f := range st.AllFields() {
 		cands = append(cands, f.Name)
+	}
+	for cur := st; cur != nil; cur = cur.Parent {
+		for m := range cur.Methods {
+			cands = append(cands, m)
+		}
 	}
 	if s := suggest(name, cands); s != "" {
 		return fmt.Sprintf("did you mean '%s'?", s)
@@ -643,10 +675,43 @@ func (c *Checker) dot(n *ast.DotExpression, sc *scope) Type {
 		c.addError(n.Token, fmt.Sprintf("module '%s' has no member '%s'", x.Name, n.Field), hint)
 		return JSON
 	case *StructType:
-		if f, ok := x.Field(n.Field); ok {
+		if f, ok := x.LookupField(n.Field); ok {
+			if f.Visibility == "private" && c.class != f.Owner {
+				owner := x.Name
+				if f.Owner != nil {
+					owner = f.Owner.Name
+				}
+				c.addError(n.Token, fmt.Sprintf("field '%s' of %s is private", n.Field, owner), "")
+			}
 			return f.Type
 		}
-		c.addError(n.Token, fmt.Sprintf("%s has no field '%s'", x.Name, n.Field), c.fieldHint(x, n.Field))
+		if m, ok := x.LookupMethod(n.Field); ok {
+			if m.Visibility == "private" && c.class != m.Owner {
+				owner := x.Name
+				if m.Owner != nil {
+					owner = m.Owner.Name
+				}
+				c.addError(n.Token, fmt.Sprintf("method '%s' of %s is private", n.Field, owner), "")
+			}
+			return m.Signature
+		}
+		c.addError(n.Token, fmt.Sprintf("%s %s has no field or method '%s'", typeKind(x.IsClass), x.Name, n.Field), c.fieldHint(x, n.Field))
+		return JSON
+	case *SuperType:
+		if f, ok := x.Parent.LookupField(n.Field); ok {
+			if f.Visibility == "private" {
+				c.addError(n.Token, fmt.Sprintf("field '%s' of %s is private", n.Field, x.Parent.Name), "")
+			}
+			return f.Type
+		}
+		if m, ok := x.Parent.LookupMethod(n.Field); ok {
+			if m.Visibility == "private" {
+				c.addError(n.Token, fmt.Sprintf("method '%s' of %s is private", n.Field, x.Parent.Name), "")
+			}
+			return m.Signature
+		}
+		c.addError(n.Token, fmt.Sprintf("base class %s has no field or method '%s'", x.Parent.Name, n.Field),
+			c.fieldHint(x.Parent, n.Field))
 		return JSON
 	case *UnionType:
 		if Nullable(x) {
@@ -655,6 +720,14 @@ func (c *Checker) dot(n *ast.DotExpression, sc *scope) Type {
 			return JSON
 		}
 		c.addError(n.Token, fmt.Sprintf("cannot access '.%s' on a union type %s", n.Field, x), "")
+		return JSON
+	case *FuncType:
+		if n.Field == "stream" {
+			// fn.stream() runs the commands of a shell function live and
+			// returns the output of the last command.
+			return &FuncType{Params: x.Params, Ret: x.Ret, Variadic: x.Variadic}
+		}
+		c.addError(n.Token, fmt.Sprintf("type %s has no field '%s'", ot, n.Field), "")
 		return JSON
 	}
 	if ot == JSON {
@@ -678,7 +751,9 @@ func (c *Checker) lambda(n *ast.LambdaExpression, sc *scope) Type {
 		inner.syms[p.Name] = &symbol{kind: kParam, typ: pt, declared: pt}
 	}
 	saved := c.fn
+	c.private++
 	ft.Ret = c.expr(n.Body, inner, nil)
+	c.private--
 	c.fn = saved
 	if ft.Ret == Null {
 		ft.Ret = Void
@@ -765,7 +840,7 @@ func (c *Checker) call(n *ast.CallExpression, sc *scope) Type {
 		return c.overloadCall(n, f, sc)
 	case *StructType:
 		ctor := &FuncType{Ret: f}
-		for _, fld := range f.Fields {
+		for _, fld := range f.AllFields() {
 			ctor.Params = append(ctor.Params, Param{Name: fld.Name, Type: fld.Type, Optional: fld.HasDefault})
 		}
 		return c.bindCall(n, ctor, sc, true)

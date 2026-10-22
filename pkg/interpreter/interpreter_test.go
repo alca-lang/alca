@@ -1,6 +1,7 @@
 package interpreter
 
 import (
+	"bytes"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,6 +42,15 @@ func TestValuesAndHelpers(t *testing.T) {
 	// Equality
 	if !ValuesEqual(&IntegerValue{Val: 5}, &FloatValue{Val: 5.0}) {
 		t.Errorf("5 should equal 5.0")
+	}
+	if !LooseEqual(&StringValue{Val: "5"}, &IntegerValue{Val: 5}) {
+		t.Errorf("loose equality should compare numeric strings with numbers")
+	}
+	if StrictEqual(&IntegerValue{Val: 5}, &FloatValue{Val: 5.0}) {
+		t.Errorf("strict equality should distinguish integers and floats")
+	}
+	if StrictEqual(NewList(&IntegerValue{Val: 5}), NewList(&FloatValue{Val: 5.0})) {
+		t.Errorf("strict equality should distinguish nested integer and float values")
 	}
 	if ValuesEqual(&IntegerValue{Val: 5}, &IntegerValue{Val: 6}) {
 		t.Errorf("5 should not equal 6")
@@ -510,6 +520,53 @@ func TestInterpreterShellFunc(t *testing.T) {
 	outStr := res.(*StringValue).Val
 	if !strings.Contains(outStr, "hello shell") {
 		t.Fatalf("shell output unexpected: %q", outStr)
+	}
+}
+
+func TestInterpreterStreamingShellFunc(t *testing.T) {
+	interp := New()
+
+	// shfunc probe() { print("echo streaming-ok") } called as probe.stream()
+	shFn := &FuncValue{
+		Name:    "probe",
+		IsShell: true,
+		Body: &ast.BlockStatement{
+			Statements: []ast.Statement{
+				&ast.ExpressionStatement{
+					Expression: &ast.CallExpression{
+						Function: &ast.Identifier{Value: "print"},
+						Arguments: []ast.Expression{
+							&ast.StringLiteral{Value: "echo streaming-ok"},
+						},
+					},
+				},
+			},
+		},
+		Env: interp.env,
+	}
+
+	res := interp.streamFunction(shFn, nil)
+	outStr, ok := res.(*StringValue)
+	if !ok {
+		t.Fatalf("streaming shell function should return the command output, got %s", res.Type())
+	}
+	if !strings.Contains(outStr.Val, "streaming-ok") {
+		t.Fatalf("streaming output unexpected: %q", outStr.Val)
+	}
+}
+
+func TestRunShellCommandStreaming(t *testing.T) {
+	var live bytes.Buffer
+	out, code := RunShellCommandStreaming("echo streamed-line", &live)
+
+	if code != 0 {
+		t.Fatalf("streaming command should succeed, got exit code %d", code)
+	}
+	if !strings.Contains(out, "streamed-line") {
+		t.Fatalf("captured output unexpected: %q", out)
+	}
+	if !strings.Contains(live.String(), "streamed-line") {
+		t.Fatalf("streamed output unexpected: %q", live.String())
 	}
 }
 

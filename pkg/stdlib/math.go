@@ -4,24 +4,33 @@ package stdlib
 
 import (
 	"math"
-	"strconv"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
 )
 
 func coerceToFloat(v interpreter.Value) float64 {
-	if v == nil {
-		return 0
-	}
 	switch n := v.(type) {
 	case *interpreter.FloatValue:
 		return n.Val
 	case *interpreter.IntegerValue:
 		return float64(n.Val)
 	default:
-		f, _ := strconv.ParseFloat(interpreter.CoerceToString(v), 64)
-		return f
+		return math.NaN()
 	}
+}
+
+func validateMathNumbers(args []interpreter.Value, count int, name string) interpreter.Value {
+	if len(args) < count {
+		return interpreter.NewError(400, name+" received too few arguments")
+	}
+	for _, arg := range args[:count] {
+		switch arg.(type) {
+		case *interpreter.FloatValue, *interpreter.IntegerValue:
+		default:
+			return interpreter.NewError(400, name+" arguments must be numeric")
+		}
+	}
+	return nil
 }
 
 // RegisterMathBuiltins registers the "std.math" and "math" modules into the interpreter environment.
@@ -39,8 +48,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 		mathModule.Set(name, &interpreter.BuiltinFunction{
 			Name: name,
 			Fn: func(args ...interpreter.Value) interpreter.Value {
-				if len(args) < 1 {
-					return &interpreter.FloatValue{Val: 0}
+				if err := validateMathNumbers(args, 1, name); err != nil {
+					return err
 				}
 				x := coerceToFloat(args[0])
 				return &interpreter.FloatValue{Val: fn(x)}
@@ -52,8 +61,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 		mathModule.Set(name, &interpreter.BuiltinFunction{
 			Name: name,
 			Fn: func(args ...interpreter.Value) interpreter.Value {
-				if len(args) < 2 {
-					return &interpreter.FloatValue{Val: 0}
+				if err := validateMathNumbers(args, 2, name); err != nil {
+					return err
 				}
 				x := coerceToFloat(args[0])
 				y := coerceToFloat(args[1])
@@ -66,8 +75,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 	mathModule.Set("abs", &interpreter.BuiltinFunction{
 		Name: "abs",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
-			if len(args) < 1 {
-				return &interpreter.IntegerValue{Val: 0}
+			if err := validateMathNumbers(args, 1, "math.abs"); err != nil {
+				return err
 			}
 			if iv, ok := args[0].(*interpreter.IntegerValue); ok {
 				if iv.Val < 0 {
@@ -90,8 +99,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 	mathModule.Set("round", &interpreter.BuiltinFunction{
 		Name: "round",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
-			if len(args) < 1 {
-				return &interpreter.IntegerValue{Val: 0}
+			if err := validateMathNumbers(args, 1, "math.round"); err != nil {
+				return err
 			}
 			x := coerceToFloat(args[0])
 			return &interpreter.IntegerValue{Val: int64(math.Round(x))}
@@ -102,8 +111,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 	mathModule.Set("floor", &interpreter.BuiltinFunction{
 		Name: "floor",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
-			if len(args) < 1 {
-				return &interpreter.IntegerValue{Val: 0}
+			if err := validateMathNumbers(args, 1, "math.floor"); err != nil {
+				return err
 			}
 			x := coerceToFloat(args[0])
 			return &interpreter.IntegerValue{Val: int64(math.Floor(x))}
@@ -114,8 +123,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 	mathModule.Set("ceil", &interpreter.BuiltinFunction{
 		Name: "ceil",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
-			if len(args) < 1 {
-				return &interpreter.IntegerValue{Val: 0}
+			if err := validateMathNumbers(args, 1, "math.ceil"); err != nil {
+				return err
 			}
 			x := coerceToFloat(args[0])
 			return &interpreter.IntegerValue{Val: int64(math.Ceil(x))}
@@ -126,11 +135,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 	mathModule.Set("clamp", &interpreter.BuiltinFunction{
 		Name: "clamp",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
-			if len(args) < 3 {
-				if len(args) > 0 {
-					return args[0]
-				}
-				return &interpreter.IntegerValue{Val: 0}
+			if err := validateMathNumbers(args, 3, "math.clamp"); err != nil {
+				return err
 			}
 			val := coerceToFloat(args[0])
 			minVal := coerceToFloat(args[1])
@@ -155,11 +161,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 	mathModule.Set("min", &interpreter.BuiltinFunction{
 		Name: "min",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
-			if len(args) < 2 {
-				if len(args) == 1 {
-					return args[0]
-				}
-				return &interpreter.IntegerValue{Val: 0}
+			if err := validateMathNumbers(args, 2, "math.min"); err != nil {
+				return err
 			}
 			a := coerceToFloat(args[0])
 			b := coerceToFloat(args[1])
@@ -174,11 +177,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 	mathModule.Set("max", &interpreter.BuiltinFunction{
 		Name: "max",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
-			if len(args) < 2 {
-				if len(args) == 1 {
-					return args[0]
-				}
-				return &interpreter.IntegerValue{Val: 0}
+			if err := validateMathNumbers(args, 2, "math.max"); err != nil {
+				return err
 			}
 			a := coerceToFloat(args[0])
 			b := coerceToFloat(args[1])
@@ -207,8 +207,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 	mathModule.Set("deg2rad", &interpreter.BuiltinFunction{
 		Name: "deg2rad",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
-			if len(args) < 1 {
-				return &interpreter.FloatValue{Val: 0}
+			if err := validateMathNumbers(args, 1, "math.deg2rad"); err != nil {
+				return err
 			}
 			deg := coerceToFloat(args[0])
 			return &interpreter.FloatValue{Val: deg * (math.Pi / 180.0)}
@@ -218,8 +218,8 @@ func RegisterMathBuiltins(env *interpreter.Environment) {
 	mathModule.Set("rad2deg", &interpreter.BuiltinFunction{
 		Name: "rad2deg",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
-			if len(args) < 1 {
-				return &interpreter.FloatValue{Val: 0}
+			if err := validateMathNumbers(args, 1, "math.rad2deg"); err != nil {
+				return err
 			}
 			rad := coerceToFloat(args[0])
 			return &interpreter.FloatValue{Val: rad * (180.0 / math.Pi)}

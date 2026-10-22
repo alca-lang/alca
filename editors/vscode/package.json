@@ -1,10 +1,18 @@
 {
   "name": "alca-lang",
   "displayName": "Alca Language",
-  "description": "Rich language support for Alca: syntax highlighting, snippets, code execution, and diagnostics.",
-  "version": "1.0.0",
+  "description": "Rich language support for Alca: full syntax highlighting, LSP completion and hover, live diagnostics, formatting, snippets, and code execution.",
+  "version": "1.1.0",
   "publisher": "alca-lang",
+  "license": "MIT",
   "icon": "icon.png",
+  "keywords": [
+    "alca",
+    "language",
+    "syntax",
+    "lsp",
+    "snippets"
+  ],
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -30,8 +38,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/alca.svg",
-          "dark": "./icons/alca.svg"
+          "light": "./icons/alca-file-light.svg",
+          "dark": "./icons/alca-file-dark.svg"
         }
       }
     ],
@@ -48,10 +56,57 @@
         "path": "./snippets/snippets.json"
       }
     ],
+    "configuration": {
+      "title": "Alca",
+      "properties": {
+        "alca.executablePath": {
+          "type": "string",
+          "default": "alca",
+          "scope": "machine-overridable",
+          "description": "Path to the Alca CLI executable. Use an absolute path if `alca` is not on your PATH."
+        },
+        "alca.useLanguageServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use `alca lsp` for completion, hover, and live diagnostics when available."
+        },
+        "alca.diagnostics.onOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Alca files when they are opened (CLI fallback when the language server is unavailable)."
+        },
+        "alca.diagnostics.onSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Alca files when they are saved (CLI fallback when the language server is unavailable)."
+        },
+        "alca.diagnostics.onType": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check Alca files while typing (CLI fallback when the language server is unavailable)."
+        },
+        "alca.diagnostics.delay": {
+          "type": "number",
+          "default": 600,
+          "minimum": 200,
+          "description": "Delay in milliseconds before CLI diagnostics run after a change."
+        },
+        "alca.saveBeforeRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "Save the active Alca file before running, testing, checking, or building it."
+        },
+        "alca.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Alca status bar item for .al files."
+        }
+      }
+    },
     "commands": [
       {
         "command": "alca.runFile",
-        "title": "Alca: Run Script",
+        "title": "Alca: Run Script (Interpreter)",
         "category": "Alca"
       },
       {
@@ -61,7 +116,7 @@
       },
       {
         "command": "alca.buildFile",
-        "title": "Alca: Build Standalone Native Binary (.exe)",
+        "title": "Alca: Build Standalone Executable",
         "category": "Alca"
       },
       {
@@ -83,29 +138,71 @@
         "command": "alca.repl",
         "title": "Alca: Start REPL",
         "category": "Alca"
+      },
+      {
+        "command": "alca.showOutput",
+        "title": "Alca: Show Output",
+        "category": "Alca"
+      },
+      {
+        "command": "alca.restartLanguageServer",
+        "title": "Alca: Restart Language Server",
+        "category": "Alca"
       }
     ],
     "menus": {
       "editor/context": [
         {
           "when": "resourceExtname == .al",
+          "command": "alca.runFile",
+          "group": "alca@1"
+        },
+        {
+          "when": "resourceExtname == .al",
           "command": "alca.runFileVM",
-          "group": "alca_run@1"
+          "group": "alca@2"
+        },
+        {
+          "when": "resourceExtname == .al",
+          "command": "alca.testFile",
+          "group": "alca@3"
         },
         {
           "when": "resourceExtname == .al",
           "command": "alca.buildFile",
-          "group": "alca_run@2"
+          "group": "alca@4"
         },
         {
           "when": "resourceExtname == .al",
           "command": "alca.checkFile",
-          "group": "alca_run@3"
+          "group": "alca@5"
         },
         {
           "when": "resourceExtname == .al",
           "command": "alca.fmtFile",
-          "group": "alca_run@4"
+          "group": "alca@6"
+        }
+      ],
+      "explorer/context": [
+        {
+          "when": "resourceExtname == .al",
+          "command": "alca.runFile",
+          "group": "alca@1"
+        },
+        {
+          "when": "resourceExtname == .al",
+          "command": "alca.testFile",
+          "group": "alca@2"
+        },
+        {
+          "when": "resourceExtname == .al",
+          "command": "alca.buildFile",
+          "group": "alca@3"
+        },
+        {
+          "when": "resourceExtname == .al",
+          "command": "alca.checkFile",
+          "group": "alca@4"
         }
       ]
     }

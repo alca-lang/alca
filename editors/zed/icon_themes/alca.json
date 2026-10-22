@@ -1,0 +1,53 @@
+{
+  "$schema": "https://zed.dev/schema/icon_themes/v0.3.0.json",
+  "name": "Alca Icons",
+  "author": "Alca Team",
+  "themes": [
+    {
+      "name": "Alca Icons",
+      "appearance": "dark",
+      "directory_icons": {
+        "collapsed": "./icons/folder.svg",
+        "expanded": "./icons/folder-open.svg"
+      },
+      "chevron_icons": {
+        "collapsed": "./icons/chevron-right.svg",
+        "expanded": "./icons/chevron-down.svg"
+      },
+      "file_suffixes": {
+        "al": "alca"
+      },
+      "file_icons": {
+        "alca": {
+          "path": "./icons/alca.svg"
+        },
+        "default": {
+          "path": "./icons/file.svg"
+        }
+      }
+    },
+    {
+      "name": "Alca Icons Light",
+      "appearance": "light",
+      "directory_icons": {
+        "collapsed": "./icons/folder-light.svg",
+        "expanded": "./icons/folder-open-light.svg"
+      },
+      "chevron_icons": {
+        "collapsed": "./icons/chevron-right-light.svg",
+        "expanded": "./icons/chevron-down-light.svg"
+      },
+      "file_suffixes": {
+        "al": "alca"
+      },
+      "file_icons": {
+        "alca": {
+          "path": "./icons/alca-light.svg"
+        },
+        "default": {
+          "path": "./icons/file-light.svg"
+        }
+      }
+    }
+  ]
+}

@@ -4,7 +4,9 @@ package stdlib
 
 import (
 	"fmt"
+	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
@@ -73,7 +75,15 @@ func RegisterTimeBuiltins(env *interpreter.Environment) {
 		if len(args) > 0 {
 			layout = normalizeLayout(interpreter.CoerceToString(args[0]))
 		}
-		return &interpreter.StringValue{Val: time.Now().Format(layout)}
+		now := time.Now()
+		if len(args) > 1 {
+			loc, err := time.LoadLocation(interpreter.CoerceToString(args[1]))
+			if err != nil {
+				return interpreter.NewError(400, "invalid time zone: "+err.Error())
+			}
+			now = now.In(loc)
+		}
+		return &interpreter.StringValue{Val: now.Format(layout)}
 	})
 
 	// format(timestamp, layout?) -> string
@@ -85,10 +95,6 @@ func RegisterTimeBuiltins(env *interpreter.Environment) {
 		switch v := args[0].(type) {
 		case *interpreter.IntegerValue:
 			sec = v.Val
-			// If timestamp looks like milliseconds (greater than year 2286 in seconds), treat as ms
-			if sec > 10000000000 {
-				sec = sec / 1000
-			}
 		case *interpreter.FloatValue:
 			sec = int64(v.Val)
 		default:
@@ -101,6 +107,13 @@ func RegisterTimeBuiltins(env *interpreter.Environment) {
 		}
 
 		t := time.Unix(sec, 0)
+		if len(args) > 2 {
+			loc, err := time.LoadLocation(interpreter.CoerceToString(args[2]))
+			if err != nil {
+				return interpreter.NewError(400, "invalid time zone: "+err.Error())
+			}
+			t = t.In(loc)
+		}
 		return &interpreter.StringValue{Val: t.Format(layout)}
 	})
 
@@ -122,7 +135,17 @@ func RegisterTimeBuiltins(env *interpreter.Environment) {
 			}
 		}
 
-		t, err := time.Parse(layout, timeStr)
+		var t time.Time
+		var err error
+		if len(args) > 2 {
+			loc, locErr := time.LoadLocation(interpreter.CoerceToString(args[2]))
+			if locErr != nil {
+				return interpreter.NewError(400, "invalid time zone: "+locErr.Error())
+			}
+			t, err = time.ParseInLocation(layout, timeStr, loc)
+		} else {
+			t, err = time.Parse(layout, timeStr)
+		}
 		if err != nil {
 			return interpreter.NewError(400, fmt.Sprintf("failed to parse time %q: %s", timeStr, err.Error()))
 		}
@@ -144,16 +167,64 @@ func RegisterTimeBuiltins(env *interpreter.Environment) {
 			str := interpreter.CoerceToString(args[0])
 			d, err := time.ParseDuration(str)
 			if err == nil {
+				if d < 0 {
+					return interpreter.NewError(400, "sleep duration must not be negative")
+				}
 				time.Sleep(d)
 				return interpreter.NULL
 			}
 			return interpreter.NewError(400, "invalid sleep duration: "+str)
 		}
 
+		if ms < 0 {
+			return interpreter.NewError(400, "sleep duration must not be negative")
+		}
+		if ms > math.MaxInt64/int64(time.Millisecond) {
+			return interpreter.NewError(400, "sleep duration is too large")
+		}
 		if ms > 0 {
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 		}
 		return interpreter.NULL
+	})
+
+	register("parse_duration", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) != 1 {
+			return interpreter.NewError(400, "time.parse_duration requires a duration string")
+		}
+		duration, err := time.ParseDuration(interpreter.CoerceToString(args[0]))
+		if err != nil {
+			return interpreter.NewError(400, "invalid duration: "+err.Error())
+		}
+		return &interpreter.IntegerValue{Val: int64(duration)}
+	})
+
+	register("timer", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) != 1 {
+			return interpreter.NewError(400, "time.timer requires a duration string")
+		}
+		duration, err := time.ParseDuration(interpreter.CoerceToString(args[0]))
+		if err != nil || duration < 0 {
+			return interpreter.NewError(400, "time.timer requires a non-negative Go duration")
+		}
+		timer := time.NewTimer(duration)
+		cancelled := make(chan struct{})
+		var cancelOnce sync.Once
+		object := interpreter.NewMap()
+		object.Set("wait", &interpreter.BuiltinFunction{Name: "wait", Fn: func(args ...interpreter.Value) interpreter.Value {
+			select {
+			case <-timer.C:
+				return interpreter.TRUE
+			case <-cancelled:
+				return interpreter.FALSE
+			}
+		}})
+		object.Set("cancel", &interpreter.BuiltinFunction{Name: "cancel", Fn: func(args ...interpreter.Value) interpreter.Value {
+			stopped := timer.Stop()
+			cancelOnce.Do(func() { close(cancelled) })
+			return &interpreter.BoolValue{Val: stopped}
+		}})
+		return object
 	})
 
 	// since(timestamp_seconds_or_ms) -> elapsed float seconds
@@ -164,12 +235,7 @@ func RegisterTimeBuiltins(env *interpreter.Environment) {
 		var start time.Time
 		switch v := args[0].(type) {
 		case *interpreter.IntegerValue:
-			val := v.Val
-			if val > 10000000000 {
-				start = time.UnixMilli(val)
-			} else {
-				start = time.Unix(val, 0)
-			}
+			start = time.Unix(v.Val, 0)
 		case *interpreter.FloatValue:
 			start = time.Unix(int64(v.Val), 0)
 		default:
@@ -185,15 +251,19 @@ func RegisterTimeBuiltins(env *interpreter.Environment) {
 		if len(args) > 0 {
 			switch v := args[0].(type) {
 			case *interpreter.IntegerValue:
-				val := v.Val
-				if val > 10000000000 {
-					t = time.UnixMilli(val)
-				} else {
-					t = time.Unix(val, 0)
-				}
+				t = time.Unix(v.Val, 0)
 			case *interpreter.FloatValue:
 				t = time.Unix(int64(v.Val), 0)
+			default:
+				return interpreter.NewError(400, "timestamp must be numeric")
 			}
+		}
+		if len(args) > 1 {
+			loc, err := time.LoadLocation(interpreter.CoerceToString(args[1]))
+			if err != nil {
+				return interpreter.NewError(400, "invalid time zone: "+err.Error())
+			}
+			t = t.In(loc)
 		}
 
 		m := interpreter.NewMap()
@@ -235,8 +305,13 @@ func RegisterTimeBuiltins(env *interpreter.Environment) {
 		}
 		fn := args[0]
 		start := time.Now()
-		res, err := interpreter.CallMethod(fn, "", nil)
-		_ = err
+		res, err := interpreter.Invoke(fn, nil)
+		if err != nil {
+			return interpreter.NewError(500, "time.measure callback failed: "+err.Error())
+		}
+		if res != nil && res.Type() == interpreter.ERROR_VAL {
+			return res
+		}
 		elapsed := time.Since(start)
 
 		m := interpreter.NewMap()
@@ -248,6 +323,37 @@ func RegisterTimeBuiltins(env *interpreter.Environment) {
 		m.Set("elapsed_ms", &interpreter.FloatValue{Val: float64(elapsed.Microseconds()) / 1000.0})
 		m.Set("elapsed_sec", &interpreter.FloatValue{Val: elapsed.Seconds()})
 		return m
+	})
+
+	register("unix_ms_to_seconds", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) != 1 {
+			return interpreter.NewError(400, "time.unix_ms_to_seconds requires an integer timestamp")
+		}
+		value, ok := args[0].(*interpreter.IntegerValue)
+		if !ok {
+			return interpreter.NewError(400, "timestamp must be an integer")
+		}
+		return &interpreter.FloatValue{Val: float64(value.Val) / 1000}
+	})
+
+	register("unix_seconds_to_ms", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) != 1 {
+			return interpreter.NewError(400, "time.unix_seconds_to_ms requires a numeric timestamp")
+		}
+		var seconds float64
+		switch value := args[0].(type) {
+		case *interpreter.IntegerValue:
+			seconds = float64(value.Val)
+		case *interpreter.FloatValue:
+			seconds = value.Val
+		default:
+			return interpreter.NewError(400, "timestamp must be numeric")
+		}
+		ms := seconds * 1000
+		if math.IsNaN(ms) || math.IsInf(ms, 0) || ms > math.MaxInt64 || ms < math.MinInt64 {
+			return interpreter.NewError(400, "timestamp is outside the supported range")
+		}
+		return &interpreter.IntegerValue{Val: int64(ms)}
 	})
 
 	env.Set("time", timeModule)

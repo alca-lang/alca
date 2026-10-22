@@ -24,6 +24,9 @@ type Lexer struct {
 
 // New creates and initializes a new Lexer instance for the provided Alca source code.
 func New(input string) *Lexer {
+	// Skip a UTF-8 byte order mark: editors on Windows add it by default and
+	// it is not part of the program.
+	input = strings.TrimPrefix(input, "\ufeff")
 	l := &Lexer{
 		input:         input,
 		line:          1,
@@ -174,9 +177,16 @@ func (l *Lexer) NextToken() token.Token {
 
 	case '=':
 		if l.peekChar() == '=' {
-			tok = token.Token{Type: token.EQ, Literal: "==", Line: line, Column: col}
-			l.readChar()
-			l.readChar()
+			if l.peekCharN(2) == '=' {
+				tok = token.Token{Type: token.STRICT_EQ, Literal: "===", Line: line, Column: col}
+				l.readChar()
+				l.readChar()
+				l.readChar()
+			} else {
+				tok = token.Token{Type: token.EQ, Literal: "==", Line: line, Column: col}
+				l.readChar()
+				l.readChar()
+			}
 		} else {
 			tok = token.Token{Type: token.ASSIGN, Literal: "=", Line: line, Column: col}
 			l.readChar()
@@ -383,7 +393,7 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Column = col
 		tok.Type = token.STRING
 		if l.peekChar() == '"' && l.peekCharN(2) == '"' {
-			tok.Literal = l.readTripleString('"')
+			tok.Literal = l.readTripleString('"', false)
 		} else {
 			tok.Literal = l.readString('"')
 		}
@@ -394,7 +404,7 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Column = col
 		tok.Type = token.STRING
 		if l.peekChar() == '\'' && l.peekCharN(2) == '\'' {
-			tok.Literal = l.readTripleString('\'')
+			tok.Literal = l.readTripleString('\'', false)
 		} else {
 			tok.Literal = l.readString('\'')
 		}
@@ -405,6 +415,74 @@ func (l *Lexer) NextToken() token.Token {
 		tok.Column = col
 		tok.Type = token.STRING
 		tok.Literal = l.readRawString()
+		return tok
+
+	case 'r', 'R':
+		if (l.peekChar() == 'f' || l.peekChar() == 'F') && (l.peekCharN(2) == '"' || l.peekCharN(2) == '\'') {
+			tok.Line = line
+			tok.Column = col
+			tok.Type = token.FSTRING
+			l.readChar() // consume 'r'/'R'
+			l.readChar() // consume 'f'/'F', l.ch is now quote
+			quote := l.ch
+			if l.peekChar() == quote && l.peekCharN(2) == quote {
+				tok.Literal = l.readTripleString(quote, true)
+			} else {
+				tok.Literal = l.readRawStringQuote(quote)
+			}
+			return tok
+		} else if l.peekChar() == '"' || l.peekChar() == '\'' {
+			tok.Line = line
+			tok.Column = col
+			tok.Type = token.STRING
+			quote := l.peekChar()
+			l.readChar() // consume 'r'/'R', l.ch is now quote
+			if l.peekChar() == quote && l.peekCharN(2) == quote {
+				tok.Literal = l.readTripleString(quote, true)
+			} else {
+				tok.Literal = l.readRawStringQuote(quote)
+			}
+			return tok
+		}
+		// Not a string prefix; treat as standard identifier
+		tok.Line = line
+		tok.Column = col
+		tok.Literal = l.readIdentifier()
+		tok.Type = token.LookupIdent(tok.Literal)
+		return tok
+
+	case 'f', 'F':
+		if (l.peekChar() == 'r' || l.peekChar() == 'R') && (l.peekCharN(2) == '"' || l.peekCharN(2) == '\'') {
+			tok.Line = line
+			tok.Column = col
+			tok.Type = token.FSTRING
+			l.readChar() // consume 'f'/'F'
+			l.readChar() // consume 'r'/'R', l.ch is now quote
+			quote := l.ch
+			if l.peekChar() == quote && l.peekCharN(2) == quote {
+				tok.Literal = l.readTripleString(quote, true)
+			} else {
+				tok.Literal = l.readRawStringQuote(quote)
+			}
+			return tok
+		} else if l.peekChar() == '"' || l.peekChar() == '\'' {
+			tok.Line = line
+			tok.Column = col
+			tok.Type = token.FSTRING
+			quote := l.peekChar()
+			l.readChar() // consume 'f'/'F', l.ch is now quote
+			if l.peekChar() == quote && l.peekCharN(2) == quote {
+				tok.Literal = l.readTripleString(quote, false)
+			} else {
+				tok.Literal = l.readString(quote)
+			}
+			return tok
+		}
+		// Not a string prefix; treat as standard identifier
+		tok.Line = line
+		tok.Column = col
+		tok.Literal = l.readIdentifier()
+		tok.Type = token.LookupIdent(tok.Literal)
 		return tok
 
 	case 0:
@@ -664,7 +742,8 @@ func (l *Lexer) readString(quote byte) string {
 }
 
 // readTripleString reads a multiline string enclosed in triple quotes (""" or ”').
-func (l *Lexer) readTripleString(quote byte) string {
+// When isRaw is true, escape sequences are not interpreted (raw string).
+func (l *Lexer) readTripleString(quote byte, isRaw bool) string {
 	// Consume the three opening quotes
 	l.readChar() // 1st
 	l.readChar() // 2nd
@@ -684,18 +763,60 @@ func (l *Lexer) readTripleString(quote byte) string {
 		}
 
 		if l.ch == '\\' {
-			next := l.peekChar()
-			if next == quote {
-				l.readChar() // consume '\\'
-				out.WriteByte(quote)
-				l.readChar()
-				continue
-			} else if next == '\\' {
-				l.readChar() // consume '\\'
+			if isRaw {
+				if l.peekChar() == quote {
+					out.WriteByte('\\')
+					l.readChar()
+					out.WriteByte(l.ch)
+					l.readChar()
+					continue
+				}
 				out.WriteByte('\\')
 				l.readChar()
 				continue
 			}
+
+			l.readChar()
+			switch l.ch {
+			case 'n':
+				out.WriteByte('\n')
+			case 't':
+				out.WriteByte('\t')
+			case 'r':
+				out.WriteByte('\r')
+			case 'b':
+				out.WriteByte('\b')
+			case 'f':
+				out.WriteByte('\f')
+			case 'a':
+				out.WriteByte('\a')
+			case '0':
+				out.WriteByte(0)
+			case '"':
+				out.WriteByte('"')
+			case '\'':
+				out.WriteByte('\'')
+			case '\\':
+				out.WriteByte('\\')
+			case '$':
+				out.WriteByte('$')
+			case '\r':
+				if l.peekChar() == '\n' {
+					l.readChar()
+				}
+				l.line++
+				l.column = 0
+				// Line continuation: backslash before newline suppresses the newline
+			case '\n':
+				l.line++
+				l.column = 0
+				// Line continuation: backslash before newline suppresses the newline
+			default:
+				out.WriteByte('\\')
+				out.WriteByte(l.ch)
+			}
+			l.readChar()
+			continue
 		}
 
 		if l.ch == '\r' {
@@ -715,6 +836,50 @@ func (l *Lexer) readTripleString(quote byte) string {
 			out.WriteByte(l.ch)
 			l.readChar()
 		}
+	}
+	return out.String()
+}
+
+// readRawStringQuote reads a raw string enclosed in quote (' or ") verbatim without escape processing.
+func (l *Lexer) readRawStringQuote(quote byte) string {
+	l.readChar() // consume opening quote
+	var out strings.Builder
+	for {
+		if l.ch == quote || l.ch == 0 {
+			break
+		}
+		if l.ch == '\\' {
+			if l.peekChar() == quote {
+				out.WriteByte('\\')
+				l.readChar()
+				out.WriteByte(l.ch)
+				l.readChar()
+				continue
+			}
+			out.WriteByte('\\')
+			l.readChar()
+			continue
+		}
+		if l.ch == '\r' {
+			if l.peekChar() == '\n' {
+				l.readChar()
+			}
+			l.line++
+			l.column = 0
+			out.WriteByte('\n')
+			l.readChar()
+		} else if l.ch == '\n' {
+			l.line++
+			l.column = 0
+			out.WriteByte('\n')
+			l.readChar()
+		} else {
+			out.WriteByte(l.ch)
+			l.readChar()
+		}
+	}
+	if l.ch == quote {
+		l.readChar() // consume closing quote
 	}
 	return out.String()
 }

@@ -52,9 +52,13 @@ func TestCheckSnippetKeepsDeclarations(t *testing.T) {
 		t.Fatalf("using struct P failed: %s", got)
 	}
 
-	// Redeclaration must be rejected exactly like in a file.
-	if got := snippetErrors(t, c, "x := 2;"); !strings.Contains(got, "already declared") {
-		t.Fatalf("expected a redeclaration error, got %q", got)
+	// Redeclaration with the same type is shadowing and is accepted.
+	if got := snippetErrors(t, c, "x := 2;"); got != "" {
+		t.Fatalf("same-type shadowing must be accepted, got %q", got)
+	}
+	// A different type is a hard error.
+	if got := snippetErrors(t, c, `x := "two";`); !strings.Contains(got, "changes its type") {
+		t.Fatalf("expected a type-mismatch shadowing error, got %q", got)
 	}
 }
 
@@ -82,5 +86,21 @@ func TestCheckSnippetRestoreRollsBackFailedSnippet(t *testing.T) {
 	}
 	if got := snippetErrors(t, c, "keep = keep + 1;"); got != "" {
 		t.Fatalf("earlier declarations must survive the rollback: %s", got)
+	}
+}
+
+// TestClassSnippetsKeepDeclarations verifies that a class declared in one REPL
+// snippet can be instantiated and have its methods called from later snippets.
+func TestClassSnippetsKeepDeclarations(t *testing.T) {
+	c := typecheck.NewChecker("<repl>", "")
+
+	if got := snippetErrors(t, c, "class Counter:\n    private int: n = 0;\n    public func inc() -> int:\n        self.n = self.n + 1;\n        return self.n;"); got != "" {
+		t.Fatalf("declaring Counter failed: %s", got)
+	}
+	if got := snippetErrors(t, c, "c := Counter();"); got != "" {
+		t.Fatalf("instantiating Counter failed: %s", got)
+	}
+	if got := snippetErrors(t, c, "n: int = c.inc();"); got != "" {
+		t.Fatalf("calling a method from a later snippet failed: %s", got)
 	}
 }

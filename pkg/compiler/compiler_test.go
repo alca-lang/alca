@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,10 +90,16 @@ func TestBytecodeRoundTrip(t *testing.T) {
 }
 
 func TestSourceBundleRoundTrip(t *testing.T) {
-	b := &Bundle{Kind: KindSource, Name: "main.al", Source: "println(1);\n", Files: map[string]string{"lib/x.al": "// x"}}
+	b := &Bundle{
+		Kind:      KindSource,
+		Name:      "main.al",
+		Source:    "println(1);\n",
+		Files:     map[string]string{"lib/x.al": "// x"},
+		Resources: map[string][]byte{"assets/app.ico": {0, 1, 2, 255}},
+	}
 	data, _ := b.Encode()
 	got, err := DecodeBundle(data)
-	if err != nil || got.Source != b.Source || got.Files["lib/x.al"] != "// x" {
+	if err != nil || got.Source != b.Source || got.Files["lib/x.al"] != "// x" || !bytes.Equal(got.Resources["assets/app.ico"], b.Resources["assets/app.ico"]) {
 		t.Fatalf("round trip failed: %v %+v", err, got)
 	}
 }

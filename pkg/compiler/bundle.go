@@ -2,7 +2,8 @@
 //
 // An executable is: [runtime stub for the target OS/arch] + [payload] + [footer].
 // The payload is either serialized VM bytecode (default; no source code is shipped) or,
-// for the few programs the VM cannot compile, the source plus imported modules.
+// for the few programs the VM cannot compile, the source plus imported modules. Explicit
+// non-source resources are packaged alongside either payload kind.
 // The stub is the Alca runtime built for the *target* platform, which is what makes
 // cross-compilation possible without any toolchain on the build machine.
 package compiler
@@ -15,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 
 	"github.com/alca-lang/alca/pkg/ast"
 	"github.com/alca-lang/alca/pkg/interpreter"
@@ -28,15 +30,23 @@ type Kind byte
 const (
 	KindBytecode Kind = 'B'
 	KindSource   Kind = 'S'
+	KindNative   Kind = 'N' // Ahead-of-Time native machine code
 )
 
 // Bundle is the decoded content of an executable's payload.
 type Bundle struct {
-	Kind   Kind
-	Name   string            // entry file name (for diagnostics)
-	Source string            // KindSource: entry program text
-	Files  map[string]string // KindSource: imported modules (relative path -> text)
-	Code   *vm.Bytecode      // KindBytecode
+	Kind      Kind
+	Name      string            // entry file name (for diagnostics)
+	Source    string            // KindSource: entry program text
+	Files     map[string]string // KindSource: imported modules (relative path -> text)
+	Resources map[string][]byte // Embedded non-source files (relative path -> contents)
+	// Modules maps a `use` module path to its relative path inside Files, so
+	// the standalone runtime resolves `use pkg` from the embedded sources
+	// instead of the machine's registry.
+	Modules      map[string]string
+	Code         *vm.Bytecode // KindBytecode or KindNative constants/fallback
+	NativeCode   []byte       // KindNative: AOT compiled AMD64 machine code
+	LabelOffsets map[int]int  // KindNative: Bytecode IP -> machine code offset
 }
 
 const (
@@ -329,6 +339,20 @@ func (b *Bundle) Encode() ([]byte, error) {
 	raw.u8(byte(b.Kind))
 	raw.str(b.Name)
 	switch b.Kind {
+	case KindNative:
+		raw.bytes(b.NativeCode)
+		raw.u32(len(b.LabelOffsets))
+		for ip, off := range b.LabelOffsets {
+			raw.u32(ip)
+			raw.u32(off)
+		}
+		raw.bytes(b.Code.Instructions)
+		raw.u32(len(b.Code.Constants))
+		for _, c := range b.Code.Constants {
+			if err := encodeConstant(&raw, c); err != nil {
+				return nil, err
+			}
+		}
 	case KindBytecode:
 		raw.bytes(b.Code.Instructions)
 		raw.u32(len(b.Code.Constants))
@@ -344,8 +368,18 @@ func (b *Bundle) Encode() ([]byte, error) {
 			raw.str(k)
 			raw.str(b.Files[k])
 		}
+		raw.u32(len(b.Modules))
+		for _, k := range sortedKeys(b.Modules) {
+			raw.str(k)
+			raw.str(b.Modules[k])
+		}
 	default:
 		return nil, fmt.Errorf("unknown bundle kind %q", b.Kind)
+	}
+	raw.u32(len(b.Resources))
+	for _, k := range sortedByteKeys(b.Resources) {
+		raw.str(k)
+		raw.bytes(b.Resources[k])
 	}
 
 	var compressed bytes.Buffer
@@ -396,6 +430,21 @@ func DecodeBundle(data []byte) (*Bundle, error) {
 	r := &reader{b: rawBytes}
 	b := &Bundle{Kind: Kind(r.u8()), Name: r.str()}
 	switch b.Kind {
+	case KindNative:
+		b.NativeCode = r.rawBytes()
+		numOffsets := r.u32()
+		b.LabelOffsets = make(map[int]int, numOffsets)
+		for i := 0; i < numOffsets && r.err == nil; i++ {
+			ip := r.u32()
+			off := r.u32()
+			b.LabelOffsets[ip] = off
+		}
+		code := &vm.Bytecode{Instructions: r.rawBytes()}
+		n := r.u32()
+		for i := 0; i < n && r.err == nil; i++ {
+			code.Constants = append(code.Constants, decodeConstant(r))
+		}
+		b.Code = code
 	case KindBytecode:
 		code := &vm.Bytecode{Instructions: r.rawBytes()}
 		n := r.u32()
@@ -411,8 +460,20 @@ func DecodeBundle(data []byte) (*Bundle, error) {
 			k := r.str()
 			b.Files[k] = r.str()
 		}
+		m := r.u32()
+		b.Modules = map[string]string{}
+		for i := 0; i < m && r.err == nil; i++ {
+			k := r.str()
+			b.Modules[k] = r.str()
+		}
 	default:
 		return nil, fmt.Errorf("corrupted payload: unknown kind %q", b.Kind)
+	}
+	nResources := r.u32()
+	b.Resources = make(map[string][]byte, nResources)
+	for i := 0; i < nResources && r.err == nil; i++ {
+		k := r.str()
+		b.Resources[k] = r.rawBytes()
 	}
 	if r.err != nil {
 		return nil, r.err
@@ -430,5 +491,14 @@ func sortedKeys(m map[string]string) []string {
 			keys[j], keys[j-1] = keys[j-1], keys[j]
 		}
 	}
+	return keys
+}
+
+func sortedByteKeys(m map[string][]byte) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
 	return keys
 }

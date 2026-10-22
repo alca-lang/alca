@@ -28,6 +28,21 @@ func runSource(t *testing.T, src string) error {
 	return machine.Run()
 }
 
+// TestCompilerAcceptsClasses: class programs compile to bytecode. The VM
+// implements the same class semantics as the tree-walking interpreter, so no
+// interpreter fallback is needed for them.
+func TestCompilerAcceptsClasses(t *testing.T) {
+	src := "class A:\n    public int: x = 1;\n"
+	p := parser.New(lexer.New(src))
+	prog := p.ParseProgram()
+	if errs := p.SyntaxErrors(); len(errs) > 0 {
+		t.Fatalf("syntax errors: %v", errs)
+	}
+	if err := NewCompiler().Compile(prog); err != nil {
+		t.Fatalf("class program must compile to bytecode, got %T: %v", err, err)
+	}
+}
+
 // TestErrExpressionKeepsExplicitCode: err("msg", code=N) must raise an error
 // whose code is N on the VM, matching the interpreter.
 func TestErrExpressionKeepsExplicitCode(t *testing.T) {
@@ -56,6 +71,33 @@ func TestRaisedErrorReportsItsOwnCodeInDiagnostics(t *testing.T) {
 	}
 	if strings.Contains(report, "(code 400)") {
 		t.Fatalf("diagnostic must not use the fallback code 400, got:\n%s", report)
+	}
+}
+
+func TestLooseAndStrictEqualityOnBothEngines(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "int and float loose", src: `println(1 == 1.0);`, want: "true"},
+		{name: "int and float strict", src: `println(1 === 1.0);`, want: "false"},
+		{name: "string and int loose", src: `println("1" == 1);`, want: "true"},
+		{name: "string and int strict", src: `println("1" === 1);`, want: "false"},
+		{name: "nested loose equality", src: `println([1] == [1.0]);`, want: "true"},
+		{name: "nested strict equality", src: `println([1] === [1.0]);`, want: "false"},
+		{name: "same type strict equality", src: `println("alca" === "alca");`, want: "true"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			interpreterOutput, vmOutput := runOnBothEngines(t, test.src)
+			if interpreterOutput != test.want {
+				t.Errorf("interpreter output = %q, want %q", interpreterOutput, test.want)
+			}
+			if vmOutput != test.want {
+				t.Errorf("VM output = %q, want %q", vmOutput, test.want)
+			}
+		})
 	}
 }
 
@@ -253,4 +295,92 @@ func parseProgram(t *testing.T, src string) *ast.Program {
 		t.Fatalf("syntax errors: %v", errs)
 	}
 	return prog
+}
+
+func TestMultilineAndFStringsExecution(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "multiline triple double quote",
+			src: `s := """hello
+world""";
+println(s);
+`,
+			want: "hello\nworld",
+		},
+		{
+			name: "multiline raw string verbatim backslashes",
+			src: `s := r"""line1\nnot newline""";
+println(s);
+`,
+			want: `line1\nnot newline`,
+		},
+		{
+			name: "fstring simple interpolation",
+			src: `name := "Alice";
+println(f"Hello, {name}!");
+`,
+			want: "Hello, Alice!",
+		},
+		{
+			name: "fstring arithmetic interpolation",
+			src: `x := 15;
+y := 27;
+println(f"{x} + {y} = {x + y}");
+`,
+			want: "15 + 27 = 42",
+		},
+		{
+			name: "fstring escaped braces",
+			src: `val := "ok";
+println(f"{{start}} {val} {{end}}");
+`,
+			want: "{start} ok {end}",
+		},
+		{
+			name: "multiline fstring",
+			src: `item := "widget";
+count := 3;
+println(f"""Order summary:
+- {item} x {count}""");
+`,
+			want: "Order summary:\n- widget x 3",
+		},
+		{
+			name: "raw fstring rf",
+			src: `score := 100;
+println(rf"Points: {score}\n[raw]");
+`,
+			want: "Points: 100\\n[raw]",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			interpOut, vmOut := runOnBothEngines(t, tc.src)
+			if interpOut != tc.want {
+				t.Errorf("interpreter output = %q, want %q", interpOut, tc.want)
+			}
+			if vmOut != tc.want {
+				t.Errorf("vm output = %q, want %q", vmOut, tc.want)
+			}
+			if interpOut != vmOut {
+				t.Errorf("engines disagree: interpreter %q, vm %q", interpOut, vmOut)
+			}
+		})
+	}
+}
+
+func TestWaitStatementOnBothEngines(t *testing.T) {
+	src := `x := 10;
+wait;
+println(x);
+`
+	interpOut, vmOut := runOnBothEngines(t, src)
+	if interpOut != "10" || vmOut != "10" {
+		t.Fatalf("expected 10 on both engines, got interp=%q, vm=%q", interpOut, vmOut)
+	}
 }

@@ -8,23 +8,26 @@
     ["[", "]"],
     ["(", ")"]
   ],
+  "wordPattern": "[A-Za-z_][A-Za-z0-9_]*",
   "autoClosingPairs": [
     { "open": "{", "close": "}" },
     { "open": "[", "close": "]" },
     { "open": "(", "close": ")" },
     { "open": "\"", "close": "\"", "notIn": ["string"] },
-    { "open": "'", "close": "'", "notIn": ["string", "comment"] }
+    { "open": "'", "close": "'", "notIn": ["string", "comment"] },
+    { "open": "`", "close": "`", "notIn": ["string", "comment"] }
   ],
   "surroundingPairs": [
     ["{", "}"],
     ["[", "]"],
     ["(", ")"],
     ["\"", "\""],
-    ["'", "'"]
+    ["'", "'"],
+    ["`", "`"]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "^\\s*(func|shfunc|struct|if|elif|else|while|for|loop|match|case|test|ba|threads|tx|watch|mock)\\b.*:\\s*(//.*)?$",
-    "decreaseIndentPattern": "^\\s*(elif|else|case[^:]*):\\s*(//.*)?$"
+    "increaseIndentPattern": "^\\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\\([^)]*\\))?\\s*)?(?:(?:pub|public|private|const)\\s+)*(?:func|fn|shfunc|struct|class|if|elif|else|while|for|foreach|loop|match|case|test|ba|threads|tx|watch|mock)\\b.*:\\s*(?://.*)?$",
+    "decreaseIndentPattern": "^\\s*(?:elif|else|case\\b[^:]*):\\s*(?://.*)?$"
   },
   "folding": {
     "offSide": true,
@@ -35,9 +38,16 @@
   },
   "onEnterRules": [
     {
-      "beforeText": "^\\s*(func|shfunc|struct|if|elif|else|while|for|loop|match|case|test|ba|threads|tx|watch|mock)\\b.*:\\s*(//.*)?$",
+      "beforeText": "^\\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\\([^)]*\\))?\\s*)?(?:(?:pub|public|private|const)\\s+)*(?:func|fn|shfunc|struct|class|if|elif|else|while|for|foreach|loop|match|case|test|ba|threads|tx|watch|mock)\\b.*:\\s*(?://.*)?$",
       "action": {
         "indent": "indent"
+      }
+    },
+    {
+      "beforeText": "^\\s*//",
+      "action": {
+        "indent": "none",
+        "appendText": "// "
       }
     }
   ]

@@ -34,8 +34,10 @@ const (
 	INT TokenType = "INT"
 	// FLOAT represents a floating-point literal (e.g., 3.14, 0.5s).
 	FLOAT TokenType = "FLOAT"
-	// STRING represents a string literal with optional interpolation.
+	// STRING represents a string literal.
 	STRING TokenType = "STRING"
+	// FSTRING represents an f-string literal (f"..." or f"""...""").
+	FSTRING TokenType = "FSTRING"
 )
 
 // Operator token types.
@@ -61,6 +63,8 @@ const (
 
 	// EQ represents the equality comparison operator '=='.
 	EQ TokenType = "=="
+	// STRICT_EQ represents the type-sensitive equality operator '==='.
+	STRICT_EQ TokenType = "==="
 	// NOT_EQ represents the inequality comparison operator '!='.
 	NOT_EQ TokenType = "!="
 	// LT represents the less-than comparison operator '<'.
@@ -189,8 +193,18 @@ const (
 	NULL TokenType = "null"
 	// STRUCT represents the 'struct' declaration keyword.
 	STRUCT TokenType = "struct"
+	// CLASS represents the 'class' declaration keyword.
+	CLASS TokenType = "class"
+	// EXTENDS represents the 'extends' inheritance keyword.
+	EXTENDS TokenType = "extends"
 	// PUB represents the 'pub' visibility keyword.
 	PUB TokenType = "pub"
+	// PUBLIC represents the 'public' visibility modifier for variables.
+	PUBLIC TokenType = "public"
+	// PRIVATE represents the 'private' visibility modifier for variables.
+	PRIVATE TokenType = "private"
+	// CONST represents the 'const' immutable declaration modifier.
+	CONST TokenType = "const"
 	// USE represents the 'use' module import keyword.
 	USE TokenType = "use"
 	// AS represents the 'as' alias keyword.
@@ -302,7 +316,12 @@ var keywords = map[string]TokenType{
 	"false":    FALSE,
 	"null":     NULL,
 	"struct":   STRUCT,
+	"class":    CLASS,
+	"extends":  EXTENDS,
 	"pub":      PUB,
+	"public":   PUBLIC,
+	"private":  PRIVATE,
+	"const":    CONST,
 	"use":      USE,
 	"as":       AS,
 	"ba":       BA,
@@ -369,8 +388,9 @@ func TypeKeywordNames() []string {
 func IsKeyword(t TokenType) bool {
 	switch t {
 	case FUNC, SHFUNC, RETURN, IF, ELSE, ELIF, WHILE, FOR, LOOP, FOREACH,
-		IN, BREAK, CONTINUE, AND, OR, NOT, TRUE, FALSE, NULL, STRUCT,
-		PUB, USE, AS, BA, THREADS, WAIT, WATCH, TEST, MOCK, ASSERT,
+		IN, BREAK, CONTINUE, AND, OR, NOT, TRUE, FALSE, NULL, STRUCT, CLASS, EXTENDS,
+		PUB, PUBLIC, PRIVATE, CONST,
+		USE, AS, BA, THREADS, WAIT, WATCH, TEST, MOCK, ASSERT,
 		TX, MATCH, CASE, ERR, IMPORT:
 		return true
 	default:

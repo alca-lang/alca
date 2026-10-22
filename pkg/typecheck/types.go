@@ -95,29 +95,96 @@ func (o *Overloads) String() string {
 	return strings.Join(s, " | ")
 }
 
-// Field is a struct field.
+// Field is a struct or class field.
 type Field struct {
 	Name       string
 	Type       Type
 	HasDefault bool
+	Visibility string      // "", "public" or "private"
+	IsConst    bool        // declared with 'const'
+	Owner      *StructType // declaring class/struct (nil for builtin records)
 }
 
-// StructType is a nominal record type.
+// Method is a class method signature.
+type Method struct {
+	Name       string
+	Signature  *FuncType
+	Visibility string      // "", "public" or "private"
+	Owner      *StructType // declaring class
+}
+
+// StructType is a nominal record type. When IsClass is true it also carries
+// methods, a single base class and reference semantics.
 type StructType struct {
-	Name   string
-	Fields []Field
+	Name    string
+	Fields  []Field
+	Methods map[string]*Method
+	Parent  *StructType
+	IsClass bool
 }
 
 func (s *StructType) String() string { return s.Name }
 
-// Field looks up a field by name.
+// Field looks up a field by name, including inherited fields.
 func (s *StructType) Field(name string) (Field, bool) {
-	for _, f := range s.Fields {
-		if f.Name == name {
-			return f, true
+	return s.LookupField(name)
+}
+
+// LookupField walks the inheritance chain.
+func (s *StructType) LookupField(name string) (Field, bool) {
+	for cur := s; cur != nil; cur = cur.Parent {
+		for _, f := range cur.Fields {
+			if f.Name == name {
+				return f, true
+			}
 		}
 	}
 	return Field{}, false
+}
+
+// LookupMethod walks the inheritance chain and returns the most derived method.
+func (s *StructType) LookupMethod(name string) (*Method, bool) {
+	for cur := s; cur != nil; cur = cur.Parent {
+		if m, ok := cur.Methods[name]; ok {
+			return m, true
+		}
+	}
+	return nil, false
+}
+
+// AllFields returns inherited fields first, followed by the type's own fields.
+func (s *StructType) AllFields() []Field {
+	var chain []*StructType
+	for cur := s; cur != nil; cur = cur.Parent {
+		chain = append(chain, cur)
+	}
+	var out []Field
+	for i := len(chain) - 1; i >= 0; i-- {
+		out = append(out, chain[i].Fields...)
+	}
+	return out
+}
+
+// Inherits reports whether s is t or a class derived from t.
+func (s *StructType) Inherits(t *StructType) bool {
+	for cur := s; cur != nil; cur = cur.Parent {
+		if cur == t || cur.Name == t.Name {
+			return true
+		}
+	}
+	return false
+}
+
+// SuperType is the static type of the 'super' keyword inside a method body.
+type SuperType struct {
+	Parent *StructType
+}
+
+func (s *SuperType) String() string {
+	if s.Parent == nil {
+		return "super"
+	}
+	return "super " + s.Parent.Name
 }
 
 // ErrorType is the built-in type of err(...) values: fields msg, code, time.
@@ -264,6 +331,12 @@ func Assignable(dst, src Type) bool {
 	if f, ok := dst.(*FuncType); ok && f.Dynamic {
 		_, isF := src.(*FuncType)
 		return isF
+	}
+	// A class value may be stored in a variable of any of its base classes.
+	if d, ok := dst.(*StructType); ok {
+		if s, ok := src.(*StructType); ok && d.IsClass && s.IsClass {
+			return s.Inherits(d)
+		}
 	}
 	return false
 }
@@ -423,8 +496,12 @@ func isIdent(c byte) bool {
 }
 
 // suggest returns the closest candidate (edit distance <= 2) or "".
+// suggest returns the candidate name closest to name, or "" when nothing is
+// close enough to be a useful hint. The distance threshold shrinks with the
+// length of name so that a one-letter name is not "corrected" to an unrelated
+// longer one ("a" would otherwise be corrected to "abs").
 func suggest(name string, candidates []string) string {
-	best, bestD := "", 3
+	best, bestD := "", suggestionDistance(name)
 	sort.Strings(candidates)
 	for _, c := range candidates {
 		if d := levenshtein(name, c); d < bestD {
@@ -432,6 +509,19 @@ func suggest(name string, candidates []string) string {
 		}
 	}
 	return best
+}
+
+// suggestionDistance is the maximum edit distance at which a candidate is still
+// considered a plausible misspelling of name.
+func suggestionDistance(name string) int {
+	switch n := len(name); {
+	case n <= 2:
+		return 1
+	case n == 3:
+		return 2
+	default:
+		return 3
+	}
 }
 
 func levenshtein(a, b string) int {

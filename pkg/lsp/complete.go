@@ -90,6 +90,25 @@ func documentSymbols(prog *ast.Program, checker *typecheck.Checker) []map[string
 				}
 				items = append(items, completionItem(f.Name, kindField, detail, doc))
 			}
+		case *ast.ClassDeclaration:
+			detail := "class"
+			if x.Parent != "" {
+				detail = "class extends " + x.Parent
+			}
+			items = append(items, completionItem(x.Name, kindClass, detail, "Class declared in this file."))
+			for _, f := range x.Fields {
+				fieldDetail := x.Name + "." + f.Name
+				if f.TypeAnnotation != nil {
+					fieldDetail += ": " + f.TypeAnnotation.String()
+				}
+				items = append(items, completionItem(f.Name, kindField, fieldDetail, "Field of `"+x.Name+"`."))
+			}
+			for _, m := range x.Methods {
+				if m == nil || m.Func == nil {
+					continue
+				}
+				items = append(items, completionItem(m.Func.Name, kindFunction, funcSignatureText(m.Func), "Method of `"+x.Name+"`."))
+			}
 		case *ast.FuncDeclaration:
 			items = append(items, completionItem(x.Name, kindFunction, funcSignatureText(x), "Function declared in this file."))
 		case *ast.VarDeclaration:
@@ -201,9 +220,20 @@ func moduleMemberItems(module string) []map[string]interface{} {
 func structFieldsOf(name string, prog *ast.Program, checker *typecheck.Checker) []map[string]interface{} {
 	if checker != nil {
 		if st := structTypeOfDeclaredVar(name, prog, checker); st != nil {
-			items := make([]map[string]interface{}, 0, len(st.Fields))
-			for _, f := range st.Fields {
+			fields := st.AllFields()
+			items := make([]map[string]interface{}, 0, len(fields)+len(st.Methods))
+			for _, f := range fields {
 				items = append(items, completionItem(f.Name, kindField, st.Name+"."+f.Name+": "+f.Type.String(), "Field of `"+st.Name+"`."))
+			}
+			seen := map[string]bool{}
+			for cur := st; cur != nil; cur = cur.Parent {
+				for method, m := range cur.Methods {
+					if seen[method] {
+						continue
+					}
+					seen[method] = true
+					items = append(items, completionItem(method, kindFunction, st.Name+"."+method+" "+m.Signature.String(), "Method of `"+st.Name+"`."))
+				}
 			}
 			return items
 		}
@@ -225,16 +255,34 @@ func structFieldsOf(name string, prog *ast.Program, checker *typecheck.Checker) 
 	}
 	var items []map[string]interface{}
 	walkNodes(prog, func(n ast.Node) {
-		sd, ok := n.(*ast.StructDeclaration)
-		if !ok || sd.Name != structName {
-			return
-		}
-		for _, f := range sd.Fields {
-			detail := sd.Name + "." + f.Name
-			if f.TypeAnnotation != nil {
-				detail += ": " + f.TypeAnnotation.String()
+		switch decl := n.(type) {
+		case *ast.StructDeclaration:
+			if decl.Name != structName {
+				return
 			}
-			items = append(items, completionItem(f.Name, kindField, detail, "Field of `"+sd.Name+"`."))
+			for _, f := range decl.Fields {
+				detail := decl.Name + "." + f.Name
+				if f.TypeAnnotation != nil {
+					detail += ": " + f.TypeAnnotation.String()
+				}
+				items = append(items, completionItem(f.Name, kindField, detail, "Field of `"+decl.Name+"`."))
+			}
+		case *ast.ClassDeclaration:
+			if decl.Name != structName {
+				return
+			}
+			for _, f := range decl.Fields {
+				detail := decl.Name + "." + f.Name
+				if f.TypeAnnotation != nil {
+					detail += ": " + f.TypeAnnotation.String()
+				}
+				items = append(items, completionItem(f.Name, kindField, detail, "Field of `"+decl.Name+"`."))
+			}
+			for _, m := range decl.Methods {
+				if m != nil && m.Func != nil {
+					items = append(items, completionItem(m.Func.Name, kindFunction, funcSignatureText(m.Func), "Method of `"+decl.Name+"`."))
+				}
+			}
 		}
 	})
 	return items

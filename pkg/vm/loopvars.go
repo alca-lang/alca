@@ -5,8 +5,8 @@ import "github.com/alca-lang/alca/pkg/ast"
 // writesLoopVariable reports whether compiling/executing the loop body could
 // assign to the named loop variable, including from nested functions and
 // lambdas (which may be invoked while the loop is active and capture the
-// variable by reference). The counter fast path in compileForRange is only
-// sound when this returns false: otherwise the body's writes would change the
+// variable by reference). The counter fast path in compileForRangeDynamic is
+// only sound when this returns false: otherwise the body's writes would change the
 // iteration count, while the interpreter keeps iterating a fixed item list.
 func writesLoopVariable(body *ast.BlockStatement, name string) bool {
 	if body == nil {
@@ -70,6 +70,8 @@ func statementWritesVariable(st ast.Statement, name string) bool {
 	case *ast.FuncDeclaration:
 		return writesLoopVariable(n.Body, name)
 	case *ast.StructDeclaration:
+		return false
+	case *ast.ClassDeclaration:
 		return false
 	case *ast.BreakStatement, *ast.ContinueStatement, *ast.UseStatement:
 		return false

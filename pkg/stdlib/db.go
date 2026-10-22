@@ -337,11 +337,27 @@ func wrapDBConnection(db *sql.DB, driver string) *interpreter.MapValue {
 			}
 			defer rows.Close()
 
-			listVal := scanRows(rows)
-			if l, ok := listVal.(*interpreter.ListValue); ok && len(l.Elements) > 0 {
-				return l.Elements[0]
+			if !rows.Next() {
+				if err := rows.Err(); err != nil {
+					return interpreter.NewError(500, fmt.Sprintf("query_row iteration error: %s", err))
+				}
+				return interpreter.NULL
 			}
-			return interpreter.NULL
+			return scanCurrentRow(rows)
+		},
+	})
+
+	connObj.Set("prepare", &interpreter.BuiltinFunction{
+		Name: "prepare",
+		Fn: func(args ...interpreter.Value) interpreter.Value {
+			if len(args) != 1 {
+				return interpreter.NewError(400, "prepare requires a SQL query string")
+			}
+			stmt, err := db.Prepare(interpreter.CoerceToString(args[0]))
+			if err != nil {
+				return interpreter.NewError(500, "prepare error: "+err.Error())
+			}
+			return wrapDBStatement(stmt)
 		},
 	})
 
@@ -489,6 +505,20 @@ func wrapTransaction(tx *sql.Tx) *interpreter.MapValue {
 		},
 	})
 
+	txObj.Set("prepare", &interpreter.BuiltinFunction{
+		Name: "prepare",
+		Fn: func(args ...interpreter.Value) interpreter.Value {
+			if len(args) != 1 {
+				return interpreter.NewError(400, "tx.prepare requires a SQL query string")
+			}
+			stmt, err := tx.Prepare(interpreter.CoerceToString(args[0]))
+			if err != nil {
+				return interpreter.NewError(500, "tx.prepare error: "+err.Error())
+			}
+			return wrapDBStatement(stmt)
+		},
+	})
+
 	txObj.Set("commit", &interpreter.BuiltinFunction{
 		Name: "commit",
 		Fn: func(args ...interpreter.Value) interpreter.Value {
@@ -556,15 +586,84 @@ func scanRows(rows *sql.Rows) interpreter.Value {
 			return interpreter.NewError(500, fmt.Sprintf("row scan error: %s", err.Error()))
 		}
 
-		rowMap := interpreter.NewMap()
-		for i, col := range cols {
-			val := rawVals[i]
-			rowMap.Set(col, goValueToAlcaValue(val))
-		}
-		results.Elements = append(results.Elements, rowMap)
+		results.Elements = append(results.ElementsSlice(), rowFromValues(cols, rawVals))
+	}
+	if err := rows.Err(); err != nil {
+		return interpreter.NewError(500, fmt.Sprintf("row iteration error: %s", err))
 	}
 
 	return results
+}
+
+func scanCurrentRow(rows *sql.Rows) interpreter.Value {
+	cols, err := rows.Columns()
+	if err != nil {
+		return interpreter.NewError(500, err.Error())
+	}
+	rawVals := make([]interface{}, len(cols))
+	scanArgs := make([]interface{}, len(cols))
+	for i := range rawVals {
+		scanArgs[i] = &rawVals[i]
+	}
+	if err := rows.Scan(scanArgs...); err != nil {
+		return interpreter.NewError(500, fmt.Sprintf("row scan error: %s", err))
+	}
+	return rowFromValues(cols, rawVals)
+}
+
+func rowFromValues(cols []string, values []interface{}) *interpreter.MapValue {
+	rowMap := interpreter.NewMap()
+	for i, col := range cols {
+		rowMap.Set(col, goValueToAlcaValue(values[i]))
+	}
+	return rowMap
+}
+
+func wrapDBStatement(stmt *sql.Stmt) *interpreter.MapValue {
+	result := interpreter.NewMap()
+	result.Set("exec", &interpreter.BuiltinFunction{Name: "exec", Fn: func(args ...interpreter.Value) interpreter.Value {
+		res, err := stmt.Exec(convertAlcaArgs(args)...)
+		if err != nil {
+			return interpreter.NewError(500, "statement.exec error: "+err.Error())
+		}
+		out := interpreter.NewMap()
+		if affected, err := res.RowsAffected(); err == nil {
+			out.Set("rows_affected", &interpreter.IntegerValue{Val: affected})
+		}
+		if id, err := res.LastInsertId(); err == nil {
+			out.Set("last_insert_id", &interpreter.IntegerValue{Val: id})
+		}
+		return out
+	}})
+	result.Set("query", &interpreter.BuiltinFunction{Name: "query", Fn: func(args ...interpreter.Value) interpreter.Value {
+		rows, err := stmt.Query(convertAlcaArgs(args)...)
+		if err != nil {
+			return interpreter.NewError(500, "statement.query error: "+err.Error())
+		}
+		defer rows.Close()
+		return scanRows(rows)
+	}})
+	result.Set("query_row", &interpreter.BuiltinFunction{Name: "query_row", Fn: func(args ...interpreter.Value) interpreter.Value {
+		rows, err := stmt.Query(convertAlcaArgs(args)...)
+		if err != nil {
+			return interpreter.NewError(500, "statement.query_row error: "+err.Error())
+		}
+		defer rows.Close()
+		if !rows.Next() {
+			if err := rows.Err(); err != nil {
+				return interpreter.NewError(500, "statement.query_row iteration error: "+err.Error())
+			}
+			return interpreter.NULL
+		}
+		return scanCurrentRow(rows)
+	}})
+	result.Set("close", &interpreter.BuiltinFunction{Name: "close", Fn: func(args ...interpreter.Value) interpreter.Value {
+		if err := stmt.Close(); err != nil {
+			return interpreter.NewError(500, "statement.close error: "+err.Error())
+		}
+		return interpreter.TRUE
+	}})
+	return result
 }
 
 func goValueToAlcaValue(val interface{}) interpreter.Value {

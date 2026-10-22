@@ -224,6 +224,14 @@ func canonicalPath(path string) string {
 	}
 }
 
+// PathWithin reports whether target is root itself or lives beneath it, using
+// the same symlink-aware canonicalisation as the capability checks. It lets
+// callers that must stay outside the capability model (such as the language's
+// module loader for project-local imports) still constrain a path to a subtree.
+func PathWithin(root, target string) bool {
+	return pathWithin(canonicalPath(root), canonicalPath(target))
+}
+
 // pathWithin reports whether target is root itself or lives beneath it.
 func pathWithin(root, target string) bool {
 	if runtime.GOOS == "windows" {

@@ -61,11 +61,23 @@ func AppendFile(path, content string) error {
 
 // FileExists checks whether a file or directory exists at the given path.
 func FileExists(path string) bool {
+	exists, _ := FileExistsChecked(path)
+	return exists
+}
+
+// FileExistsChecked checks whether a path exists and reports access/stat errors.
+func FileExistsChecked(path string) (bool, error) {
 	if err := sandbox.RequireRead(path); err != nil {
-		return false
+		return false, err
 	}
 	_, err := os.Stat(path)
-	return err == nil || !os.IsNotExist(err)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 // DeleteFile removes the file or directory at the given path.
@@ -202,14 +214,66 @@ func ReadLines(path string) ([]string, error) {
 	defer f.Close()
 
 	var lines []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, err
+	reader := bufio.NewReader(f)
+	for {
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			if line[len(line)-1] == '\n' {
+				line = line[:len(line)-1]
+			}
+			if len(line) > 0 && line[len(line)-1] == '\r' {
+				line = line[:len(line)-1]
+			}
+			lines = append(lines, line)
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	return lines, nil
+}
+
+// ReadBytes reads the complete contents of a file as bytes.
+func ReadBytes(path string) ([]byte, error) {
+	if err := sandbox.RequireRead(path); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(path)
+}
+
+// WriteBytes replaces a file with the supplied bytes.
+func WriteBytes(path string, data []byte) error {
+	if err := sandbox.RequireWrite(path); err != nil {
+		return err
+	}
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+// Walk returns all file and directory paths under root, including root.
+func Walk(root string) ([]string, error) {
+	if err := sandbox.RequireRead(root); err != nil {
+		return nil, err
+	}
+	var paths []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if err := sandbox.RequireRead(path); err != nil {
+			return err
+		}
+		paths = append(paths, path)
+		return nil
+	})
+	return paths, err
 }
 
 // Glob returns the names of all files matching pattern.
@@ -301,10 +365,57 @@ func RegisterIOBuiltins(env *interpreter.Environment) {
 			return interpreter.FALSE
 		}
 		path := interpreter.CoerceToString(args[0])
-		if FileExists(path) {
+		exists, err := FileExistsChecked(path)
+		if err != nil {
+			return handleIOError("file_exists", path, err)
+		}
+		if exists {
 			return interpreter.TRUE
 		}
 		return interpreter.FALSE
+	})
+
+	register("read_bytes", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) < 1 {
+			return interpreter.NewError(400, "read_bytes requires a path argument")
+		}
+		path := interpreter.CoerceToString(args[0])
+		data, err := ReadBytes(path)
+		if err != nil {
+			return handleIOError("read_bytes", path, err)
+		}
+		return &interpreter.BlobValue{Data: data}
+	})
+
+	register("write_bytes", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) < 2 {
+			return interpreter.NewError(400, "write_bytes requires path and blob arguments")
+		}
+		path := interpreter.CoerceToString(args[0])
+		data, ok := args[1].(*interpreter.BlobValue)
+		if !ok {
+			return interpreter.NewError(400, "write_bytes data must be a blob")
+		}
+		if err := WriteBytes(path, data.Data); err != nil {
+			return handleIOError("write_bytes", path, err)
+		}
+		return interpreter.TRUE
+	})
+
+	register("walk", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) < 1 {
+			return interpreter.NewError(400, "walk requires a root path")
+		}
+		root := interpreter.CoerceToString(args[0])
+		paths, err := Walk(root)
+		if err != nil {
+			return handleIOError("walk", root, err)
+		}
+		values := make([]interpreter.Value, len(paths))
+		for i, path := range paths {
+			values[i] = &interpreter.StringValue{Val: path}
+		}
+		return interpreter.NewList(values...)
 	})
 
 	register("delete_file", func(args ...interpreter.Value) interpreter.Value {

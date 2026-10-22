@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/alca-lang/alca/pkg/compiler"
@@ -150,5 +152,104 @@ func hasExecutableHeader(raw []byte, target compiler.Target) bool {
 		return bytes.HasPrefix(raw, []byte{0xcf, 0xfa, 0xed, 0xfe})
 	default:
 		return false
+	}
+}
+
+// TestPureNativeBailoutFailsLoudly verifies that a pure native PE with no VM
+// does not silently succeed when native execution deoptimizes. Division by zero
+// is a runtime type/range bailout in the AMD64 backend, so the executable must
+// report the missing VM fallback and exit nonzero.
+func TestPureNativeBailoutFailsLoudly(t *testing.T) {
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		t.Skip("pure native PE output is Windows/amd64 only")
+	}
+
+	dir := t.TempDir()
+	input := filepath.Join(dir, "bailout.al")
+	const src = "a := 10;\nb := 0;\nc := a / b;\n"
+	if err := os.WriteFile(input, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(dir, "bailout.exe")
+	if code := cmdBuild([]string{input, "-o", output}); code != 0 {
+		t.Fatalf("cmdBuild exited with %d", code)
+	}
+
+	info, err := os.Stat(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The pure PE is a few KB; falling back to the runtime stub would embed the
+	// whole Go runtime and be far larger.
+	if info.Size() > 64*1024 {
+		t.Fatalf("output is %d bytes; expected a pure native PE, not the runtime stub", info.Size())
+	}
+
+	out, err := exec.Command(output).CombinedOutput()
+	if err == nil {
+		t.Fatalf("bailout executable succeeded silently; output: %s", out)
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("run executable: %v", err)
+	}
+	if code := exitErr.ExitCode(); code == 0 {
+		t.Fatalf("bailout executable exited 0; output: %s", out)
+	}
+	if got := string(out); !strings.Contains(got, "no VM fallback") {
+		t.Fatalf("bailout executable did not explain the missing VM; output: %q", got)
+	}
+}
+
+func TestCollectEmbeddedResources(t *testing.T) {
+	root := t.TempDir()
+	assets := filepath.Join(root, "assets")
+	if err := os.MkdirAll(filepath.Join(assets, "icons"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := []byte{0, 1, 2, 255}
+	if err := os.WriteFile(filepath.Join(assets, "icons", "app.ico"), want, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resources, err := collectEmbeddedResources(root, []string{"assets"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(resources["assets/icons/app.ico"], want) {
+		t.Fatalf("embedded bytes = %v, want %v", resources["assets/icons/app.ico"], want)
+	}
+	if _, err := collectEmbeddedResources(root, []string{"../outside"}); err == nil {
+		t.Fatal("expected paths outside the project directory to be rejected")
+	}
+}
+
+func TestBuildEmbedsRequestedResources(t *testing.T) {
+	root := t.TempDir()
+	input := filepath.Join(root, "main.al")
+	if err := os.WriteFile(input, []byte(`println("embedded");`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	asset := filepath.Join(root, "assets", "data.bin")
+	if err := os.MkdirAll(filepath.Dir(asset), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	want := []byte{0, 7, 255}
+	if err := os.WriteFile(asset, want, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stub, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "app.exe")
+	if code := cmdBuild([]string{input, "--embed", "assets", "--runtime", stub, "--bytecode", "-o", output}); code != 0 {
+		t.Fatalf("cmdBuild exited with %d", code)
+	}
+	bundle, err := compiler.ExtractBundle(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(bundle.Resources["assets/data.bin"], want) {
+		t.Fatalf("bundle resource = %v, want %v", bundle.Resources["assets/data.bin"], want)
 	}
 }

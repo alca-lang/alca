@@ -59,6 +59,25 @@ func (u *Upvalue) close(stack []StackSlot) {
 	}
 }
 
+// ConstantPool holds a program's constants in both unboxed (Slots) and boxed
+// (Vals) form. Every function compiled as part of one program shares one pool,
+// and each function carries a pointer to it so a compiled module loaded from an
+// artifact can be called from a different VM than the one that ran its
+// top-level code.
+type ConstantPool struct {
+	Slots []StackSlot
+	Vals  []interpreter.Value
+}
+
+// NewConstantPool builds a pool from boxed constant values.
+func NewConstantPool(vals []interpreter.Value) *ConstantPool {
+	slots := make([]StackSlot, len(vals))
+	for i, c := range vals {
+		slots[i] = FromValue(c)
+	}
+	return &ConstantPool{Slots: slots, Vals: vals}
+}
+
 // CompiledFunction represents a compiled bytecode function or a closure over one.
 // Closures share the immutable code fields; Upvalues is filled per instance by
 // OpClosure and empty (NumFree == 0) for plain functions.
@@ -70,6 +89,24 @@ type CompiledFunction struct {
 	NumFree       int
 	UpvalueDescs  []UpvalueDesc
 	Upvalues      []*Upvalue
+	// Pool is the constant pool this function's instructions index into.
+	Pool *ConstantPool
+	// Globals is the module globals array this function reads and writes. A
+	// nil value means the executing VM's own globals, which is the case for
+	// the program being run directly; functions loaded from an artifact keep
+	// the globals array of the module instance they were compiled for.
+	Globals []StackSlot
+	// Env is the environment the function belongs to. Host code (GUI callbacks,
+	// HTTP handlers) uses it when invoking a closure outside its main VM.
+	Env *interpreter.Environment
+	// Template is the function this one was cloned from. A closure shares its
+	// code with the template, so the JIT can reuse one compiled artifact for
+	// every instance instead of compiling the same code again.
+	Template *CompiledFunction
+	// SourceFile is the program file this function was loaded from. The VM and
+	// JIT runtime helper use it to resolve `use` statements relative to the
+	// importing file.
+	SourceFile string
 }
 
 // Type returns interpreter.FUNC_VAL.

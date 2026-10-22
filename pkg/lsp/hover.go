@@ -48,6 +48,17 @@ func childrenOf(n ast.Node) []ast.Node {
 	case *ast.StructDeclaration:
 		add(nodesOf(x.Decorators)...)
 		add(nodesOf(x.Fields)...)
+	case *ast.ClassDeclaration:
+		add(nodesOf(x.Decorators)...)
+		add(nodesOf(x.NestedStructs)...)
+		add(nodesOf(x.Fields)...)
+		add(nodesOf(x.Methods)...)
+	case *ast.MethodDeclaration:
+		if x.Func != nil {
+			add(nodesOf(x.Func.Decorators)...)
+			add(nodesOf(x.Func.Params)...)
+			add(x.Func.ReturnType, x.Func.Body)
+		}
 	case *ast.StructField:
 		add(x.TypeAnnotation, x.DefaultValue)
 	case *ast.IfStatement:
@@ -219,6 +230,15 @@ func hoverDescription(prog *ast.Program, checker *typecheck.Checker, line, col i
 		return alcaCode("func " + funcSignatureText(n))
 	case *ast.StructDeclaration:
 		return alcaCode("struct " + n.Name)
+	case *ast.ClassDeclaration:
+		if n.Parent != "" {
+			return alcaCode("class " + n.Name + " extends " + n.Parent)
+		}
+		return alcaCode("class " + n.Name)
+	case *ast.MethodDeclaration:
+		if n.Func != nil {
+			return alcaCode("func " + funcSignatureText(n.Func))
+		}
 	}
 
 	if expr, ok := node.(ast.Expression); ok && checker != nil {

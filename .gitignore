@@ -1,6 +1,10 @@
 # Generated Alca runtime stubs for cross-compilation.
 /runtimes/
 
+# Generated release bundle (binaries and copied docs). Rebuild with
+# scripts/make-release.ps1 or scripts/make-release.sh.
+/releases/
+
 # Local CLI builds and built applications.
 /alca
 /alca.exe

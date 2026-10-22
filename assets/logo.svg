@@ -1,10 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <path d="M26 8H78L104 34V120H26Z" fill="none" stroke="#F59E0B" stroke-width="6" stroke-linejoin="round"/>
-  <path d="M78 8V34H104" fill="none" stroke="#F59E0B" stroke-width="6" stroke-linejoin="round"/>
-  <g transform="translate(65 82) scale(0.5) translate(-60 -59)">
-    <g fill="#F59E0B" stroke="#F59E0B" stroke-width="10" stroke-linejoin="round" stroke-linecap="round">
-      <path fill="none" d="M40 100V38M40 36H66a14 14 0 0 1 0 28H40M40 64H70a18 18 0 0 1 0 36H40"/>
-      <path stroke-width="4" d="M37 40V16L57 36ZM62 36L84 16V44Z"/>
-    </g>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254">
+<rect width="1254" height="1254" fill="#000"/>
+<path d="M 772 906 L 793 906 L 836 848 L 879 906 L 900 906 L 894 899 L 892 895 L 862 855 L 860 851 L 845 832 L 843 828 L 829 828 L 826 833 L 822 837 L 820 841 L 814 848 L 812 852 L 806 859 L 804 863 L 795 874 L 793 878 Z M 653 834 L 649 841 L 649 893 L 650 896 L 655 902 L 663 906 L 740 906 L 740 890 L 671 890 L 669 889 L 666 885 L 666 849 L 669 845 L 671 844 L 740 844 L 740 828 L 664 828 L 657 831 Z M 524 828 L 524 906 L 609 906 L 609 890 L 543 890 L 542 889 L 542 828 Z M 354 906 L 375 906 L 388 887 L 417 849 L 421 852 L 460 906 L 481 906 L 473 894 L 467 887 L 465 883 L 462 880 L 460 876 L 424 828 L 411 828 L 409 830 Z M 536 631 L 660 631 L 725 737 L 774 737 L 688 596 L 562 595 L 557 598 Z M 626 339 L 387 721 L 435 721 L 627 426 L 831 764 L 880 764 Z" fill="#fff" fill-rule="evenodd"/>
 </svg>

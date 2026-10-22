@@ -117,16 +117,16 @@ func TestREPLTypeErrorsReported(t *testing.T) {
 }
 
 // TestREPLRejectedRedeclarationRollsBack checks that a snippet rejected for
-// redeclaring an existing variable leaves the previous value in place and the
-// checker in sync.
+// shadowing a variable with a different type leaves the previous value in place
+// and the checker in sync.
 func TestREPLRejectedRedeclarationRollsBack(t *testing.T) {
 	session := newREPLSession()
 	_, errOut := captureOutput(t, func() {
 		session.eval("x := 1;")
 		session.eval("x := \"two\";")
 	})
-	if !strings.Contains(errOut, "already declared") {
-		t.Fatalf("expected a redeclaration error, got:\n%s", errOut)
+	if !strings.Contains(errOut, "changes its type") {
+		t.Fatalf("expected a type-mismatch shadowing error, got:\n%s", errOut)
 	}
 	out, errOut2 := captureOutput(t, func() {
 		session.eval("println(x);")
