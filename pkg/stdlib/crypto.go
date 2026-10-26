@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the Crypto & Hash standard library module for the Alca programming language.
 // It supports cryptographic hashing (SHA-256, SHA-512, MD5), Base64, Hex, UUIDs, and secure random generation.
 package stdlib
@@ -39,7 +42,6 @@ func RegisterCryptoBuiltins(env *interpreter.Environment) {
 	register := func(name string, fn func(args ...interpreter.Value) interpreter.Value) {
 		bf := &interpreter.BuiltinFunction{Name: name, Fn: fn}
 		cryptoModule.Set(name, bf)
-		env.Set(name, bf)
 	}
 
 	// sha256(data) -> hex string
@@ -93,6 +95,8 @@ func RegisterCryptoBuiltins(env *interpreter.Environment) {
 	})
 
 	// sha1(data) -> hex string
+	// SECURITY WARNING: SHA-1 is cryptographically broken. Use crypto.sha256 for security.
+	// This function is provided strictly for non-security checksums or legacy compatibility.
 	register("sha1", func(args ...interpreter.Value) interpreter.Value {
 		if len(args) < 1 {
 			return interpreter.NewError(400, "crypto.sha1 requires data argument")
@@ -103,6 +107,8 @@ func RegisterCryptoBuiltins(env *interpreter.Environment) {
 	})
 
 	// md5(data) -> hex string
+	// SECURITY WARNING: MD5 is cryptographically broken and vulnerable to collision attacks.
+	// Do NOT use for passwords, digital signatures, or security. Use crypto.sha256 instead.
 	register("md5", func(args ...interpreter.Value) interpreter.Value {
 		if len(args) < 1 {
 			return interpreter.NewError(400, "crypto.md5 requires data argument")
@@ -206,20 +212,18 @@ func RegisterCryptoBuiltins(env *interpreter.Environment) {
 		return &interpreter.StringValue{Val: string(result)}
 	})
 
-	// random_int(min, max) -> int
+	// random_int(min: int, max: int) -> int (cryptographically secure)
 	register("random_int", func(args ...interpreter.Value) interpreter.Value {
-		min := int64(0)
-		max := int64(100)
-		if len(args) >= 1 {
-			if iv, ok := args[0].(*interpreter.IntegerValue); ok {
-				min = iv.Val
-			}
+		if len(args) < 2 {
+			return interpreter.NewError(400, "random_int requires (min: int, max: int)")
 		}
-		if len(args) >= 2 {
-			if iv, ok := args[1].(*interpreter.IntegerValue); ok {
-				max = iv.Val
-			}
+		iv0, ok0 := args[0].(*interpreter.IntegerValue)
+		iv1, ok1 := args[1].(*interpreter.IntegerValue)
+		if !ok0 || !ok1 {
+			return interpreter.NewError(400, "random_int expects integer arguments (min, max)")
 		}
+		min := iv0.Val
+		max := iv1.Val
 		if max < min {
 			return interpreter.NewError(400, "random_int maximum must be greater than or equal to minimum")
 		}

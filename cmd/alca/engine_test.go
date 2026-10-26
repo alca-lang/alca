@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -58,6 +61,13 @@ func TestExecuteWaitsForAndReportsAsyncStreamErrors(t *testing.T) {
 
 // corpus is run on BOTH engines; the output must match the expectation on each.
 var corpus = []struct{ name, src, want string }{
+	{"async function and await parity", `
+async fn calculate(x: int) -> int {
+    return x * 2 + 1;
+}
+res: int = await calculate(20);
+println(res);
+`, "41\n"},
 	{"integer division and power", `
 println(7 / 2);
 println(-7 / 2);
@@ -69,7 +79,7 @@ println(7.0 / 2.0);`, "3\n-3\n1\n1024\n3.5\n"},
 func classify(n: int) -> string:
     if n < 0:
         return "neg";
-    elif n == 0:
+    elif n === 0:
         return "zero";
     elif n < 10:
         return "small";
@@ -82,7 +92,7 @@ println(classify(50));`, "neg\nzero\nsmall\nbig\n"},
 
 	{"string concat order", `
 s: string = "";
-for i in 0..2:
+for i in 0..=2:
     s = "a" + s;
     s = s + "b";
 println(s);`, "aaabbb\n"},
@@ -97,8 +107,8 @@ println(f);`, "5.0\n"},
 func noop(x: int) -> int:
     return x;
 c: int = 0;
-for i in 0..300000:
-    if i % 2 == 0:
+for i in 0..=300000:
+    if i % 2 === 0:
         c = c + 1;
     else:
         noop(i);
@@ -107,7 +117,7 @@ println(c);`, "150001\n"},
 	{"continue and break in for", `
 total: int = 0;
 for i in 0..10:
-    if i % 2 == 0:
+    if i % 2 === 0:
         continue;
     if i > 7:
         break;
@@ -119,22 +129,22 @@ i: int = 0;
 odd: int = 0;
 while i < 10:
     i = i + 1;
-    if i % 2 == 0:
+    if i % 2 === 0:
         continue;
     odd = odd + 1;
 println(odd);`, "5\n"},
 
 	{"nested loops", `
 n: int = 0;
-for i in 0..3:
-    for j in 0..3:
+for i in 0..=3:
+    for j in 0..=3:
         n = n + 1;
 println(n);`, "16\n"},
 
 	{"loop in function", `
 func sum_to(n: int) -> int:
     t: int = 0;
-    for i in 1..n:
+    for i in 1..=n:
         t = t + i;
     return t;
 println(sum_to(100));`, "5050\n"},
@@ -198,7 +208,7 @@ println(a.online);`, "80\n8080\n9000\ntrue\n"},
 
 	{"error capture", `
 func risky(n: int) -> int:
-    if n == 0:
+    if n === 0:
         err("division by zero forbidden", code=42);
         return 0;
     return 100 / n;
@@ -241,7 +251,7 @@ if captured != null:
 
 	{"null narrowing", `
 func f(s: string | null) -> int:
-    if s == null:
+    if s === null:
         return -1;
     return len(s);
 println(f(null));
@@ -369,13 +379,13 @@ struct User:
     name: string;
     email: string | null = null;
 u := User("Bob");
-println(u.email == null);
+println(u.email === null);
 u.email = "bob@x.io";
 println(u.email);
 `, "true\nbob@x.io\n"},
 
 	{"p16_assert", `
-assert(1 + 1 == 2);
+assert(1 + 1 === 2);
 println("ok");
 `, "ok\n"},
 
@@ -393,7 +403,8 @@ if e != null:
 `, "400\ndivision by zero\n"},
 
 	{"p19_float_compare", `
-println(1 == 1.0);
+dynamic: json = 1.0;
+println(dynamic == 1);
 println(2.5 > 2);
 println(float(3) <= 3.0);
 println(0.1 + 0.2 > 0.3);
@@ -431,7 +442,7 @@ println(x);
 
 	{"p26_string_compare", `
 println("abc" < "abd");
-println("abc" == "abc");
+println("abc" === "abc");
 println("b" > "a");
 println("a" != "b");
 `, "true\ntrue\ntrue\ntrue\n"},
@@ -457,11 +468,11 @@ for s in ["alpha", "beta", "x"]:
 
 	{"p31_mutual_recursion", `
 func is_even(n: int) -> bool:
-    if n == 0:
+    if n === 0:
         return true;
     return is_odd(n - 1);
 func is_odd(n: int) -> bool:
-    if n == 0:
+    if n === 0:
         return false;
     return is_even(n - 1);
 println(is_even(10));
@@ -491,16 +502,16 @@ println(7 in xs);
 i: int = 0;
 while true:
     i = i + 1;
-    if i == 5:
+    if i === 5:
         break;
 println(i);
 `, "5\n"},
 
 	{"p37_nested_break", `
 n: int = 0;
-for i in 0..5:
-    for j in 0..5:
-        if j == 2:
+for i in 0..=5:
+    for j in 0..=5:
+        if j === 2:
             break;
         n = n + 1;
 println(n);
@@ -625,19 +636,19 @@ println(m["b"]);
 
 	{"q09_deep_recursion", `
 func depth(n: int) -> int:
-    if n == 0:
+    if n === 0:
         return 0;
     return 1 + depth(n - 1);
 println(depth(500));
 `, "500\n"},
 
 	{"q12_range_descending", `
-for i in 5..1:
+for i in 5..=1:
     println(i);
 `, "5\n4\n3\n2\n1\n"},
 
 	{"q13_range_negative", `
-for i in -3..0:
+for i in -3..=0:
     println(i);
 `, "-3\n-2\n-1\n0\n"},
 
@@ -660,13 +671,13 @@ println(-7 % -3);
 `, "-1\n1\n-1\n"},
 
 	{"q18_bool_compare", `
-println(true == true);
+println(true === true);
 println(true != false);
 `, "true\ntrue\n"},
 
 	{"q19_null_equality", `
 x: string | null = null;
-println(x == null);
+println(x === null);
 `, "true\n"},
 
 	{"q20_map_values_order", `
@@ -690,14 +701,14 @@ if e != null:
 
 	{"q24_comment_only_block_bodies", `
 x := 1;
-if x == 1:
+if x === 1:
     // consequence is a comment only
 else:
     println("no");
 elif_chain := 0;
-if x == 2:
+if x === 2:
     // first arm empty
-elif x == 1:
+elif x === 1:
     // second arm empty
 else:
     println("no");
@@ -772,8 +783,8 @@ println(add9(1));
 func probe_loop_capture() -> void:
     a := |x: int| x;
     b := |x: int| x;
-    for i in 0..2:
-        if i == 0:
+    for i in 0..=2:
+        if i === 0:
             a = |x: int| x + i;
         else:
             b = |x: int| x + i;
@@ -826,7 +837,7 @@ println(v());
 println(i());
 `, "1\n20\n3\n"},
 
-	{"q33_declaration_modifiers_and_shadowing", `
+	{"declarations_and_assignments", `
 public int: shared = 10;
 const int: limit = 32;
 func publish() -> int:
@@ -836,11 +847,53 @@ func publish() -> int:
 println(publish());
 println(exported);
 x := 1;
-x := 2;
+x = 2;
 if x + limit > 0:
-    x := 3;
+    x = 3;
 println(x);
 `, "15\n15\n3\n"},
+
+	{"std.list and std.map and expanded string", `
+use std.list;
+use std.map;
+use std.string;
+
+xs := [5, 2, 8, 1];
+println(list.sort(xs));
+println(list.reverse(xs));
+println(list.filter(xs, |x: int| x > 3));
+println(list.map([1, 2, 3], |x: int| x * 2));
+println(list.reduce([1, 2, 3, 4], |acc: int, x: int| acc + x, 0));
+println(list.keys([10, 20]));
+println(list.values([10, 20]));
+
+m := {"b": 2, "a": 1, "c": 3};
+println(map.keys(m));
+println(map.values(m));
+println(map.sort(m));
+println(map.reverse(m));
+println(map.filter(m, |k: string, v: int| v >= 2));
+println(map.reduce(m, |acc: int, k: string, v: int| acc + v, 0));
+
+println(string.pad_left("42", 5, "0"));
+println(string.pad_right("hi", 4, "!"));
+println(string.count("banana", "a"));
+println(string.last_index_of("banana", "a"));
+println(string.capitalize("alca"));
+println(string.reverse("hello"));
+println(string.is_empty(""));
+println(string.is_alpha("alca"));
+println(string.is_digit("123"));
+`, "[1, 2, 5, 8]\n[8, 5, 2, 1]\n[8, 5]\n[2, 4, 6]\n10\n[0, 1]\n[10, 20]\n[\"b\", \"a\", \"c\"]\n[2, 1, 3]\n{a: 1, b: 2, c: 3}\n{c: 3, a: 1, b: 2}\n{b: 2, c: 3}\n6\n00042\nhi!!\n3\n5\nAlca\nolleh\ntrue\ntrue\ntrue\n"},
+
+	{"dunder variables", `
+println(__name__);
+println(__version__);
+println(type(__file__));
+println(type(__dir__));
+println(type(__dirname__));
+println(__line__);
+`, "__main__\n2.0.0\nSTRING\nSTRING\nSTRING\n7\n"},
 }
 
 func TestEnginesAgree(t *testing.T) {
@@ -882,12 +935,12 @@ func TestVMIsDefaultEngine(t *testing.T) {
 }
 
 func TestUnsupportedFeatureFallsBackToInterpreter(t *testing.T) {
-	src := "threads:\n    println(\"x\");\n"
+	src := "ba for x in [1, 2]:\n    println(x);\n"
 	file := filepath.Join(t.TempDir(), "p.al")
 	_ = os.WriteFile(file, []byte(src), 0o644)
 	prog, content, ok := loadProgram(file)
 	if !ok {
-		t.Skip("threads syntax differs")
+		t.Skip("syntax differs")
 	}
 	old := os.Stdout
 	_, w, _ := os.Pipe()
@@ -896,7 +949,7 @@ func TestUnsupportedFeatureFallsBackToInterpreter(t *testing.T) {
 	w.Close()
 	os.Stdout = old
 	if usedVM {
-		t.Fatal("threads blocks are not VM-compilable; the interpreter must be used")
+		t.Fatal("ba for loops are not VM-compilable; the interpreter must be used")
 	}
 }
 
@@ -931,12 +984,12 @@ func TestClassProgramRunsOnTheVM(t *testing.T) {
 // formatter, printing "compilation to native executable failed" and advice
 // about the output path even though no executable was being built.
 func TestExplicitVMReportsUnsupportedFeature(t *testing.T) {
-	src := "threads:\n    println(\"x\");\n"
+	src := "ba for x in [1, 2]:\n    println(x);\n"
 	file := filepath.Join(t.TempDir(), "p.al")
 	_ = os.WriteFile(file, []byte(src), 0o644)
 	prog, content, ok := loadProgram(file)
 	if !ok {
-		t.Skip("threads syntax differs")
+		t.Skip("syntax differs")
 	}
 
 	old := os.Stderr

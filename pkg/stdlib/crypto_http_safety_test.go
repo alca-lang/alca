@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package stdlib
 
 import (
@@ -22,8 +25,10 @@ import (
 func TestCryptoRequiresExplicitAESKeyLengthsAndSupportsPasswordEncryption(t *testing.T) {
 	env := interpreter.NewEnvironment()
 	RegisterCryptoBuiltins(env)
-	aesEncrypt, _ := env.Get("aes_encrypt")
-	aesDecrypt, _ := env.Get("aes_decrypt")
+	cryptoModVal, _ := env.Get("crypto")
+	cryptoMod := cryptoModVal.(*interpreter.MapValue)
+	aesEncrypt, _ := cryptoMod.Get("aes_encrypt")
+	aesDecrypt, _ := cryptoMod.Get("aes_decrypt")
 	for _, key := range []string{"", "123456789012345", "12345678901234567"} {
 		got := aesEncrypt.(*interpreter.BuiltinFunction).Fn(
 			&interpreter.StringValue{Val: key},
@@ -44,8 +49,8 @@ func TestCryptoRequiresExplicitAESKeyLengthsAndSupportsPasswordEncryption(t *tes
 		t.Fatalf("raw AES key round trip = %v", plaintext)
 	}
 
-	encryptPassword, _ := env.Get("aes_encrypt_password")
-	decryptPassword, _ := env.Get("aes_decrypt_password")
+	encryptPassword, _ := cryptoMod.Get("aes_encrypt_password")
+	decryptPassword, _ := cryptoMod.Get("aes_decrypt_password")
 	password := &interpreter.StringValue{Val: "correct horse battery staple"}
 	passwordCiphertext := encryptPassword.(*interpreter.BuiltinFunction).Fn(password, &interpreter.StringValue{Val: "password protected"})
 	passwordPlaintext := decryptPassword.(*interpreter.BuiltinFunction).Fn(password, passwordCiphertext)
@@ -121,12 +126,11 @@ func TestHTTPBodyLimitRepeatedHeadersAndTimeoutOption(t *testing.T) {
 
 	env := interpreter.NewEnvironment()
 	RegisterHTTPBuiltins(env)
-	httpRequest, _ := env.Get("http_request")
-	call := httpRequest.(*interpreter.BuiltinFunction).Fn
 	httpModuleValue, _ := env.Get("http")
 	httpModule := httpModuleValue.(*interpreter.MapValue)
 	requestValue, _ := httpModule.Get("request")
 	request := requestValue.(*interpreter.BuiltinFunction).Fn
+	call := request
 
 	headers := request(&interpreter.StringValue{Val: "GET"}, &interpreter.StringValue{Val: server.URL + "/headers"})
 	headersMap, ok := headers.(*interpreter.MapValue)

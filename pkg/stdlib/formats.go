@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the Formats standard library module for the Alca programming language.
 // It supports CSV with header mappings, INI/CONF configuration files, and deep JSONPath dot-notation queries.
 package stdlib
@@ -365,9 +368,24 @@ func RegisterFormatsBuiltins(env *interpreter.Environment) {
 		}
 
 		var r io.Reader
+		if strings.Contains(target, "\n") || len(target) > 260 {
+			r = strings.NewReader(target)
+			res, err := parseCSVReader(r, hasHeader)
+			if err != nil {
+				return interpreter.NewError(500, err.Error())
+			}
+			return res
+		}
+
 		fi, statErr := os.Stat(target)
 		if statErr != nil && !os.IsNotExist(statErr) {
-			return handleIOError("csv_read", target, statErr)
+			// On Windows, strings with special chars return ERROR_INVALID_NAME; treat as string
+			r = strings.NewReader(target)
+			res, err := parseCSVReader(r, hasHeader)
+			if err != nil {
+				return handleIOError("csv_read", target, statErr)
+			}
+			return res
 		}
 		if statErr == nil && fi.IsDir() {
 			return interpreter.NewError(400, "csv.read target is a directory")

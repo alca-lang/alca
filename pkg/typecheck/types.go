@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package typecheck implements Alca's strict static type checker.
 //
 // Alca is statically and strongly typed: every variable has exactly one type that
@@ -124,6 +127,22 @@ type StructType struct {
 }
 
 func (s *StructType) String() string { return s.Name }
+
+// EnumType represents a nominal enum type.
+type EnumType struct {
+	Name     string
+	Variants map[string]Type
+}
+
+func (e *EnumType) String() string { return e.Name }
+
+// InterfaceType represents an interface or trait contract.
+type InterfaceType struct {
+	Name    string
+	Methods map[string]*FuncType
+}
+
+func (iface *InterfaceType) String() string { return iface.Name }
 
 // Field looks up a field by name, including inherited fields.
 func (s *StructType) Field(name string) (Field, bool) {
@@ -286,6 +305,36 @@ func Equal(a, b Type) bool {
 			}
 		}
 		return true
+	case *EnumType:
+		y, ok := b.(*EnumType)
+		return ok && x.Name == y.Name
+	case *InterfaceType:
+		y, ok := b.(*InterfaceType)
+		return ok && x.Name == y.Name
+	}
+	return false
+}
+
+// Comparable reports whether two types can be compared for equality with == or !=.
+func Comparable(a, b Type) bool {
+	if a == Invalid || b == Invalid || a == JSON || b == JSON || a == Any || b == Any || a == Null || b == Null {
+		return true
+	}
+	if Assignable(a, b) || Assignable(b, a) {
+		return true
+	}
+	if IsNumeric(a) && IsNumeric(b) {
+		return true
+	}
+	if al, ok := a.(*ListType); ok {
+		if bl, ok := b.(*ListType); ok {
+			return Comparable(al.Elem, bl.Elem)
+		}
+	}
+	if am, ok := a.(*MapType); ok {
+		if bm, ok := b.(*MapType); ok {
+			return Comparable(am.Key, bm.Key) && Comparable(am.Val, bm.Val)
+		}
 	}
 	return false
 }
@@ -308,6 +357,22 @@ func Assignable(dst, src Type) bool {
 	}
 	if dst == Any || src == Never {
 		return true
+	}
+	if dl, ok := dst.(*ListType); ok {
+		if sl, ok := src.(*ListType); ok {
+			if dl.Elem == Any || dl.Elem == JSON {
+				return true
+			}
+			return Assignable(dl.Elem, sl.Elem)
+		}
+	}
+	if dm, ok := dst.(*MapType); ok {
+		if sm, ok := src.(*MapType); ok {
+			if (dm.Key == Any || dm.Key == JSON) && (dm.Val == Any || dm.Val == JSON) {
+				return true
+			}
+			return Assignable(dm.Key, sm.Key) && Assignable(dm.Val, sm.Val)
+		}
 	}
 	if dst == JSON { // anything may be widened to the dynamic type
 		return true
@@ -336,6 +401,18 @@ func Assignable(dst, src Type) bool {
 	if d, ok := dst.(*StructType); ok {
 		if s, ok := src.(*StructType); ok && d.IsClass && s.IsClass {
 			return s.Inherits(d)
+		}
+	}
+	// A struct or class implementing an interface matches the interface contract.
+	if dstIface, ok := dst.(*InterfaceType); ok {
+		if srcStruct, ok := src.(*StructType); ok {
+			for mName, mSig := range dstIface.Methods {
+				m, ok := srcStruct.LookupMethod(mName)
+				if !ok || !Equal(m.Signature, mSig) {
+					return false
+				}
+			}
+			return true
 		}
 	}
 	return false
@@ -379,7 +456,12 @@ func IsNumeric(t Type) bool { return t == Int || t == Float }
 
 // ParseType parses a type expression such as "list[int]", "map[string, int]" or "int | null".
 func ParseType(src string, structs map[string]*StructType) (Type, bool) {
-	p := &typeParser{s: src, structs: structs}
+	return ParseTypeEx(src, structs, nil)
+}
+
+// ParseTypeEx parses a type string with structs and optional user-defined types (enums, interfaces).
+func ParseTypeEx(src string, structs map[string]*StructType, userTypes map[string]Type) (Type, bool) {
+	p := &typeParser{s: src, structs: structs, userTypes: userTypes}
 	t := p.union()
 	p.ws()
 	if t == nil || p.i != len(p.s) {
@@ -389,9 +471,10 @@ func ParseType(src string, structs map[string]*StructType) (Type, bool) {
 }
 
 type typeParser struct {
-	s       string
-	i       int
-	structs map[string]*StructType
+	s         string
+	i         int
+	structs   map[string]*StructType
+	userTypes map[string]Type
 }
 
 func (p *typeParser) ws() {
@@ -484,6 +567,14 @@ func (p *typeParser) single() Type {
 		return ErrorType
 	case "func":
 		return &FuncType{Dynamic: true, Ret: JSON}
+	}
+	if name == "FileHandle" {
+		return fileHandleStaticType
+	}
+	if p.userTypes != nil {
+		if ut, ok := p.userTypes[name]; ok {
+			return ut
+		}
 	}
 	if st, ok := p.structs[name]; ok {
 		return st

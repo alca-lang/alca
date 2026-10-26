@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the HTTP client and server standard library module for Alca.
 package stdlib
 
@@ -48,7 +51,6 @@ func RegisterHTTPBuiltins(env *interpreter.Environment) {
 	register := func(name string, fn func(args ...interpreter.Value) interpreter.Value) {
 		bf := &interpreter.BuiltinFunction{Name: name, Fn: fn}
 		httpMod.Set(name, bf)
-		env.Set(name, bf)
 	}
 
 	// request(method, url, headers?, body?, options?) -> map

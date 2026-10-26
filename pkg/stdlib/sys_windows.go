@@ -1,8 +1,12 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build windows
 
 package stdlib
 
 import (
+	"fmt"
 	"math"
 	"path/filepath"
 	"syscall"
@@ -115,11 +119,16 @@ type processEntry32W struct {
 
 // SystemUptime returns system uptime in seconds on Windows.
 func SystemUptime() float64 {
-	if procGetTickCount64 == nil {
-		return 0
+	uptime, _ := SystemUptimeStats()
+	return uptime
+}
+
+func SystemUptimeStats() (float64, error) {
+	ret, _, err := procGetTickCount64.Call()
+	if ret == 0 && err != syscall.Errno(0) {
+		return 0, err
 	}
-	ret, _, _ := procGetTickCount64.Call()
-	return float64(ret) / 1000.0
+	return float64(ret) / 1000.0, nil
 }
 
 // SystemProcesses enumerates running processes on Windows.
@@ -191,11 +200,12 @@ func DiskPartitions() ([]map[string]interface{}, error) {
 	return result, nil
 }
 
-// LoadAverage returns load averages on Windows (approximated).
+func LoadAverageStats() (map[string]float64, error) {
+	return nil, fmt.Errorf("load averages are not provided by Windows")
+}
+
+// LoadAverage is a compatibility wrapper. Use LoadAverageStats to detect
+// unsupported platforms without treating them as valid zero load.
 func LoadAverage() map[string]float64 {
-	return map[string]float64{
-		"1m":  0.0,
-		"5m":  0.0,
-		"15m": 0.0,
-	}
+	return nil
 }

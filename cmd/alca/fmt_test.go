@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -57,5 +60,26 @@ func TestFormatFileRejectsBrokenSource(t *testing.T) {
 	}
 	if string(got) != src {
 		t.Fatalf("broken file must not be rewritten, got:\n%s", got)
+	}
+}
+
+// TestFormatFileMigratesRanges exercises 'alca fmt --migrate-ranges -w'.
+func TestFormatFileMigratesRanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ranges.al")
+	src := "total := 0;\nfor i in 1..10:\n    total = total + i;\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := formatFile(path, true, true); code != 0 {
+		t.Fatalf("formatFile with migrate exited with code %d", code)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "total := 0;\nfor i in 1 ..= 10:\n    total = total + i;\n"
+	if string(got) != want {
+		t.Fatalf("range migration mismatch\n got: %q\nwant: %q", string(got), want)
 	}
 }

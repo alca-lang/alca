@@ -25,23 +25,233 @@ Aliases: `std.regex` is `std.re`, `std.str` is `std.string`, and `std.zip` is
 
 ## Modules
 
-### `ai`
+### `audio`
 
-Small dense-matrix and neural-network primitives; values are plain nested lists.
+Low-level audio processing, DSP synthesis, waveform manipulation, analysis, and WAV encoding/decoding.
+
+Audio buffers support method-based inspection and sample manipulation (`channels()`, `sample_rate()`, `num_samples()`, `duration()`, `sample(ch, idx)`, `set_sample(ch, idx, val)`, `channel_data(ch)`).
 
 | Member | Signature |
 | --- | --- |
-| `ai.add` | `(list[list[float]],list[list[float]])->list[list[float]];(list[list[int]],list[list[int]])->list[list[float]]` |
-| `ai.dense_forward` | `(list[list[float]],list[list[float]],list[float],string?)->list[list[float]];(list[list[int]],list[list[int]],list[int],string?)->list[list[float]]` |
-| `ai.dot` | `(list[float],list[float])->float;(list[int],list[int])->float` |
-| `ai.matmul` | `(list[list[float]],list[list[float]])->list[list[float]];(list[list[int]],list[list[int]])->list[list[float]]` |
-| `ai.matrix` | `(int,int,json?)->list[list[float]]` |
-| `ai.mse` | `(list[float],list[float])->float;(list[int],list[int])->float` |
-| `ai.relu` | `(float)->float;(int)->float;(list[float])->list[float];(list[int])->list[float]` |
-| `ai.sigmoid` | `(float)->float;(int)->float;(list[float])->list[float];(list[int])->list[float]` |
-| `ai.softmax` | `(list[float])->list[float];(list[int])->list[float]` |
-| `ai.tanh` | `(float)->float;(int)->float;(list[float])->list[float];(list[int])->list[float]` |
-| `ai.transpose` | `(list[list[float]])->list[list[float]];(list[list[int]])->list[list[float]]` |
+| `audio.create_buffer` | `(int?,int?,int?)->AudioBuffer` |
+| `audio.read` | `(string\|blob)->AudioBuffer` |
+| `audio.read_wav` | `(string)->AudioBuffer` |
+| `audio.write_wav` | `(string,AudioBuffer,int?)->bool` |
+| `audio.encode_wav` | `(AudioBuffer,int?)->string` |
+| `audio.decode` | `(string\|blob)->AudioBuffer` |
+| `audio.decode_wav` | `(string)->AudioBuffer` |
+| `audio.decode_mp3` | `(string\|blob)->AudioBuffer` |
+| `audio.encode_base64` | `(AudioBuffer,int?)->string` |
+| `audio.decode_base64` | `(string)->AudioBuffer` |
+| `audio.sine` | `(float,float,int?,float?)->AudioBuffer` |
+| `audio.square` | `(float,float,int?,float?,float?)->AudioBuffer` |
+| `audio.sawtooth` | `(float,float,int?,float?)->AudioBuffer` |
+| `audio.triangle` | `(float,float,int?,float?)->AudioBuffer` |
+| `audio.noise` | `(float,string?,int?,float?)->AudioBuffer` |
+| `audio.silence` | `(float,int?,int?)->AudioBuffer` |
+| `audio.chirp` | `(float,float,float,int?,float?)->AudioBuffer` |
+| `audio.gain` | `(AudioBuffer,float)->AudioBuffer` |
+| `audio.normalize` | `(AudioBuffer,float?)->AudioBuffer` |
+| `audio.mix` | `(AudioBuffer,AudioBuffer,float?,float?)->AudioBuffer` |
+| `audio.pan` | `(AudioBuffer,float)->AudioBuffer` |
+| `audio.delay` | `(AudioBuffer,float?,float?,float?)->AudioBuffer` |
+| `audio.lowpass` | `(AudioBuffer,float,float?)->AudioBuffer` |
+| `audio.highpass` | `(AudioBuffer,float,float?)->AudioBuffer` |
+| `audio.adsr` | `(AudioBuffer,float,float,float,float)->AudioBuffer` |
+| `audio.fft` | `(AudioBuffer,int?,int?)->list[float]` |
+| `audio.dominant_frequency` | `(AudioBuffer,int?)->float` |
+| `audio.rms` | `(AudioBuffer,int?)->float` |
+| `audio.peak` | `(AudioBuffer,int?)->float` |
+| `audio.zero_crossings` | `(AudioBuffer,int?)->int` |
+| `audio.play` | `(AudioBuffer\|string,bool?)->bool` |
+| `audio.play_base64` | `(string,bool?)->bool` |
+| `audio.pause` | `()->null` |
+| `audio.resume` | `()->null` |
+| `audio.volume` | `(int)->null` |
+| `audio.stop` | `()->null` |
+| `audio.beep` | `(int?,int?)->null` |
+
+### `encoding`
+
+Comprehensive text encoding/decoding module supporting all major character sets (UTF-8, UTF-16, Windows-1250..1258, CP866, CP437, ISO-8859-1..16, KOI8-R, KOI8-U, Shift-JIS, GBK, GB18030, Big5, EUC-JP, EUC-KR).
+
+| Member | Signature |
+| --- | --- |
+| `encoding.decode` | `(string,string)->string` |
+| `encoding.detect` | `(string)->string` |
+| `encoding.encode` | `(string,string)->string` |
+| `encoding.from_utf16` | `(list[int])->string` |
+| `encoding.list_encodings` | `()->list[string]` |
+| `encoding.to_utf16` | `(string)->list[int]` |
+
+### `marshal`
+
+Binary object serialization for fast, compact data interchange and caching of arbitrary Alca values (null, bool, int, float, string, blob, list, map, error).
+
+| Member | Signature |
+| --- | --- |
+| `marshal.dump` | `(json,string)->bool` |
+| `marshal.dumps` | `(json)->string` |
+| `marshal.load` | `(string)->json` |
+| `marshal.loads` | `(string)->json` |
+
+### `image`
+
+Universal graphics processing supporting PNG, JPEG, GIF, BMP, and WebP from files, URLs, base64 strings, or raw bytes.
+
+Image objects support method-based manipulation:
+* `.width()`, `.height()`, `.bounds()`
+* `.pixel(x, y)` -> `[r, g, b, a]`
+* `.set_pixel(x, y, r, g, b, a?)`
+* `.resize(w, h)`, `.crop(x, y, w, h)`, `.rotate(deg)`, `.flip_h()`, `.flip_v()`
+* `.grayscale()`, `.invert()`, `.brightness(delta)`, `.contrast(factor)`
+* `.to_base64(format?)`
+
+| Member | Signature |
+| --- | --- |
+| `image.create` | `(int,int,list[int]?)->Image` |
+| `image.read` | `(string\|blob)->Image` |
+| `image.decode` | `(string\|blob)->Image` |
+| `image.write` | `(Image,string,int?)->bool` |
+| `image.encode` | `(Image,string?,int?)->string` |
+| `image.to_base64` | `(Image,string?)->string` |
+| `image.screenshot` | `(int?,int?,int?,int?)->Image` |
+
+### `devices`
+
+Device enumeration is platform-specific. `devices.list` returns available
+devices; `devices.get` looks up a device by its platform identifier.
+`devices.watch_events` is not implemented and returns an unsupported-operation
+error.
+
+| Member | Signature |
+| --- | --- |
+| `devices.get` | `(string)->map[string, json]` |
+| `devices.list` | `(string?)->list[map[string, json]]` |
+| `devices.watch_events` | `(...)->error` |
+
+### `ffi`
+
+Dynamic native-library calls and pointer helpers. FFI pointers created by
+`c_str`, `utf16_str`, or `alloc_ptr` are retained until released with `free`.
+`copy_to_ptr` and `read_from_ptr` only operate on allocations owned by `ffi`.
+Allocations are limited to 16 MiB. Loading or calling native code, and reading
+foreign strings or creating native pointers, require `--allow-all`. Native calls and pointers remain
+platform- and ABI-dependent: Windows loads DLLs, while Unix currently loads Go
+plugins with the `func(...interface{}) interface{}` ABI, not arbitrary C
+libraries. Go plugins cannot be unloaded, so `ffi.close` reports that it is
+unsupported on Unix.
+
+| Member | Signature |
+| --- | --- |
+| `ffi.alloc_ptr` | `(int)->int` |
+| `ffi.copy_to_ptr` | `(int,string\|blob)->bool` |
+| `ffi.free` | `(int)->bool` |
+| `ffi.read_from_ptr` | `(int,int)->blob` |
+
+### `platform` [Cross-platform]
+
+Operating-system identity, architecture, and detected platform capabilities across Windows, Linux, and macOS.
+The capability values reflect current probes where possible; `requires_root`
+is true when the current process is not elevated and some privileged operations
+may be unavailable.
+
+| Member | Signature |
+| --- | --- |
+| `platform.api_version` | `()->string` |
+| `platform.architecture` | `()->map[string, json]` |
+| `platform.capabilities` | `()->map[string, json]` |
+| `platform.has_feature` | `(string)->bool` |
+| `platform.info` | `()->map[string, json]` |
+| `platform.linux_distro` | `()->map[string, json]` |
+| `platform.mac_ver` | `()->map[string, json]` |
+| `platform.machine` | `()->string` |
+| `platform.node` | `()->string` |
+| `platform.processor` | `()->string` |
+| `platform.release` | `()->string` |
+| `platform.system` | `()->string` |
+| `platform.uname` | `()->list[string]` |
+| `platform.version` | `()->string` |
+| `platform.win32_ver` | `()->list[json]` |
+
+### `power` [Cross-platform]
+
+Battery and sensor information and operating-system power controls on Windows, Linux, and macOS. The
+`suspend`, `hibernate`, `reboot`, and `shutdown` operations require
+`--allow-all`; availability and returned sensor data depend on the host OS and
+hardware (e.g. ACPI/WMI on Windows, `/sys/class/power_supply` on Linux, IOKit on macOS).
+
+| Member | Signature |
+| --- | --- |
+| `power.battery_info` | `()->map[string, json]` |
+| `power.battery_status` | `()->map[string, json]` |
+| `power.cpu_temp` | `()->list[float]` |
+| `power.hibernate` | `()->bool` |
+| `power.power_plugged` | `()->bool` |
+| `power.power_source` | `()->string` |
+| `power.reboot` | `()->bool` |
+| `power.sensors` | `()->list[map[string, json]]` |
+| `power.shutdown` | `()->bool` |
+| `power.suspend` | `()->bool` |
+
+### `sys`
+
+System resource information and process enumeration. Process details are
+limited to fields exposed by the host implementation. RAM, uptime, process,
+and load metrics use host-specific sources; unavailable metrics return an
+error rather than Go runtime memory or fabricated zero values. Windows does
+not expose the Unix-style load average and `sys.load_avg` returns unsupported.
+
+| Member | Signature |
+| --- | --- |
+| `sys.boot_time` | `()->float` |
+| `sys.pids` | `()->list[int]` |
+| `sys.process_info` | `(int)->map[string, json]` |
+| `sys.process_iter` | `()->list[map[string, json]]` |
+| `sys.virtual_memory` | `()->map[string, json]` |
+
+### `win32` [Windows only]
+
+Windows-specific registry, service, and WMI helpers. Calls on non-Windows
+systems return an unsupported-platform error. Operations that change registry
+values or service state require `--allow-all`. Registry access and WMI queries
+also require `--allow-all`; `reg_open_key(hive, path, access?)` defaults to
+read access and accepts `read` or `write`.
+
+| Member | Signature |
+| --- | --- |
+| `win32.edition` | `()->string` |
+| `win32.license_status` | `()->map[string, json]` |
+| `win32.reg_close_key` | `(int)->bool` |
+| `win32.reg_enum_keys` | `(int)->list[string]` |
+| `win32.reg_open_key` | `(string,string,string?)->int` |
+| `win32.reg_read_value` | `(int,string)->json` |
+| `win32.reg_write_value` | `(int,string,string \| int,string?)->bool` |
+| `win32.service_info` | `(string)->map[string, json]` |
+| `win32.service_list` | `()->list[map[string, json]]` |
+| `win32.service_start` | `(string)->bool` |
+| `win32.service_stop` | `(string)->bool` |
+| `win32.version_info` | `()->map[string, json]` |
+| `win32.wmi_get_class` | `(string)->list[map[string, json]]` |
+| `win32.wmi_query` | `(string)->list[map[string, json]]` |
+
+### `libtorch`
+
+Unified machine learning and tensor computation module; supports tensors, autograd, optimizers, layers, losses, and automatically accepts plain Alca lists.
+
+| Member | Signature |
+| --- | --- |
+| `libtorch.add` | `(list[list[float]],list[list[float]])->list[list[float]];(list[list[int]],list[list[int]])->list[list[float]]` |
+| `libtorch.dense_forward` | `(list[list[float]],list[list[float]],list[float],string?)->list[list[float]];(list[list[int]],list[list[int]],list[int],string?)->list[list[float]]` |
+| `libtorch.dot` | `(list[float],list[float])->float;(list[int],list[int])->float` |
+| `libtorch.matmul` | `(list[list[float]],list[list[float]])->list[list[float]];(list[list[int]],list[list[int]])->list[list[float]]` |
+| `libtorch.matrix` | `(int,int,json?)->list[list[float]]` |
+| `libtorch.mse` | `(list[float],list[float])->float;(list[int],list[int])->float` |
+| `libtorch.relu` | `(float)->float;(int)->float;(list[float])->list[float];(list[int])->list[float]` |
+| `libtorch.sigmoid` | `(float)->float;(int)->float;(list[float])->list[float];(list[int])->list[float]` |
+| `libtorch.softmax` | `(list[float])->list[float];(list[int])->list[float]` |
+| `libtorch.tanh` | `(float)->float;(int)->float;(list[float])->list[float];(list[int])->list[float]` |
+| `libtorch.transpose` | `(list[list[float]])->list[list[float]];(list[list[int]])->list[list[float]]` |
 
 ### `archive`
 
@@ -84,7 +294,13 @@ second argument (maximum 1 GiB) when a different bound is needed.
 
 ### `crypto`
 
-Hashes, HMAC, encodings, random values, and UUIDs.
+Hashes, HMAC, symmetric encryption, encodings, and cryptographically secure random values.
+
+> [!WARNING]
+> `crypto.md5` and `crypto.sha1` are cryptographically broken and vulnerable to practical collision attacks. They are provided solely for legacy checksums and file verification. Never use them for passwords, digital signatures, or security tokens. Use `crypto.sha256` or `crypto.sha512` instead.
+
+> [!NOTE]
+> `crypto.random_int(min, max)` uses the OS CSPRNG for cryptographic safety and strictly validates that `min <= max` with integer arguments. For fast, seedable, reproducible pseudo-random numbers (e.g. for games, graphics, and simulations), use `use std.random;` instead.
 
 | Member | Signature |
 | --- | --- |
@@ -174,7 +390,10 @@ Raw foreign-function calls and pointer helpers; trusted code only.
 | Member | Signature |
 | --- | --- |
 | `ffi.alloc` | `(int?)->blob` |
+| `ffi.build_native_dll` | `(string,string)->string` |
 | `ffi.c_str` | `(string)->int` |
+| `ffi.compile` | `(string,string?)->string` |
+| `ffi.compile_file` | `(string,string?)->string` |
 | `ffi.load` | `(string)->json` |
 | `ffi.load_embedded` | `(string)->json` |
 | `ffi.ptr_to_str` | `(int)->string` |
@@ -182,6 +401,8 @@ Raw foreign-function calls and pointer helpers; trusted code only.
 | `ffi.size_of` | `(string)->int` |
 | `ffi.utf16_str` | `(string)->int` |
 
+`ffi.compile` compiles C/C++ source code dynamically at runtime into a native shared library (.dll / .so) and returns the library path.
+`ffi.compile_file` compiles a `.c` or `.cpp` file directly into a native shared library.
 `ffi.load_embedded` loads a native library that was packed into the program
 with `alca build --cc` or `alca build --native-lib`. The library is unpacked
 from the resources of the program into the temporary directory of the process
@@ -307,25 +528,35 @@ Dynamic namespace containing the `csv`, `ini`, and `json` helpers.
 | `formats.ini` | dynamic (`json`) |
 | `formats.json` | dynamic (`json`) |
 
-### `gui`
+### `gui` [Cross-platform / Multi-backend]
 
-Native dialogs, windows, and WebView helpers (platform-specific); trusted code only.
+Desktop user interface automation, native dialogs, windows, and embedded WebView helpers. Requires trusted execution (`--allow-all`).
+- **Windows**: Uses native Win32 controls, TaskDialogIndirect, and Microsoft Edge WebView2.
+- **macOS**: Uses Cocoa / osascript dialogs and WebKit WKWebView.
+- **Linux**: Uses Tk, Qt, Zenity / kdialog, or WebKitGTK.
+- **Backend Selection**: Call `gui.set_backend("win32" | "tk" | "qt" | "auto")` to configure preferred engine.
 
 | Member | Signature |
 | --- | --- |
-| `gui.alert` | dynamic (`json`) |
-| `gui.confirm` | dynamic (`json`) |
-| `gui.height` | dynamic (`json`) |
-| `gui.msgbox` | dynamic (`json`) |
-| `gui.notify` | dynamic (`json`) |
-| `gui.open_file` | dynamic (`json`) |
-| `gui.prompt` | dynamic (`json`) |
-| `gui.save_file` | dynamic (`json`) |
-| `gui.screen_size` | dynamic (`json`) |
-| `gui.screenshot` | dynamic (`json`) |
-| `gui.webview` | dynamic (`json`) |
-| `gui.width` | dynamic (`json`) |
-| `gui.window` | dynamic (`json`) |
+| `gui.alert` | `(string,string?)->bool` |
+| `gui.confirm` | `(string,string?)->bool` |
+| `gui.prompt` | `(string,string?,string?)->string` |
+| `gui.notify` | `(string,string?)->bool` |
+| `gui.msgbox` | `(string,string?,int?)->int` |
+| `gui.open_file` | `(string?,string?)->string` |
+| `gui.save_file` | `(string?,string?)->string` |
+| `gui.screen_size` | `()->map[string, int]` |
+| `gui.width` | `()->int` |
+| `gui.height` | `()->int` |
+| `gui.screenshot` | `(string?)->blob` |
+| `gui.window` | `(string,int,int)->map[string, json]` |
+| `gui.tk_window` | `(string,int,int)->map[string, json]` |
+| `gui.qt_window` | `(string,int,int)->map[string, json]` |
+| `gui.webview` | `(string,string,int,int)->map[string, json]` |
+| `gui.set_backend` | `(string)->bool` |
+| `gui.backends` | `()->map[string, bool]` |
+| `gui.task_manager` | `()->bool` |
+| `gui.native_task_manager` | `()->bool` |
 
 ### `ini`
 
@@ -569,6 +800,13 @@ convenience wrappers. Requests have a 30-second default timeout (up to
 300 seconds) and a 16 MiB response cap. Redirects are rechecked against the
 network capability policy. `urlretrieve(url, destination)` saves a successful
 response under the write capability and returns its filename and headers.
+`tcp_request` is an alias for the same policy-aware HTTP request path.
+WebSocket calls use a real `ws`/`wss` transport with masked client frames,
+fragment handling, ping/pong, UTF-8 validation, and a 16 MiB message limit.
+The deprecated `websocket_handshake` alias opens and returns a connection just
+like `websocket_connect`; callers should migrate to the newer name.
+The legacy `websocket_frame_read` and `websocket_frame_write` helpers remain
+unsupported; use `websocket_receive` and `websocket_send` with a connection ID.
 
 ```alca
 use std.urllib2;
@@ -596,6 +834,14 @@ println(response["body"]);
 | `urllib2.get` | `(string,any?,int?)->map[string, json];(string,any?,float?)->map[string, json]` |
 | `urllib2.post` | `(string,any,any?,int?)->map[string, json];(string,any,any?,float?)->map[string, json]` |
 | `urllib2.urlretrieve` | `(string,string)->map[string, json]` |
+| `urllib2.tcp_request` | `(string,string,any?,any?,int?)->map[string, json];(string,string,any?,any?,float?)->map[string, json]` |
+| `urllib2.websocket_connect` | `(string,map[string,string]?,list[string]?,int?)->map[string, json];(string,map[string,string]?,list[string]?,float?)->map[string, json]` |
+| `urllib2.websocket_send` | `(string,string \| blob,int?)->bool;(string,string \| blob,string?)->bool` |
+| `urllib2.websocket_receive` | `(string,int?)->string \| blob;(string,float?)->string \| blob` |
+| `urllib2.websocket_ping` | `(string,any?)->bool` |
+| `urllib2.websocket_pong` | `(string,any?)->bool` |
+| `urllib2.websocket_close` | `(string,int?,string?)->bool` |
+| `urllib2.websocket_handshake` | `(string,map[string,string]?)->map[string, json]` |
 
 ### `path`
 
@@ -711,25 +957,154 @@ zero-based, end-exclusive; negative indices count from the end.
 
 | Member | Signature |
 | --- | --- |
+| `string.capitalize` | `(string)->string` |
+| `string.center` | `(string,int,string?)->string` |
+| `string.char_at` | `(string,int)->string` |
+| `string.code_point_at` | `(string,int)->int` |
 | `string.contains` | `(string,string)->bool` |
+| `string.count` | `(string,string)->int` |
 | `string.ends_with` | `(string,string)->bool` |
+| `string.format` | `(string,any...)->string` |
+| `string.from_code_point` | `(int)->string` |
 | `string.index_of` | `(string,string)->int` |
+| `string.is_alpha` | `(string)->bool` |
+| `string.is_alphanumeric` | `(string)->bool` |
+| `string.is_blank` | `(string)->bool` |
+| `string.is_digit` | `(string)->bool` |
+| `string.is_empty` | `(string)->bool` |
+| `string.is_lower` | `(string)->bool` |
+| `string.is_numeric` | `(string)->bool` |
+| `string.is_upper` | `(string)->bool` |
 | `string.join` | `(list[string],string)->string` |
+| `string.last_index_of` | `(string,string)->int` |
 | `string.length` | `(string)->int` |
+| `string.lines` | `(string)->list[string]` |
 | `string.lower` | `(string)->string` |
+| `string.pad` | `(string,int,string?,string?)->string` |
+| `string.pad_left` | `(string,int,string?)->string` |
+| `string.pad_right` | `(string,int,string?)->string` |
+| `string.repeat` | `(string,int)->string` |
 | `string.replace` | `(string,string,string)->string` |
+| `string.replace_n` | `(string,string,string,int)->string` |
+| `string.reverse` | `(string)->string` |
 | `string.runes` | `(string)->list[string]` |
 | `string.slice` | `(string,int,int)->string` |
 | `string.split` | `(string,string)->list[string]` |
 | `string.starts_with` | `(string,string)->bool` |
+| `string.title` | `(string)->string` |
 | `string.trim` | `(string)->string` |
 | `string.trim_left` | `(string)->string` |
+| `string.trim_prefix` | `(string,string)->string` |
 | `string.trim_right` | `(string)->string` |
+| `string.trim_suffix` | `(string,string)->string` |
 | `string.upper` | `(string)->string` |
+| `string.words` | `(string)->list[string]` |
+
+### `list`
+
+Functional sequence utilities and list manipulation helpers.
+
+| Member | Signature |
+| --- | --- |
+| `list.all` | `(list[any],any?)->bool` |
+| `list.any` | `(list[any],any?)->bool` |
+| `list.concat` | `(list[any],list[any])->list[any]` |
+| `list.contains` | `(list[any],any)->bool` |
+| `list.filter` | `(list[any],any)->list[any]` |
+| `list.find` | `(list[any],any)->any` |
+| `list.find_index` | `(list[any],any)->int` |
+| `list.flatten` | `(list[any])->list[any]` |
+| `list.index_of` | `(list[any],any)->int` |
+| `list.join` | `(list[any],string?)->string` |
+| `list.keys` | `(list[any])->list[int]` |
+| `list.length` | `(list[any])->int` |
+| `list.map` | `(list[any],any)->list[any]` |
+| `list.pop` | `(list[any])->any` |
+| `list.push` | `(list[any],any)->list[any]` |
+| `list.reduce` | `(list[any],any,any?)->any` |
+| `list.reverse` | `(list[any])->list[any]` |
+| `list.slice` | `(list[any],int,int?)->list[any]` |
+| `list.sort` | `(list[any],any?)->list[any]` |
+| `list.unique` | `(list[any])->list[any]` |
+| `list.values` | `(list[any])->list[any]` |
+
+### `map`
+
+Dictionary and key-value mapping helpers with preserved insertion order.
+
+| Member | Signature |
+| --- | --- |
+| `map.clone` | `(map[any, any])->map[any, any]` |
+| `map.delete` | `(map[any, any],any)->any` |
+| `map.entries` | `(map[any, any])->list[list[any]]` |
+| `map.filter` | `(map[any, any],any)->map[any, any]` |
+| `map.from_entries` | `(list[any])->map[string, any]` |
+| `map.get` | `(map[any, any],any,any?)->any` |
+| `map.has` | `(map[any, any],any)->bool` |
+| `map.keys` | `(map[any, any])->list[string]` |
+| `map.length` | `(map[any, any])->int` |
+| `map.map` | `(map[any, any],any)->map[any, any]` |
+| `map.merge` | `(map[any, any],map[any, any])->map[any, any]` |
+| `map.reduce` | `(map[any, any],any,any?)->any` |
+| `map.reverse` | `(map[any, any])->map[any, any]` |
+| `map.set` | `(map[any, any],any,any)->map[any, any]` |
+| `map.sort` | `(map[any, any],any?)->map[any, any]` |
+| `map.values` | `(map[any, any])->list[any]` |
+
+### `random`
+
+Fast seedable pseudo-random number generator for games, graphics, procedural generation, and Monte-Carlo simulations. It uses an internal PRNG distinct from `crypto.random_*` which allows repeatable sequences using `random.seed(n)`.
+
+| Member | Signature |
+| --- | --- |
+| `random.seed` | `(int)->null` |
+| `random.random` | `()->float` |
+| `random.randint` | `(int,int)->int` |
+| `random.uniform` | `(float,float)->float` |
+| `random.choice` | `(list[any])->any` |
+| `random.shuffle` | `(list[any])->list[any]` |
+| `random.sample` | `(list[any],int)->list[any]` |
+| `random.gaussian` | `(float?,float?)->float` |
+| `random.bool` | `(float?)->bool` |
+
+### Error Handling & Inspection
+
+Errors in Alca are first-class inspectable objects (`error` type) providing typed categories, standard error codes, and UTC timestamps:
+
+| Category | Code | Description |
+| --- | --- | --- |
+| `invalid_argument` | 400 | Bad argument type, out-of-range value, or validation failure |
+| `permission_denied` | 403 | Sandbox capability denial or filesystem access violation |
+| `not_found` | 404 | File, directory, device, or key not found |
+| `already_exists` | 409 | Resource or file already exists |
+| `io_error` | 500 | Disk I/O read/write failure |
+| `network_error` | 502 / 504 | Socket connection timeout, connection reset, or DNS failure |
+| `internal_error` | 500 | General host exception |
+
+Error values provide inspection methods:
+- `err.code()`: returns the integer error code (e.g. `404`).
+- `err.category()`: returns the category string (e.g. `"not_found"`).
+- `err.message()`: returns the detailed error message.
+- `err.time()`: returns the RFC3339 UTC creation timestamp string.
 
 ## Global builtins
 
 These functions are available without a `use` statement.
+
+### Special runtime identifiers (dunder variables)
+
+The following immutable built-in variables are always available globally:
+
+| Identifier | Type | Description |
+| --- | --- | --- |
+| `__file__` | `string` | File path of the currently executing source file (or `"<stdin>"` if inline/REPL). |
+| `__dir__` | `string` | Directory containing `__file__` (or `"."` if none). |
+| `__dirname__` | `string` | Alias for `__dir__`. |
+| `__name__` | `string` | `"__main__"` when executing the top-level script, or the module path when imported. |
+| `__line__` | `int` | Current 1-based source code line number where the identifier appears. |
+| `__version__` | `string` | Alca runtime and toolchain version (e.g. `"2.0.0"`). |
+
+### Global functions
 
 | Function | Signature |
 | --- | --- |
@@ -762,7 +1137,10 @@ These functions are available without a `use` statement.
 | `type` | `(any)->string` |
 | `typeof` | `(any)->string` |
 
-Many standard-library functions are also registered as global aliases:
+> [!NOTE]
+> Global convenience aliases for standard library functions (such as `read_file`, `write_file`, `get_env`, `sha256`, `cpu_count`, etc.) have been removed and deprecated to keep the global namespace clean and maintain strict module boundaries. Standard library functions must be imported explicitly through their module namespace (e.g. `use std.io;` then `io.read_file(...)`, `use std.env;` then `env.get_env(...)`, `use std.crypto;` then `crypto.sha256(...)`). Calling removed global aliases triggers compile-time deprecation diagnostics guiding you to the appropriate `std.*` module.
+
+Former global aliases:
 
 - `env`: `add_path`, `add_system_path`, `add_user_path`, `all_env`, `broadcast_env_change`, `expand_env`, `get_env`, `get_path`, `get_system_path`, `get_user_path`, `has_path`, `home_dir`, `hostname`, `is_linux`, `is_windows`, `os_name`, `path_separator`, `persist_user_path`, `prepend_path`, `remove_path`, `remove_user_path`, `set_env`, `set_path`, `unset_env`, `username`, `which`, `working_dir`
 - `io`: `append_file`, `check_access`, `chmod`, `copy_file`, `delete_file`, `file_exists`, `file_info`, `file_size`, `glob`, `is_permission_error`, `list_dir`, `lock_file`, `make_dir`, `move_file`, `open`, `permissions`, `read_bytes`, `read_file`, `read_lines`, `temp_dir`, `temp_file`, `unlock_file`, `walk`, `write_bytes`, `write_file`
@@ -805,7 +1183,7 @@ machine code:
   same fused path; host, clock, entropy, or file-backed members such as
   `path.abs`, `path.expand`, `path.which`, `crypto.uuid`,
   `crypto.aes_encrypt`, `urllib2.request`, `time.now`, `csv.read`,
-  `csv.write`, `ini.read`, `ini.write`, and `ai.matrix` use the generic
+  `csv.write`, `ini.read`, `ini.write`, and `libtorch.matrix` use the generic
   host-call helper.
 - **JIT runtime helper (host calls)**: for non-pure members, including network,
   database, general file I/O, GUI, process, and the request/download members of

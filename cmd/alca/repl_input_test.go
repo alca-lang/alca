@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -43,7 +46,7 @@ func TestREPLAcceptsIndentedBlock(t *testing.T) {
 func TestREPLIndentedBlockKeepsRelativeIndentation(t *testing.T) {
 	session := newREPLSession()
 	out, errOut := captureOutput(t, func() {
-		session.eval("    total: int = 0;\n    for i in 1..3:\n        total = total + i;\n    println(total);\n")
+		session.eval("    total: int = 0;\n    for i in 1..=3:\n        total = total + i;\n    println(total);\n")
 	})
 	if errOut != "" {
 		t.Fatalf("unexpected diagnostics:\n%s", errOut)
@@ -111,4 +114,3 @@ func TestHasUnclosedTripleQuote(t *testing.T) {
 		}
 	}
 }
-

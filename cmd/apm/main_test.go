@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -421,4 +424,3 @@ func TestCLIInit(t *testing.T) {
 		t.Errorf("expected 'already exists' in stderr: %q", errOut)
 	}
 }
-

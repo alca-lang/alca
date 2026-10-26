@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build windows
 
 // Package stdlib provides the GUI standard library module for the Alca programming language.
@@ -542,12 +545,21 @@ window.addEventListener('pagehide', function() {
 			_, _ = w.Write(data)
 		})
 		mux.HandleFunc("/api/sysinfo", func(w http.ResponseWriter, r *http.Request) {
-			tot, free, used, pct, _ := RamUsageStats()
+			tot, free, used, pct, err := RamUsageStats()
+			if err != nil {
+				http.Error(w, "system RAM statistics unavailable: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
+			uptime, err := SystemUptimeStats()
+			if err != nil {
+				http.Error(w, "system uptime unavailable: "+err.Error(), http.StatusServiceUnavailable)
+				return
+			}
 			info := map[string]interface{}{
 				"cpu_count":  runtime.NumCPU(),
 				"platform":   runtime.GOOS,
 				"arch":       runtime.GOARCH,
-				"uptime_sec": int64(SystemUptime()),
+				"uptime_sec": int64(uptime),
 				"ram": map[string]interface{}{
 					"total_bytes":  tot,
 					"used_bytes":   used,

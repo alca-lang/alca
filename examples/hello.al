@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 use std.math;
 
 struct Server:
@@ -8,7 +11,7 @@ func area(r: float) -> float:
     return math.PI * r * r;
 
 func safe_div(a: int, b: int) -> int:
-    if b == 0:
+    if b === 0:
         err("division by zero", code=1);
         return 0;
     return a / b;
@@ -23,6 +26,7 @@ if failure != null:
     println("handled: " + failure.msg);
 
 total: int = 0;
-for i in 1..10:
+// 1..=10 is inclusive [1, 10], yielding 55. (1..10 is half-open [1, 10))
+for i in 1..=10:
     total = total + i;
 println(total);

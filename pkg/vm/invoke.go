@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import (
@@ -76,4 +79,15 @@ func InvokeFunction(fn *CompiledFunction, args []interpreter.Value, env *interpr
 		return machine.stack[machine.sp-1].ToValue(), nil
 	}
 	return interpreter.NULL, nil
+}
+
+// InvokeValue invokes any callable Alca value (CompiledFunction, BuiltinFunction).
+func InvokeValue(callee interpreter.Value, args []interpreter.Value, env *interpreter.Environment) (interpreter.Value, error) {
+	switch fn := callee.(type) {
+	case *CompiledFunction:
+		return InvokeFunction(fn, args, env)
+	case *interpreter.BuiltinFunction:
+		return fn.Fn(args...), nil
+	}
+	return nil, fmt.Errorf("cannot invoke non-callable %T", callee)
 }

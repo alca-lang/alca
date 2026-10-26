@@ -34,19 +34,19 @@ Built-in type names include `int`, `float`, `string`, `bool`, `list`,
   Inference fixes the type; it does not become dynamic.
 - `any` is intentionally not accepted in declarations. `json` is the dynamic
   escape hatch.
-- A name that is already bound is never shadowed. Declaring it again in a
-  nested scope updates the existing binding, and only the same type is allowed:
+- A name that is already bound cannot be declared again, including in a nested
+  scope. Use assignment to update it, or choose a different name:
 
   ```alca
   count: int = 1;
   if count > 0:
-      count: int = 2;   // updates the outer binding, not a new one
+      count = 2;
       println(count);   // 2
   println(count);       // 2
   ```
 
-  A redeclaration with another type is a type error
-  (`shadowing 'count' changes its type from int to string`).
+  Writing `count: int = 2;` or `count := 2;` in that block is a compile error;
+  declarations never implicitly act as assignments.
 - Lists are written `list[int]`, `list[string]`, etc. Empty list literals need
   a contextual type.
 - Maps are written `map[string, int]`, etc.
@@ -68,66 +68,135 @@ if maybe != null:
 ## Operators
 
 Arithmetic: `+ - * / % **`. String `+` concatenates two strings only.
-Comparison: `==` performs loose equality with limited numeric coercion
-(`1 == 1.0` and `"1" == 1` are true); `===` requires matching runtime types,
-including recursively within lists and maps. `!=` is the negation of `==`.
-Ordering comparisons are `< <= > >=`. Boolean: `and`, `or`, `not` (and `&&`,
-`||`, `!`). Membership/indexing: `in`, `[]`. Ranges use `a..b` and are inclusive.
+Comparison: `==` and `!=` perform structural value equality between comparable typed values. Use `===` and `!==` for strict identity checks. Incompatible static type comparisons (such as `"1" == 1`) are rejected at compile time by the type checker.
+Ordering comparisons are `< <= > >=`. Boolean: `and`, `or`, `not` (and `&&`, `||`, `!`). Membership/indexing: `in`, `[]`.
+Ranges:
+- `a..b`: Half-open range `[a, b)`. Iterates starting from `a` up to (but excluding) `b`. For example, `0..3` produces `0, 1, 2`.
+- `a..=b`: Inclusive range `[a, b]`. Iterates starting from `a` up to and including `b`. For example, `0..=3` produces `0, 1, 2, 3`.
 
-`==` follows one table, so there are no surprises:
-
-| Left | Right | Result |
-| --- | --- | --- |
-| same type | same type | value equality; lists and maps compare recursively |
-| `int` | `float` | numeric comparison (`1 == 1.0` is true) |
-| `string` | number | true only when the string is a number with that value (`"1" == 1`, `"x" == 1` is false) |
-| `bool` | number | `true` compares as `1`, `false` as `0` |
-| anything else | | false |
-
-The coercion exists because `json` is a dynamic type: a value read from JSON
-has no static type, so `config["port"] == 8080` has to work. Use `===` when the
-difference matters, for example to tell the string `"1"` from the number `1`.
 Pipeline `|>` calls a function with the left value as its argument.
 
 ## Control flow
 
 ```alca
-if cond:
+if cond {
     ...
-elif other:
+} elif other {
     ...
-else:
+} else {
     ...
+}
 
-for i in 0..3:          // i = 0,1,2,3
-    if i == 1:
+for i in 0..3 {          // i = 0, 1, 2 (3 iterations)
+    if i == 1 {
         continue;
-    if i == 3:
+    }
+}
+
+for i in 0..=3 {         // i = 0, 1, 2, 3 (4 iterations)
+    if i == 3 {
         break;
+    }
+}
 
-while cond:
+while cond {
     ...
+}
 
-for item in items:
+for item in items {
     println(item);
+}
 ```
 
-`for i in a..b` iterates inclusively from `a` to `b`. Assigning the loop
-variable inside the body does not change the iteration sequence. `break` and
-`continue` are supported on both engines.
+`for i in a..b` iterates half-open from `a` to `b` (excluding `b`). Use `for i in a..=b` for inclusive iteration. Assigning the loop variable inside the body does not alter the iteration sequence. `break` and `continue` are supported across all engines.
+
+## High-Level Abstractions: Enum, Interface, Async
+
+### Enums (Algebraic Data Types)
+
+```alca
+enum Status {
+    Pending,
+    Active = 10,
+    Done,
+}
+
+s := Status.Active;
+match s {
+    case Status.Pending:
+        println("pending");
+    case Status.Active:
+        println("active, tag = " + string(s.tag));
+    else:
+        println("other");
+}
+```
+
+### Interfaces & Traits
+
+Interfaces declare statically verified method contracts:
+
+```alca
+interface Greeter {
+    fn greet(name: string) -> string;
+}
+
+class User {
+    pub fn greet(name: string) -> string {
+        return "Hello, " + name;
+    }
+}
+
+u := User();
+g: Greeter = u;
+println(g.greet("World"));
+```
+
+### Concurrency and Asynchronous Execution (@ba, @threads)
+
+Alca provides built-in concurrency primitives executed directly on the Bytecode VM:
+
+- **Background Blocks (`@ba`)**: Spawns isolated asynchronous tasks with optional timeouts and limits:
+```alca
+ba(timeout=5s):
+    println("Background computation running...");
+```
+
+- **Worker Pools (`@threads`)**: Executes tasks concurrently across worker threads:
+```alca
+threads 4:
+    println("Parallel worker task");
+```
+
+> **Note on `async` / `await`**: The keywords `async` and `await` are parsed and recognized by the static type checker, but are currently reserved for the upcoming Promise/Future event-loop runtime planned for v2.1. Use `@ba` and `@threads` for current production concurrency.
 
 ## Functions, lambdas, and closures
 
 ```alca
-func add(a: int, b: int = 1) -> int:
+func add(a: int, b: int = 1) -> int {
     return a + b;
+}
 
-func make_counter() -> func:
+// Void functions can be declared with the 'void' prefix or '-> void'
+void greet(name: string) {
+    println("Hello, " + name);
+}
+
+pub void notify(msg: string) {
+    if len(msg) == 0 {
+        return;
+    }
+    println("[NOTIFY] " + msg);
+}
+
+func make_counter() -> func {
     n := 0;
-    func next() -> int:
+    func next() -> int {
         n = n + 1;
         return n;
+    }
     return next;
+}
 
 c := make_counter();
 println(c());  // 1
@@ -135,7 +204,7 @@ println(c());  // 2
 ```
 
 - Parameters may have default values. Calls may use named arguments.
-- A function with no return value is declared `-> void`.
+- A function with no return value can be declared as `void name(...) { ... }` or with `-> void`.
 - Function bodies do not implicitly return their final expression.
 - Nested functions and lambdas (`|x: int| x + 1`) capture enclosing locals by
   reference. Separate calls to a factory create independent captured state.
@@ -144,38 +213,43 @@ println(c());  // 2
 ## Structs
 
 ```alca
-struct Point:
+struct Point {
     x: int;
     y: int = 0;
+}
 
 p := Point(10, 20);
 println(p.x);
 p.x = 11;
 ```
 
-Fields are typed, may have literal defaults, and struct values are mutable.
-Struct definitions are values and can be passed around like other values.
+Fields are typed (`name: Type = default;`), may have literal defaults, and struct instances are mutable.
 
 ## Classes and inheritance
 
-A class adds methods, visibility and single inheritance to a struct:
+A class adds methods, visibility, and single inheritance:
 
 ```alca
-class Animal:
-    public string: name;
-    private int: age = 0;
+class Animal {
+    pub name: string;
+    private age: int = 0;
 
-    public func speak() -> string:
+    pub fn speak() -> string {
         return self.name + " makes a sound";
+    }
+}
 
-class Dog extends Animal:
-    public string: breed = "mutt";
+class Dog extends Animal {
+    pub breed: string = "mutt";
 
-    public func speak() -> string:
+    pub fn speak() -> string {
         return self.name + " says woof";
+    }
 
-    public func parent_speak() -> string:
+    pub fn parent_speak() -> string {
         return super.speak();
+    }
+}
 
 d := Dog("Rex", 3, "lab");
 println(d.speak());          // Rex says woof
@@ -268,8 +342,9 @@ bytecode VM rejects them, so a program that uses one has to run with
 
 ## Engines
 
-Alca has two engines: the bytecode virtual machine (with the JIT tiers on top
-of it) and the tree-walking interpreter. They implement the same language, with
+Alca has two engines: the bytecode virtual machine and the tree-walking
+interpreter. The VM has optional JIT tiers, disabled by default and enabled
+explicitly with `alca run --jit file.al`. Both engines implement the same language, with
 one documented exception: a few constructs exist only in the interpreter.
 
 Interpreter-only today:
@@ -292,19 +367,23 @@ started:
 - `alca run --vm file.al` reports the unsupported construct as an error;
 - `alca build file.al` embeds the source and runs it on the interpreter of the
   standalone binary.
+- `alca build file.al --dll -o mylib.dll` or `alca dll file.al -o mylib.dll` compiles
+  all exported `pub func` declarations directly into a pure native Windows 64-bit PE DLL
+  with zero external compilers.
 
 ## Tests
 
 ```alca
 test "addition":
-    assert 1 + 1 == 2;
+    assert 1 + 1 === 2;
 
 test "strings":
-    assert "a" + "b" == "ab";
+    assert "a" + "b" === "ab";
 ```
 
 `alca test file.al` runs the whole program (including top-level setup) and
-reports the number of passed and failed test blocks. A failed assertion or
+reports the number of passed and failed test blocks. Use `===` for typed
+equality assertions. A failed assertion or
 unhandled runtime error exits non-zero.
 
 ## Modules and standard library

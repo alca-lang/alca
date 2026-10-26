@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            bin: alca
+          - os: linux
+            arch: arm64
+            bin: alca
+          - os: windows
+            arch: amd64
+            bin: alca.exe
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Build Binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          OUTPUT="dist/alca-${{ matrix.os }}-${{ matrix.arch }}"
+          mkdir -p dist
+          go build -ldflags="-s -w" -o "${OUTPUT}/${{ matrix.bin }}" ./cmd/alca
+          cd dist
+          tar -czf "alca-${{ matrix.os }}-${{ matrix.arch }}.tar.gz" "alca-${{ matrix.os }}-${{ matrix.arch }}"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alca-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*.tar.gz
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Generate Checksums
+        run: |
+          cd release-artifacts
+          find . -name "*.tar.gz" -exec cp {} . \;
+          sha256sum *.tar.gz > SHA256SUMS.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/*.tar.gz
+            release-artifacts/SHA256SUMS.txt
+          generate_release_notes: true

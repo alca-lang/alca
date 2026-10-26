@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import (
@@ -40,8 +43,6 @@ func TestPureStdlibMemberClassification(t *testing.T) {
 		want           bool
 	}{
 		{"std.math", "sin", true},
-		{"std.ai", "matmul", true},
-		{"std.ai", "matrix", false},
 		{"std.path", "join", true},
 		{"std.path", "which", false},
 		{"std.crypto", "sha256", true},

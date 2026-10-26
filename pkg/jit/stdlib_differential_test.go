@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit_test
 
 import (
@@ -29,7 +32,7 @@ func stdlibTestEnv(t *testing.T) *interpreter.Environment {
 	stdlib.RegisterTimeBuiltins(env)
 	stdlib.RegisterIOBuiltins(env)
 	stdlib.RegisterUrllib2Builtins(env)
-	stdlib.RegisterAIBuiltins(env)
+	stdlib.RegisterLibtorchBuiltins(env)
 	stdlib.RegisterSysBuiltins(env)
 	stdlib.RegisterEnvBuiltins(env)
 
@@ -37,7 +40,7 @@ func stdlibTestEnv(t *testing.T) *interpreter.Environment {
 	for _, name := range []string{
 		"math", "string", "str", "crypto", "path", "regex", "re",
 		"compress", "formats", "csv", "ini", "json", "time", "io",
-		"urllib2", "ai", "sys", "env",
+		"urllib2", "libtorch", "sys", "env",
 	} {
 		if val, ok := env.Get(name); ok {
 			std.Set(name, val)
@@ -122,7 +125,7 @@ func registerStdlibModules(env *interpreter.Environment) {
 	stdlib.RegisterTimeBuiltins(env)
 	stdlib.RegisterIOBuiltins(env)
 	stdlib.RegisterUrllib2Builtins(env)
-	stdlib.RegisterAIBuiltins(env)
+	stdlib.RegisterLibtorchBuiltins(env)
 	stdlib.RegisterSysBuiltins(env)
 	stdlib.RegisterEnvBuiltins(env)
 
@@ -130,7 +133,7 @@ func registerStdlibModules(env *interpreter.Environment) {
 	for _, name := range []string{
 		"math", "string", "str", "crypto", "path", "regex", "re",
 		"compress", "formats", "csv", "ini", "json", "time", "io",
-		"urllib2", "ai", "sys", "env",
+		"urllib2", "libtorch", "sys", "env",
 	} {
 		if val, ok := env.Get(name); ok {
 			std.Set(name, val)

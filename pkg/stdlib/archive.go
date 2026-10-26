@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the Archive standard library module for the Alca programming language.
 // It supports creating and extracting ZIP and TAR.GZ archives with built-in path-traversal protection.
 package stdlib
@@ -16,8 +19,14 @@ import (
 	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
+// maxExtractedBytes caps the total number of bytes a single extraction call
+// will write to disk. It bounds the damage of a decompression bomb (a tiny
+// archive that expands to fill the disk); extraction aborts once the budget is
+// exhausted. It is a variable so tests can lower it.
+var maxExtractedBytes int64 = 1 << 30 // 1 GiB
+
 // ZipCreate archives a file or directory into a ZIP file.
-func ZipCreate(srcPath, destZip string) error {
+func ZipCreate(srcPath, destZip string) (err error) {
 	if err := sandbox.RequireRead(srcPath); err != nil {
 		return err
 	}
@@ -28,10 +37,18 @@ func ZipCreate(srcPath, destZip string) error {
 	if err != nil {
 		return err
 	}
-	defer zipFile.Close()
-
 	archive := zip.NewWriter(zipFile)
-	defer archive.Close()
+	defer func() {
+		// archive.Close flushes the central directory; zipFile.Close flushes
+		// buffered bytes. Both can fail (e.g. disk full) and would otherwise be
+		// silently dropped, so surface the first error that occurs.
+		if cerr := archive.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+		if cerr := zipFile.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	srcInfo, err := os.Stat(srcPath)
 	if err != nil {
@@ -107,6 +124,7 @@ func ZipExtract(zipPath, destDir string) error {
 	defer r.Close()
 
 	cleanDest := filepath.Clean(destDir)
+	remaining := maxExtractedBytes
 
 	for _, f := range r.File {
 		targetPath := filepath.Join(cleanDest, f.Name)
@@ -139,11 +157,19 @@ func ZipExtract(zipPath, destDir string) error {
 			return err
 		}
 
-		_, err = io.Copy(outFile, rc)
+		// Read one extra byte past the remaining budget so an over-large entry
+		// is detected rather than silently truncated.
+		written, err := io.Copy(outFile, io.LimitReader(rc, remaining+1))
 		rc.Close()
-		outFile.Close()
+		if cerr := outFile.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
 		if err != nil {
 			return err
+		}
+		remaining -= written
+		if remaining < 0 {
+			return fmt.Errorf("zip archive expands beyond the %d byte limit", maxExtractedBytes)
 		}
 	}
 
@@ -151,7 +177,7 @@ func ZipExtract(zipPath, destDir string) error {
 }
 
 // TarGzCreate packages a file or directory into a compressed .tar.gz archive.
-func TarGzCreate(srcPath, destTarGz string) error {
+func TarGzCreate(srcPath, destTarGz string) (err error) {
 	if err := sandbox.RequireRead(srcPath); err != nil {
 		return err
 	}
@@ -162,13 +188,22 @@ func TarGzCreate(srcPath, destTarGz string) error {
 	if err != nil {
 		return err
 	}
-	defer tarFile.Close()
-
 	gw := gzip.NewWriter(tarFile)
-	defer gw.Close()
-
 	tw := tar.NewWriter(gw)
-	defer tw.Close()
+	defer func() {
+		// Close in inner-to-outer order: tw writes the tar end-of-archive
+		// marker, gw writes the gzip footer (including the CRC), and tarFile
+		// flushes the file. Each can fail and would otherwise be dropped.
+		if cerr := tw.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+		if cerr := gw.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+		if cerr := tarFile.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	srcInfo, err := os.Stat(srcPath)
 	if err != nil {
@@ -242,6 +277,7 @@ func TarGzExtract(tarGzPath, destDir string) error {
 
 	tr := tar.NewReader(gr)
 	cleanDest := filepath.Clean(destDir)
+	remaining := maxExtractedBytes
 
 	for {
 		header, err := tr.Next()
@@ -273,11 +309,17 @@ func TarGzExtract(tarGzPath, destDir string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(outFile, tr); err != nil {
-				outFile.Close()
+			written, err := io.Copy(outFile, io.LimitReader(tr, remaining+1))
+			if cerr := outFile.Close(); cerr != nil && err == nil {
+				err = cerr
+			}
+			if err != nil {
 				return err
 			}
-			outFile.Close()
+			remaining -= written
+			if remaining < 0 {
+				return fmt.Errorf("tar archive expands beyond the %d byte limit", maxExtractedBytes)
+			}
 		}
 	}
 	return nil

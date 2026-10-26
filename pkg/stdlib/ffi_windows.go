@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build windows
 
 package stdlib
@@ -10,14 +13,27 @@ import (
 	"unsafe"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"golang.org/x/sys/windows"
 )
 
-var (
-	allocatedUTF16Mu syncMutexHolder
-	allocatedUTF16   = make(map[uintptr][]uint16)
-)
+func allocateNativeFFI(size int) ([]byte, error) {
+	address, err := windows.VirtualAlloc(0, uintptr(size), windows.MEM_RESERVE|windows.MEM_COMMIT, windows.PAGE_READWRITE)
+	if err != nil {
+		return nil, err
+	}
+	if address == 0 {
+		return nil, fmt.Errorf("VirtualAlloc returned a null address")
+	}
+	return unsafe.Slice((*byte)(foreignPointer(address)), size), nil
+}
 
-type syncMutexHolder struct{}
+func freeNativeFFI(buffer []byte) error {
+	if len(buffer) == 0 {
+		return nil
+	}
+	address := uintptr(unsafe.Pointer(&buffer[0]))
+	return windows.VirtualFree(address, 0, windows.MEM_RELEASE)
+}
 
 func LoadDynamicLibrary(path string) (uintptr, error) {
 	h, err := syscall.LoadLibrary(path)
@@ -107,9 +123,14 @@ func UTF16StringPointer(s string) uintptr {
 	if err != nil {
 		return 0
 	}
-	ptr := uintptr(unsafe.Pointer(&u16[0]))
+	buffer := make([]byte, len(u16)*2)
+	for i, value := range u16 {
+		buffer[i*2] = byte(value)
+		buffer[i*2+1] = byte(value >> 8)
+	}
+	ptr := uintptr(unsafe.Pointer(&buffer[0]))
 	allocatedPointersMu.Lock()
-	allocatedUTF16[ptr] = u16
+	allocatedPointers[ptr] = buffer
 	allocatedPointersMu.Unlock()
 	return ptr
 }
@@ -127,34 +148,34 @@ func foreignPointer(ptr uintptr) unsafe.Pointer {
 	return unsafe.Add(unsafe.Pointer(nil), ptr)
 }
 
-func ReadCString(ptr uintptr) string {
+func ReadCString(ptr uintptr) (string, error) {
 	if ptr == 0 {
-		return ""
+		return "", nil
 	}
 	var b []byte
-	for {
+	for len(b) < maxFFIAllocationSize {
 		ch := *(*byte)(foreignPointer(ptr))
 		if ch == 0 {
-			break
+			return string(b), nil
 		}
 		b = append(b, ch)
 		ptr++
 	}
-	return string(b)
+	return "", fmt.Errorf("C string exceeds %d bytes or is not NUL-terminated", maxFFIAllocationSize)
 }
 
-func ReadUTF16String(ptr uintptr) string {
+func ReadUTF16String(ptr uintptr) (string, error) {
 	if ptr == 0 {
-		return ""
+		return "", nil
 	}
 	var u16 []uint16
-	for {
+	for len(u16) < maxFFIAllocationSize/2 {
 		ch := *(*uint16)(foreignPointer(ptr))
 		if ch == 0 {
-			break
+			return syscall.UTF16ToString(u16), nil
 		}
 		u16 = append(u16, ch)
 		ptr += 2
 	}
-	return syscall.UTF16ToString(u16)
+	return "", fmt.Errorf("UTF-16 string exceeds %d bytes or is not NUL-terminated", maxFFIAllocationSize)
 }

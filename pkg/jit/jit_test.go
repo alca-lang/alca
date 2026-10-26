@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit_test
 
 import (
@@ -650,7 +653,7 @@ func TestJITRangeLoop(t *testing.T) {
 	src := `
 func sum_range() -> int:
     sum: int = 0;
-    for i in 1..100:
+    for i in 1..=100:
         sum = sum + i;
     return sum;
 
@@ -1060,7 +1063,7 @@ func TestJITLocalRangeLoop(t *testing.T) {
 	src := `
 func loop_local() -> int:
     sum := 0;
-    for i in 1..1000:
+    for i in 1..=1000:
         sum = sum + i;
     return sum;
 

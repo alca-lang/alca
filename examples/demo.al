@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // ==========================================
 // Alca Programming Language — Full Showcase
 // ==========================================
@@ -46,12 +49,12 @@ for it in items:
 buffer: string | null = "Temporary payload";
 println("Allocated buffer: " + string(buffer));
 buffer = null;
-if buffer == null:
+if buffer === null:
     println("Freed buffer instantaneously: buffer is null");
 
 // 7. Error handling
 func safe_divide(a: int, b: int) -> int:
-    if b == 0:
+    if b === 0:
         err("division by zero forbidden", code=1);
         return 0;
     return a / b;

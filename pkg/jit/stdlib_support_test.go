@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit_test
 
 import (
@@ -92,7 +95,7 @@ func TestStdlibSupportPerMode(t *testing.T) {
 		{"crypto", "sha256", jit.StdlibAMD64JIT, jit.StdlibJITHelperTier},
 		{"crypto", "sha256", jit.StdlibPureNative, jit.StdlibUnavailableTier},
 		{"io", "read_file", jit.StdlibAMD64JIT, jit.StdlibJITHelperTier},
-		{"ai", "matmul", jit.StdlibAMD64JIT, jit.StdlibJITHelperTier},
+		{"libtorch", "matmul", jit.StdlibAMD64JIT, jit.StdlibJITHelperTier},
 		{"urllib2", "join", jit.StdlibAMD64JIT, jit.StdlibJITHelperTier},
 		{"urllib2", "request", jit.StdlibAMD64JIT, jit.StdlibJITHelperTier},
 		{"time", "format", jit.StdlibThreadedJIT, jit.StdlibJITHelperTier},

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the standard library modules and builtins for the Alca programming language.
 package stdlib
 
@@ -278,7 +281,6 @@ func RegisterNetBuiltins(env *interpreter.Environment) {
 
 	register := func(name string, fn func(args ...interpreter.Value) interpreter.Value) {
 		builtin := &interpreter.BuiltinFunction{Name: name, Fn: fn}
-		env.Set(name, builtin)
 		netModule.Set(name, builtin)
 	}
 

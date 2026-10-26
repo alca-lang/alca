@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the Sys standard library module for the Alca programming language.
 // It supports hardware monitoring, disk usage, RAM statistics, CPU metrics, and network interfaces.
 package stdlib
@@ -7,6 +10,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
 )
@@ -53,17 +57,7 @@ func RegisterSysBuiltins(env *interpreter.Environment) {
 	register("ram_usage", func(args ...interpreter.Value) interpreter.Value {
 		totalBytes, freeBytes, usedBytes, percent, err := RamUsageStats()
 		if err != nil {
-			// Fallback to Go runtime memory statistics
-			var m runtime.MemStats
-			runtime.ReadMemStats(&m)
-			totalBytes = m.Sys
-			usedBytes = m.Alloc
-			if totalBytes > usedBytes {
-				freeBytes = totalBytes - usedBytes
-			}
-			if totalBytes > 0 {
-				percent = math.Round((float64(usedBytes)/float64(totalBytes))*1000) / 10
-			}
+			return interpreter.NewError(500, "system RAM statistics unavailable: "+err.Error())
 		}
 
 		m := interpreter.NewMap()
@@ -156,7 +150,11 @@ func RegisterSysBuiltins(env *interpreter.Environment) {
 
 	// uptime() -> float (seconds)
 	register("uptime", func(args ...interpreter.Value) interpreter.Value {
-		return &interpreter.FloatValue{Val: SystemUptime()}
+		uptime, err := SystemUptimeStats()
+		if err != nil {
+			return interpreter.NewError(500, "system uptime unavailable: "+err.Error())
+		}
+		return &interpreter.FloatValue{Val: uptime}
 	})
 
 	// whoami() -> map {user, hostname, is_admin}
@@ -200,6 +198,82 @@ func RegisterSysBuiltins(env *interpreter.Environment) {
 		return interpreter.NewList(list...)
 	})
 
+	// pids() -> list of process IDs
+	register("pids", func(args ...interpreter.Value) interpreter.Value {
+		procs, err := SystemProcesses()
+		if err != nil {
+			return interpreter.NewError(500, "failed to enumerate processes: "+err.Error())
+		}
+		ids := make([]interpreter.Value, 0, len(procs))
+		for _, process := range procs {
+			if pid, ok := process["pid"].(int64); ok {
+				ids = append(ids, &interpreter.IntegerValue{Val: pid})
+			}
+		}
+		return interpreter.NewList(ids...)
+	})
+
+	// process_info(pid) -> map {pid, ppid, name}
+	register("process_info", func(args ...interpreter.Value) interpreter.Value {
+		if len(args) != 1 {
+			return interpreter.NewError(400, "process_info requires a process ID")
+		}
+		pidValue, ok := args[0].(*interpreter.IntegerValue)
+		if !ok || pidValue.Val < 0 {
+			return interpreter.NewError(400, "process_info requires a non-negative integer process ID")
+		}
+		procs, err := SystemProcesses()
+		if err != nil {
+			return interpreter.NewError(500, "failed to enumerate processes: "+err.Error())
+		}
+		for _, process := range procs {
+			if process["pid"] == pidValue.Val {
+				return systemProcessValue(process)
+			}
+		}
+		return interpreter.NewError(404, "process not found")
+	})
+
+	// process_iter() -> list of process maps
+	register("process_iter", func(args ...interpreter.Value) interpreter.Value {
+		procs, err := SystemProcesses()
+		if err != nil {
+			return interpreter.NewError(500, "failed to enumerate processes: "+err.Error())
+		}
+		values := make([]interpreter.Value, 0, len(procs))
+		for _, process := range procs {
+			values = append(values, systemProcessValue(process))
+		}
+		return interpreter.NewList(values...)
+	})
+
+	// virtual_memory() -> map with physical-memory counters in bytes
+	register("virtual_memory", func(args ...interpreter.Value) interpreter.Value {
+		total, available, used, percent, err := RamUsageStats()
+		if err != nil {
+			return interpreter.NewError(500, "failed to read memory statistics: "+err.Error())
+		}
+		result := interpreter.NewMap()
+		result.Set("total", &interpreter.IntegerValue{Val: int64(total)})
+		result.Set("available", &interpreter.IntegerValue{Val: int64(available)})
+		result.Set("free", &interpreter.IntegerValue{Val: int64(available)})
+		result.Set("used", &interpreter.IntegerValue{Val: int64(used)})
+		result.Set("percent", &interpreter.FloatValue{Val: percent})
+		return result
+	})
+
+	// boot_time() -> Unix timestamp of the last system boot
+	register("boot_time", func(args ...interpreter.Value) interpreter.Value {
+		uptime, err := SystemUptimeStats()
+		if err != nil {
+			return interpreter.NewError(500, "system uptime unavailable: "+err.Error())
+		}
+		if uptime <= 0 {
+			return interpreter.NewError(500, "system uptime is unavailable")
+		}
+		return &interpreter.FloatValue{Val: float64(time.Now().Unix()) - uptime}
+	})
+
 	// disk_partitions() -> list of maps {mount, total_gb, free_gb, used_gb, percent_used}
 	register("disk_partitions", func(args ...interpreter.Value) interpreter.Value {
 		parts, err := DiskPartitions()
@@ -226,7 +300,10 @@ func RegisterSysBuiltins(env *interpreter.Environment) {
 
 	// load_avg() -> map {1m, 5m, 15m}
 	register("load_avg", func(args ...interpreter.Value) interpreter.Value {
-		loads := LoadAverage()
+		loads, err := LoadAverageStats()
+		if err != nil {
+			return interpreter.NewError(501, "system load average unavailable: "+err.Error())
+		}
 		m := interpreter.NewMap()
 		for k, v := range loads {
 			m.Set(k, &interpreter.FloatValue{Val: v})
@@ -236,4 +313,18 @@ func RegisterSysBuiltins(env *interpreter.Environment) {
 
 	env.Set("sys", sysModule)
 	env.Set("std.sys", sysModule)
+}
+
+func systemProcessValue(process map[string]interface{}) interpreter.Value {
+	result := interpreter.NewMap()
+	if pid, ok := process["pid"].(int64); ok {
+		result.Set("pid", &interpreter.IntegerValue{Val: pid})
+	}
+	if ppid, ok := process["ppid"].(int64); ok {
+		result.Set("ppid", &interpreter.IntegerValue{Val: ppid})
+	}
+	if name, ok := process["name"].(string); ok {
+		result.Set("name", &interpreter.StringValue{Val: name})
+	}
+	return result
 }

@@ -1,11 +1,18 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package typecheck_test
 
 import (
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/alca-lang/alca/pkg/interpreter"
 	"github.com/alca-lang/alca/pkg/lexer"
 	"github.com/alca-lang/alca/pkg/parser"
+	"github.com/alca-lang/alca/pkg/stdlib"
 	"github.com/alca-lang/alca/pkg/typecheck"
 )
 
@@ -14,7 +21,8 @@ func check(t *testing.T, src string) []string {
 	p := parser.New(lexer.New(src))
 	prog := p.ParseProgram()
 	if errs := p.SyntaxErrors(); len(errs) > 0 {
-		t.Fatalf("unexpected syntax errors: %v", errs[0].Message)
+		lines := strings.Split(src, "\n")
+		t.Fatalf("unexpected syntax errors: %v on %q", errs[0], lines[errs[0].Line-1])
 	}
 	var msgs []string
 	for _, e := range typecheck.NewChecker("t.al", src).Check(prog) {
@@ -45,7 +53,7 @@ func twice(n: int) -> int:
     return n * 2;`,
 		"null narrowing": `
 func f(s: string | null) -> int:
-    if s == null:
+    if s === null:
         return 0;
     return len(s);
 v: string | null = null;
@@ -53,7 +61,7 @@ if v != null:
     println(v + "!");`,
 		"error capture": `
 func risky(n: int) -> int:
-    if n == 0:
+    if n === 0:
         err("zero", code=3);
         return 0;
     return 10 / n;
@@ -80,20 +88,82 @@ for k in keys(m):
 use std.math;
 r: float = math.sqrt(9) + 1.5;
 c: int = math.floor(2.7);`,
+		"production stdlib signatures": `
+use std.ffi;
+use std.sys;
+use std.urllib2;
+use std.platform;
+use std.power;
+use std.devices;
+use std.win32;
+p: int = ffi.alloc_ptr(16);
+copied: bool = ffi.copy_to_ptr(p, "data");
+contents: blob = ffi.read_from_ptr(p, 4);
+released: bool = ffi.free(p);
+processes := sys.process_iter();
+process_info_value := sys.process_info(1);
+available := platform.capabilities();
+sensor_list := power.sensors();
+device_list := devices.list();
+key: int = win32.reg_open_key("HKEY_CURRENT_USER", "Software", "read");
+response := urllib2.tcp_request("GET", "https://example.test");
+`,
 		"loose and strict equality across types": `
-loose: bool = "1" == 1;
-strict: bool = "1" === 1;
+dynamic: json = "1";
+loose: bool = dynamic == 1;
+strict: bool = dynamic === 1;
 mixed: bool = null === 0;
 nested: bool = [1] === [1.0];
 `,
-		"crypto global aliases": `
-a: string = sha256("value");
-b: bool = constant_time_equal(a, a);
-c: string = hex_encode(base64_decode(base64_encode("value")));
-d: int = random_int(1, 10);
-e: string = random_string(8);
-f: string = gzip_decompress(gzip_compress("value"));
-u: string = uuid();
+		"typed value equality": `
+a: int = 10;
+b: int = 20;
+eq_int: bool = a == b;
+neq_int: bool = a != b;
+s1: string = "hello";
+s2: string = "world";
+eq_str: bool = s1 == s2;
+`,
+		"enum interface and async await": `
+enum State {
+    Init,
+    Running,
+    Finished,
+}
+
+s: State = State.Running;
+is_run: bool = s == State.Running;
+
+interface Speaker {
+    fn speak() -> string;
+}
+
+class Dog {
+    pub fn speak() -> string {
+        return "woof";
+    }
+}
+
+d := Dog();
+sp: Speaker = d;
+sound: string = sp.speak();
+
+async fn compute() -> int {
+    return 42;
+}
+
+res: int = await compute();
+`,
+		"crypto stdlib": `
+use std.crypto;
+use std.compress;
+a: string = crypto.sha256("value");
+b: bool = crypto.constant_time_equal(a, a);
+c: string = crypto.hex_encode(crypto.base64_decode(crypto.base64_encode("value")));
+d: int = crypto.random_int(1, 10);
+e: string = crypto.random_string(8);
+f: string = compress.gzip_decompress(compress.gzip_compress("value"));
+u: string = crypto.uuid();
 `,
 		"HTTP timeout options": `
 use std.http;
@@ -150,15 +220,15 @@ match n:
 use std.formats;
 d: json = json_decode("{}");
 n: int = int(d["a"]);`,
-		"shadowing with same type": `
+		"assignments to existing variables": `
 x: int = 1;
-x: int = 2;
+x = 2;
 func f() -> int:
-    x: int = 3;
-    if x > 0:
-        x := 4;
-        println(x);
-    return x;
+    local: int = 3;
+    if local > 0:
+        local = 4;
+        println(local);
+    return local;
 println(f());`,
 		"declaration modifiers": `
 public int: shared = 10;
@@ -214,31 +284,34 @@ println(len(q) > 0);
 lines := io.read_lines("nope");
 println(len(lines));
 `,
-		"io globals": `
-p := temp_file();
+		"io members": `
+use std.io;
+p := io.temp_file();
 println(len(p) > 0);
-lines := read_lines("nope");
+lines := io.read_lines("nope");
 println(len(lines));
-ok: bool = check_access(".", "r");
-ok = lock_file("nope", false);
-ok = unlock_file("nope");
-ok = is_permission_error(403);
-mode := permissions(".");
+ok: bool = io.check_access(".", "r");
+ok = io.lock_file("nope", false);
+ok = io.unlock_file("nope");
+ok = io.is_permission_error(403);
+mode := io.permissions(".");
 println(mode["octal"]);
-h := open("nope");
+h := io.open("nope");
 println(h);
 `,
-		"other globals": `
+		"other stdlib": `
+use std.process;
+use std.env;
 now: string = time_now();
 out: string = exec("exit 0");
 println(now);
 println(out);
-println(cpu_count() > 0);
-println(len(get_path()) >= 0);
-println(get_env("PATH"));
-println(get_ppid() >= 0);
-println(uptime() >= 0);
-println(memory_usage()["alloc"]);
+println(process.cpu_count() > 0);
+println(len(env.get_path()) >= 0);
+println(env.get_env("PATH"));
+println(process.get_ppid() >= 0);
+println(process.uptime() >= 0);
+println(process.memory_usage()["alloc"]);
 `,
 		"cli": `
 use std.cli;
@@ -303,17 +376,16 @@ println(len(ips));
 r := net.http_get("http://example.com");
 println(r["status"]);
 `,
-		"ai": `
-use std.ai;
-a := ai.matrix(2, 2, 3.0);
-b := ai.matrix(2, 2);
-c := ai.matmul(a, b);
-println(len(c));
-println(ai.dot([1.0, 2.0], [3.0, 4.0]));
-println(ai.dot([1, 2], [3, 4]));
-println(ai.relu(-2.0));
-println(len(ai.softmax([1.0, 2.0, 3.0])));
-println(ai.mse([1.0, 2.0], [1.0, 2.0]));
+		"libtorch": `
+use std.libtorch;
+a := libtorch.matrix(2, 2, 3.0);
+b := libtorch.matrix(2, 2);
+c := libtorch.matmul(a, b);
+println(libtorch.dot([1.0, 2.0], [3.0, 4.0]));
+println(libtorch.dot([1, 2], [3, 4]));
+println(libtorch.relu(-2.0));
+println(libtorch.softmax([1.0, 2.0, 3.0]));
+println(libtorch.mse([1.0, 2.0], [1.0, 2.0]));
 `,
 		"formats": `
 use std.csv;
@@ -423,14 +495,6 @@ time.format("now");
 use std.process;
 process.kill_process("1");
 `, "expected int"},
-		{"ai matrix argument type", `
-use std.ai;
-ai.matrix("2", 2);
-`, "expected int"},
-		{"ai vector element type", `
-use std.ai;
-ai.dot(["a"], ["b"]);
-`, "no matching overload"},
 		{"db missing dsn", `
 use std.db;
 db.open("sqlite");
@@ -478,6 +542,7 @@ xs: list[int] = [1];
 append(xs, "s");
 `, "cannot append"},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			errs := check(t, tc.src)
@@ -491,6 +556,59 @@ append(xs, "s");
 	}
 }
 
+func TestRuntimeStdlibRegistryMatchesTypechecker(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterFFIBuiltins(env)
+	stdlib.RegisterSysBuiltins(env)
+	stdlib.RegisterUrllib2Builtins(env)
+	stdlib.RegisterPlatformBuiltins(env)
+	stdlib.RegisterPowerBuiltins(env)
+	stdlib.RegisterDevicesBuiltins(env)
+	stdlib.RegisterWin32Builtins(env)
+	stdlib.RegisterListBuiltins(env)
+	stdlib.RegisterMapBuiltins(env)
+	stdlib.RegisterStringBuiltins(env)
+	stdlib.RegisterEncodingBuiltins(env)
+	stdlib.RegisterMarshalBuiltins(env)
+	stdlib.RegisterAudioBuiltins(env)
+	stdlib.RegisterImageBuiltins(env)
+	stdlib.RegisterRandomBuiltins(env)
+
+	for _, module := range []string{"ffi", "sys", "urllib2", "platform", "power", "devices", "win32", "list", "map", "string", "encoding", "marshal", "audio", "image", "random"} {
+		value, ok := env.Get("std." + module)
+		if !ok {
+			t.Fatalf("runtime did not register std.%s", module)
+		}
+		runtimeMembers := value.(*interpreter.MapValue).Keys()
+		typecheckedMembers, ok := typecheck.StdlibMembers(module)
+		if !ok {
+			t.Fatalf("typechecker does not know std.%s", module)
+		}
+		sort.Strings(runtimeMembers)
+		if !reflect.DeepEqual(runtimeMembers, typecheckedMembers) {
+			t.Errorf("std.%s runtime members = %v, typechecker members = %v", module, runtimeMembers, typecheckedMembers)
+		}
+	}
+}
+
+func TestLibtorchRegistryMatchesTypechecker(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterLibtorchBuiltins(env)
+	value, ok := env.Get("std.libtorch")
+	if !ok {
+		t.Fatal("runtime did not register std.libtorch")
+	}
+	runtimeMembers := value.(*interpreter.MapValue).Keys()
+	typecheckedMembers, ok := typecheck.StdlibMembers("libtorch")
+	if !ok {
+		t.Fatal("typechecker does not know std.libtorch")
+	}
+	sort.Strings(runtimeMembers)
+	if !reflect.DeepEqual(runtimeMembers, typecheckedMembers) {
+		t.Errorf("std.libtorch runtime members = %v, typechecker members = %v", runtimeMembers, typecheckedMembers)
+	}
+}
+
 func TestRejectedPrograms(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{"string to int", `a: int = "x";`, "cannot initialize"},
@@ -501,8 +619,9 @@ func TestRejectedPrograms(t *testing.T) {
 		{"undeclared assignment", `x = 10;`, "undeclared variable"},
 		{"undefined name", `println(nope);`, "undefined name"},
 		{"typo suggestion", "counter: int = 1;\nprintln(countr);", "did you mean 'counter'"},
-		{"redeclaration with a different type", `a: int = 1; a: string = "two";`, "changes its type"},
-		{"shadowing with a different type", "a: int = 1;\nfunc f():\n    a: string = \"two\";", "changes its type"},
+		{"same-scope redeclaration", `a: int = 1; a: int = 2;`, "already declared; use assignment"},
+		{"nested redeclaration", "a: int = 1;\nfunc f():\n    a: int = 2;", "already declared; use assignment"},
+		{"incompatible equality", `loose: bool = "1" == 1;`, "cannot compare string and int"},
 		{"const reassignment", `const int: limit = 10; limit = 11;`, "cannot assign to constant"},
 		{"private at top level", `private int: secret = 1;`, "'private' is only allowed"},
 		{"wrong arg type", "func f(a: int) -> int:\n    return a;\nf(\"s\");", "has type string, expected int"},
@@ -549,5 +668,91 @@ func TestOneMistakeOneError(t *testing.T) {
 	errs := check(t, `s: string = "n=" + 5;`)
 	if len(errs) != 1 {
 		t.Fatalf("a single mistake must produce a single diagnostic, got %d: %v", len(errs), errs)
+	}
+}
+
+func TestDeprecatedGlobalAliasesProduceErrors(t *testing.T) {
+	cases := []struct {
+		name, src, want string
+	}{
+		{"read_file", `content := read_file("test.txt");`, "global alias 'read_file' is deprecated and has been removed"},
+		{"sha256", `h := sha256("abc");`, "global alias 'sha256' is deprecated and has been removed"},
+		{"get_env", `e := get_env("PATH");`, "global alias 'get_env' is deprecated and has been removed"},
+		{"gui_button", `b := gui_button("Click");`, "global alias 'gui_button' is deprecated and has been removed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := check(t, tc.src)
+			if len(errs) == 0 {
+				t.Fatalf("expected error for removed global alias %q, got none", tc.name)
+			}
+			found := false
+			for _, e := range errs {
+				if strings.Contains(e, tc.want) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("expected diagnostic containing %q, got: %v", tc.want, errs)
+			}
+		})
+	}
+}
+
+func TestStdListAndMapTypecheck(t *testing.T) {
+	src := `
+use std.list;
+use std.map;
+use std.string;
+
+xs: list[int] = [3, 1, 2];
+sorted_xs: list[int] = list.sort(xs);
+rev_xs: list[int] = list.reverse(xs);
+filtered := list.filter(xs, |x: int| x > 1);
+mapped := list.map(xs, |x: int| x * 2);
+red := list.reduce(xs, |acc: int, x: int| acc + x, 0);
+k_xs: list[int] = list.keys(xs);
+v_xs := list.values(xs);
+
+m: map[string, int] = {"b": 2, "a": 1};
+m_keys: list[string] = map.keys(m);
+m_vals := map.values(m);
+m_sorted := map.sort(m);
+m_rev := map.reverse(m);
+m_filtered := map.filter(m, |k: string, v: int| v > 1);
+m_mapped := map.map(m, |k: string, v: int| v * 10);
+m_red := map.reduce(m, |acc: int, k: string, v: int| acc + v, 0);
+
+pad := string.pad_left("hello", 10, " ");
+cnt: int = string.count("banana", "a");
+last_idx: int = string.last_index_of("banana", "a");
+cap := string.capitalize("world");
+is_e: bool = string.is_empty("");
+`
+	errs := check(t, src)
+	if len(errs) > 0 {
+		t.Fatalf("expected no typecheck errors for std.list and std.map, got:\n%s", strings.Join(errs, "\n"))
+	}
+}
+
+func TestDunderVariablesTypecheck(t *testing.T) {
+	src := `
+f: string = __file__;
+d: string = __dir__;
+dn: string = __dirname__;
+n: string = __name__;
+v: string = __version__;
+l: int = __line__;
+`
+	errs := check(t, src)
+	if len(errs) > 0 {
+		t.Fatalf("expected dunder variables to typecheck cleanly, got:\n%s", strings.Join(errs, "\n"))
+	}
+
+	badSrc := `__file__ = "new_file";`
+	badErrs := check(t, badSrc)
+	if len(badErrs) == 0 {
+		t.Fatal("expected assigning to __file__ to be rejected")
 	}
 }

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build windows
 
 package stdlib
@@ -119,22 +122,22 @@ const (
 	esAutoHScroll = 0x0080
 	bsPushButton  = 0x0000
 
-	lvsReport         = 0x0001
-	lvsSingleSel      = 0x0004
-	lvsShowSelAlways  = 0x0008
+	lvsReport        = 0x0001
+	lvsSingleSel     = 0x0004
+	lvsShowSelAlways = 0x0008
 
 	lvsExFullRowSelect = 0x00000020
 	lvsExGridLines     = 0x00000001
 	lvsExDoubleBuffer  = 0x00010000
 
-	lvmFirst                     = 0x1000
-	lvmInsertColumnW             = lvmFirst + 97
-	lvmInsertItemW               = lvmFirst + 77
-	lvmSetItemTextW              = lvmFirst + 116
-	lvmDeleteAllItems            = lvmFirst + 9
-	lvmGetNextItem               = lvmFirst + 12
-	lvmGetItemTextW              = lvmFirst + 115
-	lvmSetExtendedListViewStyle  = lvmFirst + 54
+	lvmFirst                    = 0x1000
+	lvmInsertColumnW            = lvmFirst + 97
+	lvmInsertItemW              = lvmFirst + 77
+	lvmSetItemTextW             = lvmFirst + 116
+	lvmDeleteAllItems           = lvmFirst + 9
+	lvmGetNextItem              = lvmFirst + 12
+	lvmGetItemTextW             = lvmFirst + 115
+	lvmSetExtendedListViewStyle = lvmFirst + 54
 
 	lvcfFmt     = 0x0001
 	lvcfWidth   = 0x0002
@@ -158,7 +161,7 @@ const (
 	colorWindow        = 5
 	idcArrow           = 32512
 
-	cmdSearchBox = 101
+	cmdSearchBox  = 101
 	cmdBtnRefresh = 102
 	cmdBtnEndTask = 103
 	timerRefresh  = 1
@@ -377,7 +380,14 @@ func refreshProcessList() {
 	}
 
 	// Update status label
-	tot, _, used, pct, _ := RamUsageStats()
+	tot, _, used, pct, err := RamUsageStats()
+	if err != nil {
+		statusText := fmt.Sprintf("Tasks: %d | RAM metrics unavailable: %s | CPU Cores: %d",
+			insertedCount, err, runtime.NumCPU())
+		statusPtr, _ := syscall.UTF16PtrFromString(statusText)
+		procSendMessageW.Call(gHwndStatus, 0x000C, 0, uintptr(unsafe.Pointer(statusPtr)))
+		return
+	}
 	usedGB := float64(used) / (1024 * 1024 * 1024)
 	totGB := float64(tot) / (1024 * 1024 * 1024)
 	statusText := fmt.Sprintf("Tasks: %d | RAM: %.1f / %.1f GB (%.0f%%) | CPU Cores: %d",

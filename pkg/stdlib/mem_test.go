@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package stdlib_test
 
 import (
@@ -102,5 +105,25 @@ func TestMemModuleFreeAndReuse(t *testing.T) {
 	// Freeing it twice is an error, not a crash.
 	if again := memCall(t, module, "free", &interpreter.IntegerValue{Val: addr}); again.Type() != interpreter.ERROR_VAL {
 		t.Fatalf("freeing a block twice must fail, got %v", again)
+	}
+}
+
+// TestMemModuleRejectsOverflowingRange guards the bounds check against integer
+// overflow: an offset close to MaxInt64 once made offset+size wrap around to a
+// negative number, pass the check and panic on the slice. It must be rejected.
+func TestMemModuleRejectsOverflowingRange(t *testing.T) {
+	module := memModule(t)
+	address := memCall(t, module, "alloc", &interpreter.IntegerValue{Val: 8})
+	addr := address.(*interpreter.IntegerValue).Val
+
+	huge := &interpreter.IntegerValue{Val: 1<<63 - 1}
+	if read := memCall(t, module, "read_bytes", &interpreter.IntegerValue{Val: addr}, huge, &interpreter.IntegerValue{Val: 8}); read.Type() != interpreter.ERROR_VAL {
+		t.Fatalf("an overflowing read must fail, not panic, got %v", read)
+	}
+	if read := memCall(t, module, "read_u64", &interpreter.IntegerValue{Val: addr}, huge); read.Type() != interpreter.ERROR_VAL {
+		t.Fatalf("an overflowing read_u64 must fail, got %v", read)
+	}
+	if write := memCall(t, module, "write_u64", &interpreter.IntegerValue{Val: addr}, &interpreter.IntegerValue{Val: 1}, huge); write.Type() != interpreter.ERROR_VAL {
+		t.Fatalf("an overflowing write_u64 must fail, got %v", write)
 	}
 }

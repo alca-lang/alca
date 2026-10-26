@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build windows
 
 package stdlib
@@ -10,14 +13,14 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 var (
-	modShell32Sec     = syscall.NewLazyDLL("shell32.dll")
-	procIsUserAnAdmin = modShell32Sec.NewProc("IsUserAnAdmin")
-	modKernel32Sec    = syscall.NewLazyDLL("kernel32.dll")
-	procLockFileEx    = modKernel32Sec.NewProc("LockFileEx")
-	procUnlockFileEx  = modKernel32Sec.NewProc("UnlockFileEx")
+	modKernel32Sec   = syscall.NewLazyDLL("kernel32.dll")
+	procLockFileEx   = modKernel32Sec.NewProc("LockFileEx")
+	procUnlockFileEx = modKernel32Sec.NewProc("UnlockFileEx")
 )
 
 const (
@@ -60,11 +63,7 @@ func CurrentUserName() string {
 
 // IsAdmin returns true if the current process is running with administrative privileges.
 func IsAdmin() bool {
-	if procIsUserAnAdmin == nil {
-		return false
-	}
-	ret, _, _ := procIsUserAnAdmin.Call()
-	return ret != 0
+	return windows.GetCurrentProcessToken().IsElevated()
 }
 
 func checkExecutableAccess(path string, info os.FileInfo) (bool, error) {

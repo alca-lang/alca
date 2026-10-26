@@ -1,18 +1,23 @@
 # Alca
 
-Alca is a statically typed, scripting-syntax language with a bytecode VM, a
-tree-walking interpreter, a formatter, an LSP server, and standalone
-cross-compilation. Programs use the `.al` extension.
+**Alca** is a modern, statically-typed programming language designed for systems automation and cross-platform tools. It combines the expressive ergonomics of scripting with static type safety, bytecode VM execution with JIT acceleration, and zero-toolchain standalone distribution:
+- **Windows**: Built-in standalone PE/EXE and native DLL generator (no MSVC or MinGW required).
+- **Windows & Linux**: Fast Bytecode VM with JIT acceleration and sandboxed capability-based security.
+- **Android**: Zero-toolchain APK packager (pure Go AXML compilation, launcher DEX, 4-byte zipalign, and APK Signature Scheme v1+v2 signing) executing checked Alca logic via a validated WebView runtime bridge.
+
+Programs use the `.al` extension.
 
 ```alca
 use std.math;
 
-struct Server:
+struct Server {
     ip: string;
     port: int = 80;
+}
 
-func area(r: float) -> float:
+pub fn area(r: float) -> float {
     return math.PI * r * r;
+}
 
 srv := Server("127.0.0.1", 8080);
 println("listening on " + srv.ip + ":" + string(srv.port));
@@ -26,38 +31,40 @@ go build -o alca ./cmd/alca
 ./alca run examples/hello.al
 ```
 
-The VM is the default engine. Constructs the VM cannot compile are reported
-explicitly with `--vm`; without it, `alca run` falls back to the interpreter and
-prints a note. Both engines are covered by the same output-parity corpus. The
-constructs that currently need the interpreter are listed in
-[docs/language.md](docs/language.md#engines).
+The Bytecode VM is the primary execution engine. Programs compile directly to standalone native Windows executables (`alca build app.al`), native DLLs (`alca dll lib.al`), and signed Android APK packages (`alca android build`).
 
 ## Language rules
 
-- Every simple statement ends with `;`. Block headers (`if`, `while`, `for`,
-  `func`, `struct`, `class`, `test`, `use`) end with `:` and no semicolon.
-- Types are strict and fixed after inference. There are no implicit
-  conversions: use `string(x)`, `int(x)`, or `float(x)`.
-- Conditions must be `bool`; there is no truthiness in `if`/`while`.
-- `int / int` is integer division. `null` is only valid for `T | null` and is
-  narrowed by `x != null` checks.
-- `json` is the only dynamic type. Values must be converted before typed use.
-- Functions return only through `return`; a function body does not implicitly
-  return its last expression.
-- Closures capture surrounding locals by reference, and `:=` declares a new
-  binding while `=` updates an existing one. A name that is already bound is
-  never shadowed: declaring it again in a nested scope updates the existing
-  binding and is only allowed with the same type. `public`, `private`, and
-  `const` declare visibility and immutability.
-- Classes support fields, methods and single inheritance (`class Dog extends
-  Animal:`), with `self`, `super`, dynamic dispatch and enforced `public` /
-  `private` / `const` members. See [docs/language.md](docs/language.md#classes-and-inheritance).
-- The type checker runs for `run`, `test`, `check`, `build`, and every REPL
-  snippet.
+- **Syntax**: Statements end with `;`. Blocks can be enclosed either in canonical curly braces `{ ... }` or written with `:` and indentation.
+- **Functions**: Canonical syntax is `fn name(params) -> ReturnType { ... }` or `pub fn`.
+- **Types**: Strict static typing with bidirectional inference (`name: Type = val;` or `name := val;`). No implicit narrowing or coercions.
+- **Equality**: `==` and `!=` perform structural value equality between comparable typed values. `===` and `!==` provide strict reference/identity checks.
+- **Ranges**: Half-open range `a..b` (`[a, b)`) iterates from `a` up to `b - 1` (e.g. `0..3` visits `0, 1, 2`). Inclusive range `a..=b` (`[a, b]`) visits `a` through `b` (e.g. `0..=3` visits `0, 1, 2, 3`).
+- **Abstractions**:
+  - `enum`: Tagged enumerations and Algebraic Data Types with pattern matching.
+  - `interface` / `trait`: Polymorphic contracts checked statically at compile time.
+  - Concurrency: Background tasks (`@ba`) and thread pools (`@threads`). The keywords `async`/`await` execute cooperatively in v2.0; full asynchronous event-loop Promise runtime is planned for v2.1.
+- **Classes & Structs**: Field definitions follow `name: Type [= default];` or `pub name: Type [= default];`. Single inheritance with `class Child extends Parent`.
+- **Conditions**: Conditions must evaluate strictly to `bool`; truthiness coercion is prohibited.
+- **Dynamic escape**: `json` is the sole dynamic type, requiring explicit typed conversion before concrete use.
 
 See [docs/language.md](docs/language.md) for the full language summary.
 
-  ## Crypto, HTTP, and optional numerical helpers
+## Capability-Based Sandbox
+
+Alca enforces explicit capability permissions when running scripts. By default, untrusted scripts cannot access the host filesystem, network, subprocesses, environment variables, or foreign function libraries:
+
+- `--allow-read[=<path>]`: Grants read access to files or directories.
+- `--allow-write[=<path>]`: Grants write access to files or directories.
+- `--allow-net[=<host[:port]>]`: Grants network socket and HTTP access.
+- `--allow-run[=<cmd>]`: Grants process execution permissions (`exec.Command`).
+- `--allow-env[=<var>]`: Grants access to environment variables.
+- `--allow-ffi[=<lib>]`: Grants permission to load native dynamic libraries (.dll, .so).
+- `--allow-all`: Unconditionally grants all capabilities.
+
+> **Threat Model Note**: Alca's managed runtime prevents buffer overflows, uninitialized memory reads, and memory corruption. However, when `--allow-ffi` is explicitly granted, native code operates directly in the process address space without Go's memory-safety guarantees.
+
+## Crypto, HTTP, and optional numerical helpers
 
   - `crypto.aes_encrypt` and `crypto.aes_decrypt` accept only raw AES keys that
     are exactly 16, 24, or 32 bytes. For passwords, use
@@ -78,14 +85,18 @@ See [docs/language.md](docs/language.md) for the full language summary.
     strings. The `get`, `post`, `put`, `delete`, and `patch` helpers accept
     `(url, headers?, body?, options?)`. HTTP servers use finite read, write, and
     idle timeouts and reject request bodies over 16 MiB.
-  - `std.ai` is an optional standard-library module of pure-Go numerical helpers,
-    not an accelerated runtime subsystem. Its matrix functions convert Alca
-    lists to Go `[][]float64` values for calculations and convert results back.
+  - `std.libtorch` is the unified machine learning module (imported via `use std.libtorch;`).
+    It provides tensors, autograd, neural network layers, optimizers, and losses.
+    Functions accept ordinary Alca lists or tensor objects transparently, and
+    include convenient helpers like `matrix`, `dense_forward`, and `mse`.
+
+
 
 ## Commands
 
 ```text
 alca run <file.al> [args...]       # type-check, then run (VM by default)
+alca run --jit <file.al> [args...] # opt into JIT compilation
 alca run --vm ...                  # require the VM; reject unsupported constructs
 alca run --interp ...              # use the tree-walking interpreter
 alca check <file.al>               # syntax + strict type check (CI friendly)
@@ -231,3 +242,8 @@ More documentation:
 - [docs/cross-compilation.md](docs/cross-compilation.md)
 - [docs/stdlib.md](docs/stdlib.md)
 - [docs/bug-report.md](docs/bug-report.md)
+
+## License
+
+Alca is released under the [Apache License, Version 2.0](LICENSE).
+See [NOTICE](NOTICE) for copyright statements and third-party attributions.

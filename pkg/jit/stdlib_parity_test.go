@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit_test
 
 import (
@@ -154,20 +157,19 @@ format_probe();
 		{
 			name: "ai pure members",
 			src: `
-use std.ai;
+use std.libtorch;
 func ai_probe():
-    product := ai.matmul([[1, 2], [3, 4]], [[5, 6], [7, 8]]);
-    println(product[0][0]);
-    println(product[1][1]);
-    println(ai.dot([1, 2, 3], [4, 5, 6]));
-    transposed := ai.transpose([[1, 2, 3], [4, 5, 6]]);
-    println(transposed[2][0]);
-    sum := ai.add([[1, 2]], [[3, 4]]);
-    println(sum[0][1]);
-    activated := ai.relu([-1, 2]);
-    println(activated[0]);
-    println(activated[1]);
-    println(ai.mse([1, 2], [1, 2]));
+    product := libtorch.matmul([[1, 2], [3, 4]], [[5, 6], [7, 8]]);
+    println(int(product[0][0]));
+    println(int(product[1][1]));
+    println(int(libtorch.item(libtorch.dot([1, 2, 3], [4, 5, 6]))));
+    transposed := libtorch.transpose([[1, 2, 3], [4, 5, 6]]);
+    println(int(transposed[2][0]));
+    sum := libtorch.add([[1, 2]], [[3, 4]]);
+    println(int(sum[0][1]));
+    activated := libtorch.relu([-1, 2]);
+    println(int(activated[0]));
+    println(int(activated[1]));
 ai_probe();
 `,
 			want: []string{"19", "50", "32", "3", "6", "0", "2"},
@@ -442,9 +444,9 @@ bad();
 		{
 			name: "matrix shape error",
 			src: `
-use std.ai;
+use std.libtorch;
 func bad():
-    println(ai.matmul([[1, 2]], [[1, 2]]));
+    println(libtorch.matmul([[1, 2]], [[1, 2]]));
 bad();
 `,
 		},
@@ -554,7 +556,7 @@ func twice(text: string) -> string:
     return str.upper(text);
 func probe():
     total := 0;
-    for i in 0..3:
+    for i in 0..=3:
         total = total + len(twice("abc"));
     println(total);
 probe();

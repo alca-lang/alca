@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package typecheck
 
 import (
@@ -22,6 +25,8 @@ const (
 	kFunc
 	kStruct
 	kClass
+	kEnum
+	kInterface
 	kModule
 	kBuiltin
 )
@@ -95,18 +100,19 @@ type funcCtx struct {
 type Checker struct {
 	// snippet marks an incremental REPL-style check, where assigning to a name
 	// that was never declared declares it instead of failing.
-	snippet  bool
-	filename string
-	source   string
-	errors   []*diag.SyntaxError
-	structs  map[string]*StructType
-	types    map[ast.Expression]Type
-	global   *scope
-	fn       *funcCtx
-	class    *StructType // enclosing class while checking a method body
-	loop     int
-	private  int             // > 0 inside a function/lambda where 'private' is legal
-	imported map[string]bool // files currently being analysed (cycle guard)
+	snippet   bool
+	filename  string
+	source    string
+	errors    []*diag.SyntaxError
+	structs   map[string]*StructType
+	userTypes map[string]Type
+	types     map[ast.Expression]Type
+	global    *scope
+	fn        *funcCtx
+	class     *StructType // enclosing class while checking a method body
+	loop      int
+	private   int             // > 0 inside a function/lambda where 'private' is legal
+	imported  map[string]bool // files currently being analysed (cycle guard)
 	// hoistedStructs and hoistedClasses/Fields prevent a declaration from being
 	// registered twice when hoist is called for the same block.
 	hoistedStructs     map[*ast.StructDeclaration]bool
@@ -121,6 +127,7 @@ func NewChecker(filename string, source string) *Checker {
 		source:             source,
 		errors:             make([]*diag.SyntaxError, 0),
 		structs:            make(map[string]*StructType),
+		userTypes:          make(map[string]Type),
 		types:              make(map[ast.Expression]Type),
 		imported:           map[string]bool{},
 		hoistedStructs:     map[*ast.StructDeclaration]bool{},
@@ -259,6 +266,35 @@ func (c *Checker) hoist(stmts []ast.Statement, sc *scope) {
 		case *ast.ClassDeclaration:
 			classes = append(classes, d)
 			structs = append(structs, d.NestedStructs...)
+		case *ast.EnumDeclaration:
+			enumType := &EnumType{
+				Name:     d.Name,
+				Variants: make(map[string]Type, len(d.Variants)),
+			}
+			for _, v := range d.Variants {
+				enumType.Variants[v.Name] = enumType
+			}
+			sc.syms[d.Name] = &symbol{kind: kEnum, typ: enumType}
+			c.userTypes[d.Name] = enumType
+		case *ast.InterfaceDeclaration:
+			ifaceType := &InterfaceType{
+				Name:    d.Name,
+				Methods: make(map[string]*FuncType, len(d.Methods)),
+			}
+			for _, m := range d.Methods {
+				var params []Param
+				for _, p := range m.Params {
+					pt := c.resolve(p.TypeAnnotation)
+					params = append(params, Param{Name: p.Name, Type: pt})
+				}
+				var ret Type = Void
+				if m.ReturnType != nil {
+					ret = c.resolve(m.ReturnType)
+				}
+				ifaceType.Methods[m.Name] = &FuncType{Params: params, Ret: ret}
+			}
+			sc.syms[d.Name] = &symbol{kind: kInterface, typ: ifaceType}
+			c.userTypes[d.Name] = ifaceType
 		}
 	}
 
@@ -515,7 +551,7 @@ func (c *Checker) resolve(ta *ast.TypeAnnotation) Type {
 		return JSON
 	}
 	src := strings.Join(ta.Types, " | ")
-	t, ok := ParseType(src, c.structs)
+	t, ok := ParseTypeEx(src, c.structs, c.userTypes)
 	if !ok {
 		name := ta.Types[0]
 		var cands []string
@@ -577,15 +613,13 @@ func isIntLiteral(e ast.Expression) bool {
 	return false
 }
 
-// declare adds a symbol to sc. Variables may shadow an existing binding as long
-// as the type is identical; functions and structs keep their unique names.
+// declare adds a symbol to sc. Variables may not shadow existing bindings;
+// functions and structs keep their unique names.
 func (c *Checker) declare(name string, tok token.Token, t Type, kind symKind, sc *scope) {
 	c.declareWithFlags(name, tok, t, kind, sc, false)
 }
 
-// declareVar declares a variable. Shadowing (and redeclaration in the same
-// scope) is allowed only when the new binding has exactly the same type; a
-// type mismatch is reported as a compile error.
+// declareVar declares a variable and rejects any duplicate binding.
 func (c *Checker) declareVar(name string, tok token.Token, t Type, sc *scope, isConst bool) {
 	c.declareWithFlags(name, tok, t, kVar, sc, isConst)
 }
@@ -595,48 +629,24 @@ func (c *Checker) declareWithFlags(name string, tok token.Token, t Type, kind sy
 		return
 	}
 
-	if prev, ok := sc.syms[name]; ok && prev.kind != kBuiltin {
-		if kind != kVar || (prev.kind != kVar && prev.kind != kParam) {
-			c.addError(tok, fmt.Sprintf("'%s' is already declared in this scope", name), "")
-			return
-		}
-		if prev.isConst {
-			c.addError(tok, fmt.Sprintf("cannot redeclare constant '%s'", name), "")
-			return
-		}
-		if !c.shadowTypesMatch(prev.declared, t) {
-			c.addError(tok, fmt.Sprintf("shadowing '%s' changes its type from %s to %s", name, prev.declared, t),
-				"shadowing is allowed only for the same type; choose a different name or convert the value explicitly")
-			return
-		}
-		sc.syms[name] = &symbol{kind: kind, typ: t, declared: t, isConst: isConst}
-		return
-	}
-
 	if kind == kVar {
 		if prev, _ := sc.lookup(name); prev != nil && prev.kind != kBuiltin {
-			if prev.kind != kVar && prev.kind != kParam {
-				c.addError(tok, fmt.Sprintf("'%s' shadows an existing %s", name, kindName(prev.kind)),
-					"choose a different name")
-				return
-			}
-			if !c.shadowTypesMatch(prev.declared, t) {
-				c.addError(tok, fmt.Sprintf("shadowing '%s' changes its type from %s to %s", name, prev.declared, t),
-					"shadowing is allowed only for the same type; choose a different name or convert the value explicitly")
-				return
-			}
+			c.addError(tok, fmt.Sprintf("'%s' is already declared; use assignment to update it", name),
+				fmt.Sprintf("write '%s = value;' to update the existing variable, or choose a new name", name))
+			return
+		}
+	} else if prev, ok := sc.syms[name]; ok && prev.kind != kBuiltin {
+		c.addError(tok, fmt.Sprintf("'%s' is already declared in this scope", name), "")
+		return
+	}
+	if kind != kVar {
+		if prev, _ := sc.lookup(name); prev != nil && prev.kind != kBuiltin {
+			c.addError(tok, fmt.Sprintf("'%s' shadows an existing %s", name, kindName(prev.kind)),
+				"choose a different name")
+			return
 		}
 	}
 	sc.syms[name] = &symbol{kind: kind, typ: t, declared: t, isConst: isConst}
-}
-
-// shadowTypesMatch applies strict type equality, while tolerating the same
-// int-literal-to-float widening the checker allows elsewhere.
-func (c *Checker) shadowTypesMatch(prev, next Type) bool {
-	if prev == nil || next == nil {
-		return true
-	}
-	return Equal(prev, next) || prev == Invalid || next == Invalid
 }
 
 func kindName(k symKind) string {
@@ -692,7 +702,7 @@ func (c *Checker) stmt(st ast.Statement, sc *scope) {
 		}
 		c.funcBody(s, sc)
 
-	case *ast.StructDeclaration:
+	case *ast.StructDeclaration, *ast.EnumDeclaration, *ast.InterfaceDeclaration:
 		// registered by hoist
 
 	case *ast.ClassDeclaration:
@@ -1106,18 +1116,22 @@ func (c *Checker) ifStmt(s *ast.IfStatement, sc *scope) {
 // narrowings derives null-check refinements from a condition.
 func narrowings(cond ast.Expression, sc *scope) (whenTrue, whenFalse map[string]Type) {
 	whenTrue, whenFalse = map[string]Type{}, map[string]Type{}
-	var visit func(e ast.Expression, positive bool)
-	visit = func(e ast.Expression, positive bool) {
+	var visit func(e ast.Expression, positive, direct bool)
+	visit = func(e ast.Expression, positive, direct bool) {
+		if prefix, ok := e.(*ast.PrefixExpression); ok && (prefix.Operator == "not" || prefix.Operator == "!") {
+			visit(prefix.Right, !positive, direct)
+			return
+		}
 		inf, ok := e.(*ast.InfixExpression)
 		if !ok {
 			return
 		}
 		if inf.Operator == "and" && positive {
-			visit(inf.Left, true)
-			visit(inf.Right, true)
+			visit(inf.Left, true, false)
+			visit(inf.Right, true, false)
 			return
 		}
-		if inf.Operator != "==" && inf.Operator != "!=" {
+		if inf.Operator != "==" && inf.Operator != "!=" && inf.Operator != "===" && inf.Operator != "!==" {
 			return
 		}
 		id, ok := inf.Left.(*ast.Identifier)
@@ -1135,20 +1149,23 @@ func narrowings(cond ast.Expression, sc *scope) (whenTrue, whenFalse map[string]
 			return
 		}
 		nonNull := StripNull(cur)
-		isNotNull := inf.Operator == "!="
+		isNotNull := inf.Operator == "!=" || inf.Operator == "!=="
+		if !positive {
+			isNotNull = !isNotNull
+		}
 		if isNotNull {
 			whenTrue[id.Value] = nonNull
-			if e == cond {
+			if direct {
 				whenFalse[id.Value] = Null
 			}
 		} else {
 			whenFalse[id.Value] = nonNull
-			if e == cond {
+			if direct {
 				whenTrue[id.Value] = Null
 			}
 		}
 	}
-	visit(cond, true)
+	visit(cond, true, true)
 	return
 }
 
@@ -1267,6 +1284,10 @@ func (c *Checker) useStmt(s *ast.UseStatement, sc *scope) {
 				bind = segs[len(segs)-1]
 			}
 		} else {
+			if segs[0] == "ai" {
+				c.addError(s.Token, "module 'std.ai' has been removed", "use 'std.libtorch' instead")
+				return
+			}
 			var cands []string
 			for n := range moduleMembers {
 				cands = append(cands, n)

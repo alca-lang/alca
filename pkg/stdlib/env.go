@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the standard library modules and builtins for the Alca programming language.
 package stdlib
 
@@ -10,25 +13,38 @@ import (
 	"strings"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 // GetEnv retrieves the value of the environment variable named by key.
 func GetEnv(name string) string {
+	if err := sandbox.RequireEnv(name); err != nil {
+		return ""
+	}
 	return os.Getenv(name)
 }
 
 // SetEnv sets the value of the environment variable named by key.
 func SetEnv(name, value string) error {
+	if err := sandbox.RequireEnv(name); err != nil {
+		return err
+	}
 	return os.Setenv(name, value)
 }
 
 // UnsetEnv unsets a single environment variable.
 func UnsetEnv(name string) error {
+	if err := sandbox.RequireEnv(name); err != nil {
+		return err
+	}
 	return os.Unsetenv(name)
 }
 
 // AllEnv returns a map of all current environment variables.
 func AllEnv() map[string]string {
+	if err := sandbox.RequireEnv("*"); err != nil {
+		return make(map[string]string)
+	}
 	envVars := make(map[string]string)
 	for _, env := range os.Environ() {
 		parts := strings.SplitN(env, "=", 2)
@@ -270,7 +286,6 @@ func RegisterEnvBuiltins(env *interpreter.Environment) {
 
 	register := func(name string, fn func(args ...interpreter.Value) interpreter.Value) {
 		builtin := &interpreter.BuiltinFunction{Name: name, Fn: fn}
-		env.Set(name, builtin)
 		envModule.Set(name, builtin)
 	}
 

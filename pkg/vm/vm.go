@@ -1,14 +1,22 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"math"
+	"path/filepath"
+	"runtime"
 	"sync"
+	"time"
 
 	"github.com/alca-lang/alca/pkg/ast"
 	"github.com/alca-lang/alca/pkg/interpreter"
 	"github.com/alca-lang/alca/pkg/limits"
+	"github.com/alca-lang/alca/pkg/version"
 )
 
 const (
@@ -127,7 +135,25 @@ func New(bytecode *Bytecode) *VM {
 
 // NewWithEnv creates a new VM with an attached environment for builtins and standard libraries.
 func NewWithEnv(bytecode *Bytecode, env *interpreter.Environment) *VM {
+	if env != nil {
+		if _, ok := env.Get("__file__"); !ok {
+			env.Set("__file__", &interpreter.StringValue{Val: "<stdin>"})
+		}
+		if _, ok := env.Get("__dir__"); !ok {
+			env.Set("__dir__", &interpreter.StringValue{Val: "."})
+		}
+		if _, ok := env.Get("__dirname__"); !ok {
+			env.Set("__dirname__", &interpreter.StringValue{Val: "."})
+		}
+		if _, ok := env.Get("__name__"); !ok {
+			env.Set("__name__", &interpreter.StringValue{Val: "__main__"})
+		}
+		if _, ok := env.Get("__version__"); !ok {
+			env.Set("__version__", &interpreter.StringValue{Val: version.Version})
+		}
+	}
 	registerIterBuiltin(env)
+	registerAsyncBuiltins(env)
 	pool := NewConstantPool(bytecode.Constants)
 	mainFn := &CompiledFunction{Instructions: bytecode.Instructions, Pool: pool, Env: env}
 
@@ -224,6 +250,15 @@ func (vm *VM) SetSourceFile(path string) {
 	vm.sourceFile = path
 	if main := vm.MainFunction(); main != nil {
 		setFunctionSourceFile(main, path)
+	}
+	if vm.env != nil && path != "" {
+		vm.env.Set("__file__", &interpreter.StringValue{Val: path})
+		dir := filepath.Dir(path)
+		if dir == "" {
+			dir = "."
+		}
+		vm.env.Set("__dir__", &interpreter.StringValue{Val: dir})
+		vm.env.Set("__dirname__", &interpreter.StringValue{Val: dir})
 	}
 }
 
@@ -1602,6 +1637,13 @@ func (vm *VM) run() error {
 			stack[sp] = FromValue(interpreter.EvalRange(start, end))
 			sp++
 
+		case OpRangeInclusive:
+			end := stack[sp-1].ToValue()
+			start := stack[sp-2].ToValue()
+			sp -= 2
+			stack[sp] = FromValue(interpreter.EvalRangeInclusive(start, end))
+			sp++
+
 		case OpIndex:
 			// Fast path: list[non-negative int] avoids boxing the index and the
 			// type switch in executeIndex for the common indexing case.
@@ -2129,6 +2171,14 @@ func (vm *VM) executeIndex(target, idx interpreter.Value) (interpreter.Value, er
 // JIT runtime-helper tier so list, string, map, boundary, and type errors are
 // identical in both paths.
 func GetIndexValue(target, idx interpreter.Value) (interpreter.Value, error) {
+	if ip, ok := target.(interpreter.IndexProvider); ok {
+		res := ip.Index(idx)
+		if errVal, isErr := res.(*interpreter.ErrorValue); isErr {
+			return nil, &RaisedError{Val: errVal}
+		}
+		return res, nil
+	}
+
 	switch t := target.(type) {
 	case *interpreter.ListValue:
 		iv, ok := idx.(*interpreter.IntegerValue)
@@ -2275,6 +2325,22 @@ func (vm *VM) executeGetField(target interpreter.Value, field string) (interpret
 // the JIT runtime-helper tier so both produce the same method wrappers and
 // errors.
 func GetFieldValue(target interpreter.Value, field string) (interpreter.Value, error) {
+	if ed, ok := target.(*interpreter.EnumDef); ok {
+		if val, exists := ed.Variants[field]; exists {
+			return val, nil
+		}
+		return interpreter.NULL, fmt.Errorf("enum %s has no variant %s", ed.Name, field)
+	}
+	if ev, ok := target.(*interpreter.EnumValue); ok {
+		switch field {
+		case "tag":
+			return &interpreter.IntegerValue{Val: ev.Tag}, nil
+		case "name":
+			return &interpreter.StringValue{Val: ev.Name}, nil
+		default:
+			return interpreter.NULL, nil
+		}
+	}
 	if m, ok := target.(*interpreter.MapValue); ok {
 		if val, exists := m.Get(field); exists {
 			return val, nil
@@ -2497,4 +2563,76 @@ func registerIterBuiltin(env *interpreter.Environment) {
 		}
 		return interpreter.NewError(400, "value is not iterable: "+string(args[0].Type()))
 	}})
+}
+
+func registerAsyncBuiltins(env *interpreter.Environment) {
+	env.Set("@ba", &interpreter.BuiltinFunction{
+		Name: "@ba",
+		Fn: func(args ...interpreter.Value) interpreter.Value {
+			if len(args) == 0 {
+				return interpreter.NULL
+			}
+			fn := args[0]
+			interpreter.AddAsync()
+			go func() {
+				defer interpreter.DoneAsync()
+				_, _ = InvokeValue(fn, nil, env)
+			}()
+			return interpreter.NULL
+		},
+	})
+	env.Set("@threads", &interpreter.BuiltinFunction{
+		Name: "@threads",
+		Fn: func(args ...interpreter.Value) interpreter.Value {
+			var wg sync.WaitGroup
+			for _, arg := range args {
+				fn := arg
+				wg.Add(1)
+				go func() {
+					runtime.LockOSThread()
+					defer runtime.UnlockOSThread()
+					defer wg.Done()
+					_, _ = InvokeValue(fn, nil, env)
+				}()
+			}
+			wg.Wait()
+			return interpreter.NULL
+		},
+	})
+	env.Set("@timeout", &interpreter.BuiltinFunction{
+		Name: "@timeout",
+		Fn: func(args ...interpreter.Value) interpreter.Value {
+			if len(args) < 2 {
+				return interpreter.NULL
+			}
+			fn := args[0]
+			durVal := args[1]
+			var dur time.Duration
+			if iv, ok := durVal.(*interpreter.IntegerValue); ok {
+				dur = time.Duration(iv.Val) * time.Millisecond
+			} else if sv, ok := durVal.(*interpreter.StringValue); ok {
+				d, err := time.ParseDuration(sv.Val)
+				if err == nil {
+					dur = d
+				}
+			}
+			if dur <= 0 {
+				res, _ := InvokeValue(fn, nil, env)
+				return res
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), dur)
+			defer cancel()
+			resChan := make(chan interpreter.Value, 1)
+			go func() {
+				res, _ := InvokeValue(fn, nil, env)
+				resChan <- res
+			}()
+			select {
+			case res := <-resChan:
+				return res
+			case <-ctx.Done():
+				return interpreter.NewError(408, fmt.Sprintf("execution timed out after %s", dur.String()))
+			}
+		},
+	})
 }

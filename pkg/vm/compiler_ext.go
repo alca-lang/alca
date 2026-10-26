@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import (
@@ -120,6 +123,8 @@ func (c *Compiler) predeclareStatement(st ast.Statement) {
 		c.symbolTable.Define(n.Name)
 	case *ast.StructDeclaration:
 		c.symbolTable.Define(n.Name)
+	case *ast.EnumDeclaration:
+		c.symbolTable.Define(n.Name)
 	case *ast.ForStatement:
 		if n.Variable != "" {
 			c.symbolTable.Define(n.Variable)
@@ -167,7 +172,7 @@ func (c *Compiler) patch(pos int) {
 
 func isDecl(st ast.Statement) bool {
 	switch st.(type) {
-	case *ast.FuncDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration:
+	case *ast.FuncDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration, *ast.EnumDeclaration, *ast.InterfaceDeclaration:
 		return true
 	}
 	return false
@@ -209,6 +214,8 @@ func (c *Compiler) collectDecls(stmts []ast.Statement) error {
 			c.structs[d.Name] = d
 			c.symbolTable.Define(d.Name)
 		case *ast.ClassDeclaration:
+			c.symbolTable.Define(d.Name)
+		case *ast.EnumDeclaration:
 			c.symbolTable.Define(d.Name)
 		case *ast.VarDeclaration:
 			if d.Name != nil {
@@ -396,6 +403,15 @@ func (c *Compiler) compileExt(node ast.Node) (bool, error) {
 		return true, nil
 
 	case *ast.Identifier:
+		if n.Value == "__line__" {
+			lineVal := int64(n.Token.Line)
+			if lineVal <= 0 {
+				lineVal = 1
+			}
+			idx := c.addConstant(&interpreter.IntegerValue{Val: lineVal})
+			c.emit(OpConstant, idx)
+			return true, nil
+		}
 		sym, ok := c.lookup(n.Value)
 		if !ok {
 			c.emit(OpGetBuiltin, c.addConstant(&interpreter.StringValue{Val: n.Value}))
@@ -461,11 +477,35 @@ func (c *Compiler) compileExt(node ast.Node) (bool, error) {
 		return true, c.compileLambda(n)
 
 	case *ast.BaStatement:
-		return true, unsupported("'ba' blocks", n.Token)
+		c.emit(OpGetBuiltin, c.addConstant(&interpreter.StringValue{Val: "@ba"}))
+		if err := c.compileBlockClosure(n.Body); err != nil {
+			return true, err
+		}
+		c.emit(OpCall, 1)
+		c.emit(OpPop)
+		return true, nil
+
 	case *ast.BaForStatement:
 		return true, unsupported("'ba for' loops", n.Token)
+
 	case *ast.ThreadsStatement:
-		return true, unsupported("'threads' blocks", n.Token)
+		c.emit(OpGetBuiltin, c.addConstant(&interpreter.StringValue{Val: "@threads"}))
+		count := 0
+		if n.Body != nil {
+			for _, s := range n.Body.Statements {
+				if s == nil {
+					continue
+				}
+				if err := c.compileBlockClosure(&ast.BlockStatement{Statements: []ast.Statement{s}}); err != nil {
+					return true, err
+				}
+				count++
+			}
+		}
+		c.emit(OpCall, count)
+		c.emit(OpPop)
+		return true, nil
+
 	case *ast.TxStatement:
 		return true, c.compileTx(n)
 	case *ast.WatchStatement:
@@ -476,11 +516,65 @@ func (c *Compiler) compileExt(node ast.Node) (bool, error) {
 		c.emit(OpWait)
 		return true, nil
 	case *ast.TimeoutExpression:
-		return true, unsupported("timeout expressions", n.Token)
+		c.emit(OpGetBuiltin, c.addConstant(&interpreter.StringValue{Val: "@timeout"}))
+		inner := n.Expression
+		if inner == nil {
+			inner = n.Expr
+		}
+		lambda := &ast.LambdaExpression{
+			Token: n.Token,
+			Body:  inner,
+		}
+		if err := c.compileLambda(lambda); err != nil {
+			return true, err
+		}
+		dur := n.Duration
+		if dur == nil {
+			dur = &ast.IntegerLiteral{Value: 0}
+		}
+		if err := c.Compile(dur); err != nil {
+			return true, err
+		}
+		c.emit(OpCall, 2)
+		return true, nil
 	case *ast.StructInstantiation:
 		return true, c.compileStructInstantiation(n)
 	case *ast.ClassDeclaration:
 		return true, c.compileClass(n)
+	case *ast.EnumDeclaration:
+		variants := make(map[string]*interpreter.EnumValue)
+		enumDef := &interpreter.EnumDef{
+			Name:     n.Name,
+			Variants: variants,
+		}
+		for idx, v := range n.Variants {
+			var tag int64 = int64(idx)
+			if v.Value != nil {
+				if intVal, ok := v.Value.(*ast.IntegerLiteral); ok {
+					tag = intVal.Value
+				}
+			}
+			ev := &interpreter.EnumValue{
+				EnumName: n.Name,
+				Name:     v.Name,
+				Tag:      tag,
+			}
+			variants[v.Name] = ev
+		}
+		constIdx := c.addConstant(enumDef)
+		c.emit(OpConstant, constIdx)
+		symbol, ok := c.symbolTable.Resolve(n.Name)
+		if !ok {
+			symbol = c.symbolTable.Define(n.Name)
+		}
+		if symbol.Scope == GlobalScope {
+			c.emit(OpSetGlobal, symbol.Index)
+		} else {
+			c.emit(OpSetLocal, symbol.Index)
+		}
+		return true, nil
+	case *ast.InterfaceDeclaration:
+		return true, nil
 	}
 	return false, nil
 }
@@ -634,6 +728,31 @@ func (c *Compiler) compileLambda(n *ast.LambdaExpression) error {
 		NumLocals:     numLocals,
 		NumParameters: len(n.Params),
 		Name:          "<lambda>",
+		NumFree:       len(free),
+		UpvalueDescs:  captureDescriptors(free),
+	}
+	c.emitFunctionValue(fn)
+	return c.err
+}
+
+func (c *Compiler) compileBlockClosure(block *ast.BlockStatement) error {
+	c.enterScope()
+	if block != nil {
+		for _, s := range block.Statements {
+			if err := c.Compile(s); err != nil {
+				return err
+			}
+		}
+	}
+	c.emit(OpReturn)
+	numLocals := c.symbolTable.numDefinitions
+	free := c.symbolTable.FreeSymbols
+	ins := c.leaveScope()
+	fn := &CompiledFunction{
+		Instructions:  ins,
+		NumLocals:     numLocals,
+		NumParameters: 0,
+		Name:          "<closure>",
 		NumFree:       len(free),
 		UpvalueDescs:  captureDescriptors(free),
 	}

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the compression standard library module for the Alca programming language.
 // It supports Gzip and Zlib compression and decompression.
 package stdlib
@@ -107,7 +110,6 @@ func RegisterCompressBuiltins(env *interpreter.Environment) {
 	register := func(name string, fn func(args ...interpreter.Value) interpreter.Value) {
 		bf := &interpreter.BuiltinFunction{Name: name, Fn: fn}
 		mod.Set(name, bf)
-		env.Set(name, bf)
 	}
 
 	register("gzip_compress", func(args ...interpreter.Value) interpreter.Value {

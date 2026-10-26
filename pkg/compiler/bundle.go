@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package compiler packages Alca programs into standalone executables.
 //
 // An executable is: [runtime stub for the target OS/arch] + [payload] + [footer].
@@ -11,6 +14,10 @@ package compiler
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
@@ -24,6 +31,17 @@ import (
 	"github.com/alca-lang/alca/pkg/vm"
 )
 
+// EncryptedPayloadVersion is the version for encrypted/protected executables.
+const EncryptedPayloadVersion uint32 = 5
+
+func deriveBundleKey(salt []byte) []byte {
+	masterKey := []byte("ALCA_SECURE_PAYLOAD_PROTECT_2026_KEY_V1")
+	h := hmac.New(sha256.New, masterKey)
+	h.Write(salt)
+	h.Write([]byte("ALCA_RUNTIME_PAYLOAD_PROTECTION"))
+	return h.Sum(nil)
+}
+
 // Kind is the payload flavour.
 type Kind byte
 
@@ -36,6 +54,7 @@ const (
 // Bundle is the decoded content of an executable's payload.
 type Bundle struct {
 	Kind      Kind
+	Encrypted bool              // True when payload is protected with AES-256-GCM
 	Name      string            // entry file name (for diagnostics)
 	Source    string            // KindSource: entry program text
 	Files     map[string]string // KindSource: imported modules (relative path -> text)
@@ -394,6 +413,37 @@ func (b *Bundle) Encode() ([]byte, error) {
 
 	var out writer
 	var ver [4]byte
+	if b.Encrypted {
+		binary.LittleEndian.PutUint32(ver[:], EncryptedPayloadVersion)
+		out.Write(ver[:])
+		out.Write(sum[:])
+		out.u64(uint64(raw.Len()))
+
+		salt := make([]byte, 16)
+		if _, err := rand.Read(salt); err != nil {
+			copy(salt, sum[:16])
+		}
+		nonce := make([]byte, 12)
+		if _, err := rand.Read(nonce); err != nil {
+			copy(nonce, sum[16:28])
+		}
+
+		key := deriveBundleKey(salt)
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			return nil, err
+		}
+		gcm, err := cipher.NewGCM(block)
+		if err != nil {
+			return nil, err
+		}
+		ciphertext := gcm.Seal(nil, nonce, compressed.Bytes(), salt)
+		out.bytes(salt)
+		out.bytes(nonce)
+		out.Write(ciphertext)
+		return out.Bytes(), nil
+	}
+
 	binary.LittleEndian.PutUint32(ver[:], CurrentPayloadVersion)
 	out.Write(ver[:])
 	out.Write(sum[:])
@@ -408,12 +458,41 @@ func DecodeBundle(data []byte) (*Bundle, error) {
 	if len(data) < header {
 		return nil, fmt.Errorf("corrupted payload: too short (%d bytes)", len(data))
 	}
-	if v := binary.LittleEndian.Uint32(data[:4]); v != CurrentPayloadVersion {
-		return nil, fmt.Errorf("unsupported payload version %d (this runtime supports %d); rebuild the program with a matching alca", v, CurrentPayloadVersion)
+	v := binary.LittleEndian.Uint32(data[:4])
+	if v != CurrentPayloadVersion && v != EncryptedPayloadVersion {
+		return nil, fmt.Errorf("unsupported payload version %d (this runtime supports %d or %d); rebuild the program with a matching alca", v, CurrentPayloadVersion, EncryptedPayloadVersion)
 	}
 	var want [32]byte
 	copy(want[:], data[4:36])
-	comp := data[header:]
+
+	var comp []byte
+	isEncrypted := v == EncryptedPayloadVersion
+	if isEncrypted {
+		rEnc := &reader{b: data[header:]}
+		salt := rEnc.rawBytes()
+		nonce := rEnc.rawBytes()
+		if rEnc.err != nil || len(salt) != 16 || len(nonce) != 12 {
+			return nil, fmt.Errorf("corrupted encrypted payload: invalid salt/nonce")
+		}
+		ciphertext := rEnc.b[rEnc.pos:]
+		key := deriveBundleKey(salt)
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			return nil, fmt.Errorf("cipher init error: %w", err)
+		}
+		gcm, err := cipher.NewGCM(block)
+		if err != nil {
+			return nil, fmt.Errorf("gcm init error: %w", err)
+		}
+		plaintext, err := gcm.Open(nil, nonce, ciphertext, salt)
+		if err != nil {
+			return nil, fmt.Errorf("payload decryption failed (tampered executable): %w", err)
+		}
+		comp = plaintext
+	} else {
+		comp = data[header:]
+	}
+
 	if got := sha256.Sum256(comp); got != want {
 		return nil, fmt.Errorf("payload integrity check failed (checksum mismatch)")
 	}
@@ -428,7 +507,7 @@ func DecodeBundle(data []byte) (*Bundle, error) {
 	}
 
 	r := &reader{b: rawBytes}
-	b := &Bundle{Kind: Kind(r.u8()), Name: r.str()}
+	b := &Bundle{Kind: Kind(r.u8()), Encrypted: isEncrypted, Name: r.str()}
 	switch b.Kind {
 	case KindNative:
 		b.NativeCode = r.rawBytes()

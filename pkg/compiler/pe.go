@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package compiler
 
 import (
@@ -5,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"sort"
 )
 
 // Standard PE alignments
@@ -19,7 +23,13 @@ const (
 	SubsystemWindowsCUI uint16 = 3 // Console (opens cmd / terminal)
 )
 
-// PEBuilder builds a minimal, pure native 64-bit Windows PE32+ executable.
+// ExportedSymbol represents a function exported by a DLL.
+type ExportedSymbol struct {
+	Name       string
+	CodeOffset uint32 // Offset within .text section
+}
+
+// PEBuilder builds a minimal, pure native 64-bit Windows PE32+ executable or DLL.
 type PEBuilder struct {
 	code       []byte
 	constants  []byte
@@ -29,6 +39,14 @@ type PEBuilder struct {
 	constRVA   uint32
 	bssRVA     uint32
 	subsystem  uint16
+
+	// DLL support
+	isDLL         bool
+	dllName       string
+	exports       []ExportedSymbol
+	exportRVA     uint32
+	exportSize    uint32
+	dllMainOffset uint32
 }
 
 // NewPEBuilder initializes a PEBuilder with standard KERNEL32 imports.
@@ -61,6 +79,23 @@ func (p *PEBuilder) SetNoConsole(noConsole bool) {
 	} else {
 		p.subsystem = SubsystemWindowsCUI
 	}
+}
+
+// SetDLL configures the PEBuilder to generate a dynamic link library (DLL).
+func (p *PEBuilder) SetDLL(isDLL bool, name string) {
+	p.isDLL = isDLL
+	if name == "" {
+		name = "alca_lib.dll"
+	}
+	p.dllName = name
+	if isDLL {
+		p.subsystem = SubsystemWindowsGUI
+	}
+}
+
+// AddExport adds a named function export to the DLL.
+func (p *PEBuilder) AddExport(name string, codeOffset uint32) {
+	p.exports = append(p.exports, ExportedSymbol{Name: name, CodeOffset: codeOffset})
 }
 
 // SetCode sets the machine code bytes for the .text section.
@@ -146,16 +181,42 @@ func (p *PEBuilder) Layout() {
 		hintLen += 16 - (hintLen % 16)
 	}
 
-	// 6. User constants/strings
-	p.constRVA = rdataRVA + hintOffset + uint32(hintLen)
+	// 6. Export Directory Table (if DLL)
+	exportOffset := hintOffset + uint32(hintLen)
+	var exportSize uint32
+	if p.isDLL && len(p.exports) > 0 {
+		sort.Slice(p.exports, func(i, j int) bool {
+			return p.exports[i].Name < p.exports[j].Name
+		})
+		numExports := uint32(len(p.exports))
+		eatLen := numExports * 4
+		namesLen := numExports * 4
+		ordinalsLen := numExports * 2
+		if ordinalsLen%4 != 0 {
+			ordinalsLen += 4 - (ordinalsLen % 4)
+		}
+		strLen := len(p.dllName) + 1
+		for _, exp := range p.exports {
+			strLen += len(exp.Name) + 1
+		}
+		if strLen%16 != 0 {
+			strLen += 16 - (strLen % 16)
+		}
+		exportSize = 40 + eatLen + namesLen + ordinalsLen + uint32(strLen)
+		p.exportRVA = rdataRVA + exportOffset
+		p.exportSize = exportSize
+	}
 
-	totalRData := hintOffset + uint32(hintLen) + uint32(len(p.constants))
+	// 7. User constants/strings
+	p.constRVA = rdataRVA + exportOffset + exportSize
+
+	totalRData := exportOffset + exportSize + uint32(len(p.constants))
 	virtRDataLen := alignUp(totalRData, peSectAlign)
 	if virtRDataLen == 0 {
 		virtRDataLen = peSectAlign
 	}
 
-	// 7. BSS RVA
+	// 8. BSS RVA
 	p.bssRVA = rdataRVA + virtRDataLen
 
 	_ = rawTextLen
@@ -215,12 +276,12 @@ func (p *PEBuilder) Build() ([]byte, error) {
 	// 2. Write Import Directory Table (20 bytes KERNEL32 + 20 bytes NULL)
 	iltRVA := rdataRVA + iltOffset
 	iatRVA := rdataRVA
-	binary.Write(rdata, binary.LittleEndian, uint32(iltRVA))        // OriginalFirstThunk (ILT)
-	binary.Write(rdata, binary.LittleEndian, uint32(0))             // TimeDateStamp
-	binary.Write(rdata, binary.LittleEndian, uint32(0))             // ForwarderChain
-	binary.Write(rdata, binary.LittleEndian, uint32(dllNameRVA))    // Name RVA
-	binary.Write(rdata, binary.LittleEndian, uint32(iatRVA))        // FirstThunk (IAT)
-	rdata.Write(make([]byte, 20))                                   // Null terminator descriptor
+	binary.Write(rdata, binary.LittleEndian, uint32(iltRVA))     // OriginalFirstThunk (ILT)
+	binary.Write(rdata, binary.LittleEndian, uint32(0))          // TimeDateStamp
+	binary.Write(rdata, binary.LittleEndian, uint32(0))          // ForwarderChain
+	binary.Write(rdata, binary.LittleEndian, uint32(dllNameRVA)) // Name RVA
+	binary.Write(rdata, binary.LittleEndian, uint32(iatRVA))     // FirstThunk (IAT)
+	rdata.Write(make([]byte, 20))                                // Null terminator descriptor
 
 	// Align to iltOffset
 	if uint32(rdata.Len()) < iltOffset {
@@ -240,6 +301,71 @@ func (p *PEBuilder) Build() ([]byte, error) {
 
 	// 5. Write Hint/Name entries
 	rdata.Write(hintBuf.Bytes())
+
+	// Write Export Directory if DLL
+	if p.isDLL && len(p.exports) > 0 {
+		numExports := uint32(len(p.exports))
+		eatRVA := p.exportRVA + 40
+		namesRVA := eatRVA + (numExports * 4)
+		ordinalsRVA := namesRVA + (numExports * 4)
+		ordinalsLen := numExports * 2
+		if ordinalsLen%4 != 0 {
+			ordinalsLen += 4 - (ordinalsLen % 4)
+		}
+		stringsRVA := ordinalsRVA + ordinalsLen
+
+		dllNameRVA := stringsRVA
+		curStrRVA := dllNameRVA + uint32(len(p.dllName)+1)
+
+		nameRVAs := make([]uint32, numExports)
+		for i, exp := range p.exports {
+			nameRVAs[i] = curStrRVA
+			curStrRVA += uint32(len(exp.Name) + 1)
+		}
+
+		// 1. IMAGE_EXPORT_DIRECTORY (40 bytes)
+		binary.Write(rdata, binary.LittleEndian, uint32(0))           // Characteristics
+		binary.Write(rdata, binary.LittleEndian, uint32(0))           // TimeDateStamp
+		binary.Write(rdata, binary.LittleEndian, uint16(0))           // MajorVersion
+		binary.Write(rdata, binary.LittleEndian, uint16(0))           // MinorVersion
+		binary.Write(rdata, binary.LittleEndian, uint32(dllNameRVA))  // Name RVA
+		binary.Write(rdata, binary.LittleEndian, uint32(1))           // Base (ordinal base 1)
+		binary.Write(rdata, binary.LittleEndian, numExports)          // NumberOfFunctions
+		binary.Write(rdata, binary.LittleEndian, numExports)          // NumberOfNames
+		binary.Write(rdata, binary.LittleEndian, uint32(eatRVA))      // AddressOfFunctions
+		binary.Write(rdata, binary.LittleEndian, uint32(namesRVA))    // AddressOfNames
+		binary.Write(rdata, binary.LittleEndian, uint32(ordinalsRVA)) // AddressOfNameOrdinals
+
+		// 2. Export Address Table (EAT)
+		for _, exp := range p.exports {
+			binary.Write(rdata, binary.LittleEndian, textRVA+exp.CodeOffset)
+		}
+
+		// 3. AddressOfNames Table
+		for i := range p.exports {
+			binary.Write(rdata, binary.LittleEndian, nameRVAs[i])
+		}
+
+		// 4. AddressOfNameOrdinals Table
+		for i := range p.exports {
+			binary.Write(rdata, binary.LittleEndian, uint16(i))
+		}
+		if (numExports*2)%4 != 0 {
+			rdata.Write(make([]byte, 4-((numExports*2)%4)))
+		}
+
+		// 5. String Table
+		rdata.WriteString(p.dllName)
+		rdata.WriteByte(0)
+		for _, exp := range p.exports {
+			rdata.WriteString(exp.Name)
+			rdata.WriteByte(0)
+		}
+		// Pad strings to 16 bytes alignment
+		for rdata.Len()%16 != 0 {
+			rdata.WriteByte(0)
+		}
+	}
 
 	// 6. Write User Constants
 	if len(p.constants) > 0 {
@@ -300,7 +426,11 @@ func (p *PEBuilder) Build() ([]byte, error) {
 	binary.Write(headers, binary.LittleEndian, uint32(0))      // PointerToSymbolTable
 	binary.Write(headers, binary.LittleEndian, uint32(0))      // NumberOfSymbols
 	binary.Write(headers, binary.LittleEndian, uint16(0xF0))   // SizeOfOptionalHeader
-	binary.Write(headers, binary.LittleEndian, uint16(0x0222)) // Characteristics: EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE
+	coffChar := uint16(0x0222)                                 // Characteristics: EXECUTABLE_IMAGE | LARGE_ADDRESS_AWARE
+	if p.isDLL {
+		coffChar |= 0x2000 // IMAGE_FILE_DLL
+	}
+	binary.Write(headers, binary.LittleEndian, coffChar)
 
 	// Optional Header 64-bit (240 bytes)
 	binary.Write(headers, binary.LittleEndian, uint16(0x020B)) // PE32+ magic
@@ -309,38 +439,46 @@ func (p *PEBuilder) Build() ([]byte, error) {
 	binary.Write(headers, binary.LittleEndian, rawTextLen)     // SizeOfCode
 	binary.Write(headers, binary.LittleEndian, rawRDataLen)    // SizeOfInitializedData
 	binary.Write(headers, binary.LittleEndian, uint32(0))      // SizeOfUninitializedData
-	binary.Write(headers, binary.LittleEndian, textRVA)        // AddressOfEntryPoint (.text RVA)
-	binary.Write(headers, binary.LittleEndian, textRVA)        // BaseOfCode (.text RVA)
+	entryPointRVA := textRVA
+	if p.isDLL {
+		entryPointRVA = textRVA + p.dllMainOffset
+	}
+	binary.Write(headers, binary.LittleEndian, entryPointRVA)       // AddressOfEntryPoint (.text RVA)
+	binary.Write(headers, binary.LittleEndian, textRVA)             // BaseOfCode (.text RVA)
 	binary.Write(headers, binary.LittleEndian, uint64(0x140000000)) // ImageBase
-	binary.Write(headers, binary.LittleEndian, uint32(peSectAlign))  // SectionAlignment
-	binary.Write(headers, binary.LittleEndian, uint32(peFileAlign))  // FileAlignment
-	binary.Write(headers, binary.LittleEndian, uint16(6))            // MajorOSVersion
-	binary.Write(headers, binary.LittleEndian, uint16(0))            // MinorOSVersion
-	binary.Write(headers, binary.LittleEndian, uint16(0))            // MajorImageVersion
-	binary.Write(headers, binary.LittleEndian, uint16(0))            // MinorImageVersion
-	binary.Write(headers, binary.LittleEndian, uint16(6))            // MajorSubsystemVersion
-	binary.Write(headers, binary.LittleEndian, uint16(0))            // MinorSubsystemVersion
-	binary.Write(headers, binary.LittleEndian, uint32(0))            // Win32VersionValue
-	binary.Write(headers, binary.LittleEndian, sizeOfImage)          // SizeOfImage
-	binary.Write(headers, binary.LittleEndian, uint32(0x400))        // SizeOfHeaders
-	binary.Write(headers, binary.LittleEndian, uint32(0))            // CheckSum
-	binary.Write(headers, binary.LittleEndian, p.subsystem)          // Subsystem: Windows CUI (3) or GUI (2)
-	binary.Write(headers, binary.LittleEndian, uint16(0x8160))       // DllCharacteristics: DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE
-	binary.Write(headers, binary.LittleEndian, uint64(0x100000))     // SizeOfStackReserve
-	binary.Write(headers, binary.LittleEndian, uint64(0x1000))       // SizeOfStackCommit
-	binary.Write(headers, binary.LittleEndian, uint64(0x100000))     // SizeOfHeapReserve
-	binary.Write(headers, binary.LittleEndian, uint64(0x1000))       // SizeOfHeapCommit
-	binary.Write(headers, binary.LittleEndian, uint32(0))            // LoaderFlags
-	binary.Write(headers, binary.LittleEndian, uint32(16))           // NumberOfRvaAndSizes
+	binary.Write(headers, binary.LittleEndian, uint32(peSectAlign)) // SectionAlignment
+	binary.Write(headers, binary.LittleEndian, uint32(peFileAlign)) // FileAlignment
+	binary.Write(headers, binary.LittleEndian, uint16(6))           // MajorOSVersion
+	binary.Write(headers, binary.LittleEndian, uint16(0))           // MinorOSVersion
+	binary.Write(headers, binary.LittleEndian, uint16(0))           // MajorImageVersion
+	binary.Write(headers, binary.LittleEndian, uint16(0))           // MinorImageVersion
+	binary.Write(headers, binary.LittleEndian, uint16(6))           // MajorSubsystemVersion
+	binary.Write(headers, binary.LittleEndian, uint16(0))           // MinorSubsystemVersion
+	binary.Write(headers, binary.LittleEndian, uint32(0))           // Win32VersionValue
+	binary.Write(headers, binary.LittleEndian, sizeOfImage)         // SizeOfImage
+	binary.Write(headers, binary.LittleEndian, uint32(0x400))       // SizeOfHeaders
+	binary.Write(headers, binary.LittleEndian, uint32(0))           // CheckSum
+	binary.Write(headers, binary.LittleEndian, p.subsystem)         // Subsystem: Windows CUI (3) or GUI (2)
+	binary.Write(headers, binary.LittleEndian, uint16(0x8160))      // DllCharacteristics: DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE
+	binary.Write(headers, binary.LittleEndian, uint64(0x100000))    // SizeOfStackReserve
+	binary.Write(headers, binary.LittleEndian, uint64(0x1000))      // SizeOfStackCommit
+	binary.Write(headers, binary.LittleEndian, uint64(0x100000))    // SizeOfHeapReserve
+	binary.Write(headers, binary.LittleEndian, uint64(0x1000))      // SizeOfHeapCommit
+	binary.Write(headers, binary.LittleEndian, uint32(0))           // LoaderFlags
+	binary.Write(headers, binary.LittleEndian, uint32(16))          // NumberOfRvaAndSizes
 
 	// 16 Data Directories (8 bytes each)
 	for i := 0; i < 16; i++ {
-		if i == 1 {
-			// Import Table directory: RVA rdataRVA + idtOffset, size 40 bytes
+		if i == 0 && p.isDLL && len(p.exports) > 0 {
+			// Export Table directory
+			binary.Write(headers, binary.LittleEndian, uint32(p.exportRVA))
+			binary.Write(headers, binary.LittleEndian, uint32(p.exportSize))
+		} else if i == 1 {
+			// Import Table directory
 			binary.Write(headers, binary.LittleEndian, uint32(rdataRVA+idtOffset))
 			binary.Write(headers, binary.LittleEndian, uint32(idtSize))
 		} else if i == 12 {
-			// IAT directory: RVA iatRVA, size iatSize
+			// IAT directory
 			binary.Write(headers, binary.LittleEndian, uint32(iatRVA))
 			binary.Write(headers, binary.LittleEndian, uint32(iatSize))
 		} else {
@@ -353,43 +491,43 @@ func (p *PEBuilder) Build() ([]byte, error) {
 	var textName [8]byte
 	copy(textName[:], ".text")
 	headers.Write(textName[:])
-	binary.Write(headers, binary.LittleEndian, virtTextLen)      // VirtualSize
-	binary.Write(headers, binary.LittleEndian, textRVA)          // VirtualAddress (RVA)
-	binary.Write(headers, binary.LittleEndian, rawTextLen)      // SizeOfRawData
-	binary.Write(headers, binary.LittleEndian, uint32(0x400))    // PointerToRawData
-	binary.Write(headers, binary.LittleEndian, uint32(0))        // PointerToRelocations
-	binary.Write(headers, binary.LittleEndian, uint32(0))        // PointerToLinenumbers
-	binary.Write(headers, binary.LittleEndian, uint16(0))        // NumberOfRelocations
-	binary.Write(headers, binary.LittleEndian, uint16(0))        // NumberOfLinenumbers
+	binary.Write(headers, binary.LittleEndian, virtTextLen)        // VirtualSize
+	binary.Write(headers, binary.LittleEndian, textRVA)            // VirtualAddress (RVA)
+	binary.Write(headers, binary.LittleEndian, rawTextLen)         // SizeOfRawData
+	binary.Write(headers, binary.LittleEndian, uint32(0x400))      // PointerToRawData
+	binary.Write(headers, binary.LittleEndian, uint32(0))          // PointerToRelocations
+	binary.Write(headers, binary.LittleEndian, uint32(0))          // PointerToLinenumbers
+	binary.Write(headers, binary.LittleEndian, uint16(0))          // NumberOfRelocations
+	binary.Write(headers, binary.LittleEndian, uint16(0))          // NumberOfLinenumbers
 	binary.Write(headers, binary.LittleEndian, uint32(0x60000020)) // CNT_CODE | MEM_EXECUTE | MEM_READ
 
 	// Section 2: .rdata (40 bytes)
 	var rdataName [8]byte
 	copy(rdataName[:], ".rdata")
 	headers.Write(rdataName[:])
-	binary.Write(headers, binary.LittleEndian, virtRDataLen)         // VirtualSize
-	binary.Write(headers, binary.LittleEndian, rdataRVA)             // VirtualAddress (RVA)
-	binary.Write(headers, binary.LittleEndian, rawRDataLen)          // SizeOfRawData
+	binary.Write(headers, binary.LittleEndian, virtRDataLen)             // VirtualSize
+	binary.Write(headers, binary.LittleEndian, rdataRVA)                 // VirtualAddress (RVA)
+	binary.Write(headers, binary.LittleEndian, rawRDataLen)              // SizeOfRawData
 	binary.Write(headers, binary.LittleEndian, uint32(0x400+rawTextLen)) // PointerToRawData
-	binary.Write(headers, binary.LittleEndian, uint32(0))            // PointerToRelocations
-	binary.Write(headers, binary.LittleEndian, uint32(0))            // PointerToLinenumbers
-	binary.Write(headers, binary.LittleEndian, uint16(0))            // NumberOfRelocations
-	binary.Write(headers, binary.LittleEndian, uint16(0))            // NumberOfLinenumbers
-	binary.Write(headers, binary.LittleEndian, uint32(0x40000040))    // CNT_INITIALIZED_DATA | MEM_READ
+	binary.Write(headers, binary.LittleEndian, uint32(0))                // PointerToRelocations
+	binary.Write(headers, binary.LittleEndian, uint32(0))                // PointerToLinenumbers
+	binary.Write(headers, binary.LittleEndian, uint16(0))                // NumberOfRelocations
+	binary.Write(headers, binary.LittleEndian, uint16(0))                // NumberOfLinenumbers
+	binary.Write(headers, binary.LittleEndian, uint32(0x40000040))       // CNT_INITIALIZED_DATA | MEM_READ
 
 	// Section 3: .bss (40 bytes, SizeOfRawData = 0!)
 	var bssName [8]byte
 	copy(bssName[:], ".bss")
 	headers.Write(bssName[:])
-	binary.Write(headers, binary.LittleEndian, virtBSSLen)          // VirtualSize (e.g. 1 MB in RAM)
-	binary.Write(headers, binary.LittleEndian, bssRVA)              // VirtualAddress (RVA)
-	binary.Write(headers, binary.LittleEndian, uint32(0))           // SizeOfRawData = 0 (takes 0 bytes in file!)
-	binary.Write(headers, binary.LittleEndian, uint32(0))           // PointerToRawData = 0
-	binary.Write(headers, binary.LittleEndian, uint32(0))           // PointerToRelocations
-	binary.Write(headers, binary.LittleEndian, uint32(0))           // PointerToLinenumbers
-	binary.Write(headers, binary.LittleEndian, uint16(0))           // NumberOfRelocations
-	binary.Write(headers, binary.LittleEndian, uint16(0))           // NumberOfLinenumbers
-	binary.Write(headers, binary.LittleEndian, uint32(0xC0000080))  // CNT_UNINITIALIZED_DATA | MEM_READ | MEM_WRITE
+	binary.Write(headers, binary.LittleEndian, virtBSSLen)         // VirtualSize (e.g. 1 MB in RAM)
+	binary.Write(headers, binary.LittleEndian, bssRVA)             // VirtualAddress (RVA)
+	binary.Write(headers, binary.LittleEndian, uint32(0))          // SizeOfRawData = 0 (takes 0 bytes in file!)
+	binary.Write(headers, binary.LittleEndian, uint32(0))          // PointerToRawData = 0
+	binary.Write(headers, binary.LittleEndian, uint32(0))          // PointerToRelocations
+	binary.Write(headers, binary.LittleEndian, uint32(0))          // PointerToLinenumbers
+	binary.Write(headers, binary.LittleEndian, uint16(0))          // NumberOfRelocations
+	binary.Write(headers, binary.LittleEndian, uint16(0))          // NumberOfLinenumbers
+	binary.Write(headers, binary.LittleEndian, uint32(0xC0000080)) // CNT_UNINITIALIZED_DATA | MEM_READ | MEM_WRITE
 
 	// Pad headers to 0x400
 	hBytes := headers.Bytes()

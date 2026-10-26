@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package apm implements the Alca package manager: the alca.toml manifest
 // format, semantic version constraints, the local package registry, compiled
 // package artifacts and the client for remote registry nodes.
@@ -69,7 +72,8 @@ func ParseManifest(data []byte) (*Manifest, error) {
 	section := ""
 	depSeen := map[string]bool{}
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
-	for i, raw := range lines {
+	for i := 0; i < len(lines); i++ {
+		raw := lines[i]
 		line := strings.TrimSpace(stripComment(raw))
 		if line == "" {
 			continue
@@ -90,6 +94,15 @@ func ParseManifest(data []byte) (*Manifest, error) {
 		}
 		key := strings.TrimSpace(line[:eq])
 		valText := strings.TrimSpace(line[eq+1:])
+		if strings.HasPrefix(valText, "[") && !strings.HasSuffix(valText, "]") {
+			for i+1 < len(lines) && !strings.HasSuffix(valText, "]") {
+				i++
+				next := strings.TrimSpace(stripComment(lines[i]))
+				if next != "" {
+					valText += " " + next
+				}
+			}
+		}
 		if section == "" {
 			return nil, fmt.Errorf("alca.toml:%d: key %q is outside any section", i+1, key)
 		}
@@ -124,8 +137,23 @@ func ParseManifest(data []byte) (*Manifest, error) {
 			if m.Extra[section] == nil {
 				m.Extra[section] = map[string]string{}
 			}
-			if s, ok := val.(string); ok {
-				m.Extra[section][key] = s
+			switch v := val.(type) {
+			case string:
+				m.Extra[section][key] = v
+			case int64:
+				m.Extra[section][key] = strconv.FormatInt(v, 10)
+			case bool:
+				m.Extra[section][key] = strconv.FormatBool(v)
+			case []string:
+				m.Extra[section][key] = strings.Join(v, ",")
+			case []any:
+				var parts []string
+				for _, item := range v {
+					parts = append(parts, fmt.Sprint(item))
+				}
+				m.Extra[section][key] = strings.Join(parts, ",")
+			default:
+				m.Extra[section][key] = fmt.Sprint(val)
 			}
 		}
 	}

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package interpreter implements the tree-walking runtime engine for the Alca programming language.
 package interpreter
 
@@ -37,6 +40,8 @@ const (
 	SECRET_VAL   ValueType = "SECRET"
 	BUILTIN_VAL  ValueType = "BUILTIN"
 	BLOB_VAL     ValueType = "BLOB"
+	ENUM_DEF     ValueType = "ENUM_DEF"
+	ENUM_VAL     ValueType = "ENUM_VAL"
 )
 
 // Value is the core interface implemented by every runtime Alca value.
@@ -675,6 +680,40 @@ func (v *StructDef) Inherits(parent *StructDef) bool {
 	return false
 }
 
+// EnumDef represents an enumeration definition.
+type EnumDef struct {
+	Name     string
+	Variants map[string]*EnumValue
+	IsPublic bool
+}
+
+func (ed *EnumDef) Type() ValueType { return ENUM_DEF }
+func (ed *EnumDef) Inspect() string { return fmt.Sprintf("<enum %s>", ed.Name) }
+func (ed *EnumDef) Clone() Value    { return ed }
+
+// EnumValue represents a specific variant of an enum.
+type EnumValue struct {
+	EnumName string
+	Name     string
+	Tag      int64
+	Val      Value
+}
+
+func (ev *EnumValue) Type() ValueType { return ENUM_VAL }
+func (ev *EnumValue) Inspect() string { return fmt.Sprintf("%s.%s", ev.EnumName, ev.Name) }
+func (ev *EnumValue) Clone() Value {
+	var cVal Value
+	if ev.Val != nil {
+		cVal = ev.Val.Clone()
+	}
+	return &EnumValue{
+		EnumName: ev.EnumName,
+		Name:     ev.Name,
+		Tag:      ev.Tag,
+		Val:      cVal,
+	}
+}
+
 // SuperValue is the runtime value of 'super' inside a method. It carries the
 // receiver and the class at which method lookup must start.
 type SuperValue struct {
@@ -744,11 +783,63 @@ func (v *StructInstance) Clone() Value {
 	}
 }
 
+// Standard error code categories
+const (
+	ErrCodeInvalidArg   int64 = 400
+	ErrCodeUnauthorized int64 = 401
+	ErrCodePermission   int64 = 403
+	ErrCodeNotFound     int64 = 404
+	ErrCodeUnsupported  int64 = 405
+	ErrCodeTimeout      int64 = 408
+	ErrCodeInternal     int64 = 500
+	ErrCodeIO           int64 = 502
+)
+
 // ErrorValue represents a first-class error object in Alca.
 type ErrorValue struct {
 	Code    int64
 	Message string
 	Time    string
+}
+
+// Category returns a human-readable symbolic string category for the error code.
+func (v *ErrorValue) Category() string {
+	switch v.Code {
+	case ErrCodeInvalidArg:
+		return "invalid_argument"
+	case ErrCodeUnauthorized:
+		return "unauthorized"
+	case ErrCodePermission:
+		return "permission_denied"
+	case ErrCodeNotFound:
+		return "not_found"
+	case ErrCodeUnsupported:
+		return "unsupported"
+	case ErrCodeTimeout:
+		return "timeout"
+	case ErrCodeInternal:
+		return "internal_error"
+	case ErrCodeIO:
+		return "io_error"
+	default:
+		return "error"
+	}
+}
+
+// CallMethod implements MethodProvider for ErrorValue.
+func (v *ErrorValue) CallMethod(name string, args []Value) (Value, error) {
+	switch name {
+	case "code":
+		return &IntegerValue{Val: v.Code}, nil
+	case "message":
+		return &StringValue{Val: v.Message}, nil
+	case "category":
+		return &StringValue{Val: v.Category()}, nil
+	case "time":
+		return &StringValue{Val: v.Time}, nil
+	default:
+		return nil, fmt.Errorf("error has no method %q", name)
+	}
 }
 
 // NewError creates an ErrorValue with current UTC timestamp.
@@ -1012,6 +1103,9 @@ func valuesEqual(a, b Value, strict bool) bool {
 			}
 		}
 		return true
+	case *EnumValue:
+		valB := b.(*EnumValue)
+		return valA.EnumName == valB.EnumName && valA.Name == valB.Name
 	case *StructInstance:
 		valB := b.(*StructInstance)
 		if valA.Def.Name != valB.Def.Name {

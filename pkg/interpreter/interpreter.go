@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package interpreter implements the tree-walking runtime engine for the Alca programming language.
 package interpreter
 
@@ -7,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -18,6 +22,7 @@ import (
 	"github.com/alca-lang/alca/pkg/diag"
 	"github.com/alca-lang/alca/pkg/limits"
 	"github.com/alca-lang/alca/pkg/mod"
+	"github.com/alca-lang/alca/pkg/version"
 )
 
 // ModuleParser is a function type that parses source code into an AST Program.
@@ -56,9 +61,18 @@ type Interpreter struct {
 	mu           sync.RWMutex
 }
 
-// SetFilename sets the active filename for diagnostic reporting.
+// SetFilename sets the active filename for diagnostic reporting and dunder variables.
 func (i *Interpreter) SetFilename(filename string) {
 	i.filename = filename
+	if filename != "" {
+		i.env.Set("__file__", &StringValue{Val: filename})
+		dir := filepath.Dir(filename)
+		if dir == "" {
+			dir = "."
+		}
+		i.env.Set("__dir__", &StringValue{Val: dir})
+		i.env.Set("__dirname__", &StringValue{Val: dir})
+	}
 }
 
 // SetSource sets the full source code for diagnostic context and error previews.
@@ -78,6 +92,11 @@ func New() *Interpreter {
 	for name, fn := range BuiltinFunctionMap {
 		globals.Set(name, fn)
 	}
+	globals.Set("__file__", &StringValue{Val: "<stdin>"})
+	globals.Set("__dir__", &StringValue{Val: "."})
+	globals.Set("__dirname__", &StringValue{Val: "."})
+	globals.Set("__name__", &StringValue{Val: "__main__"})
+	globals.Set("__version__", &StringValue{Val: version.Version})
 
 	interp := &Interpreter{
 		env:       globals,
@@ -259,6 +278,12 @@ func (i *Interpreter) Eval(node ast.Node) Value {
 
 	case *ast.StructDeclaration:
 		return i.evalStructDeclaration(n)
+
+	case *ast.EnumDeclaration:
+		return i.evalEnumDeclaration(n)
+
+	case *ast.InterfaceDeclaration:
+		return NULL
 
 	case *ast.ClassDeclaration:
 		return i.evalClassDeclaration(n)
@@ -489,7 +514,7 @@ func (i *Interpreter) Eval(node ast.Node) Value {
 	case *ast.RangeLiteral:
 		startVal := i.Eval(n.Start)
 		endVal := i.Eval(n.End)
-		return evalRange(startVal, endVal)
+		return evalRange(startVal, endVal, n.Inclusive)
 
 	case *ast.StructInstantiation:
 		defVal, ok := i.env.Get(n.Name)
@@ -505,6 +530,12 @@ func (i *Interpreter) Eval(node ast.Node) Value {
 			args[idx] = i.Eval(a)
 		}
 		return i.instantiateStruct(sDef, args, nil)
+
+	case *ast.AwaitExpression:
+		if n.Expression != nil {
+			return i.Eval(n.Expression)
+		}
+		return NULL
 
 	default:
 		return NULL
@@ -627,6 +658,32 @@ func (i *Interpreter) evalStructDeclaration(node *ast.StructDeclaration) Value {
 	}
 	i.env.Set(node.Name, sDef)
 	return sDef
+}
+
+func (i *Interpreter) evalEnumDeclaration(node *ast.EnumDeclaration) Value {
+	eDef := &EnumDef{
+		Name:     node.Name,
+		Variants: make(map[string]*EnumValue, len(node.Variants)),
+		IsPublic: node.IsPublic,
+	}
+	for idx, v := range node.Variants {
+		var tag int64 = int64(idx)
+		var val Value
+		if v.Value != nil {
+			val = i.Eval(v.Value)
+			if intVal, ok := val.(*IntegerValue); ok {
+				tag = intVal.Val
+			}
+		}
+		eDef.Variants[v.Name] = &EnumValue{
+			EnumName: node.Name,
+			Name:     v.Name,
+			Tag:      tag,
+			Val:      val,
+		}
+	}
+	i.env.Set(node.Name, eDef)
+	return eDef
 }
 
 func (i *Interpreter) evalClassDeclaration(node *ast.ClassDeclaration) Value {
@@ -879,6 +936,15 @@ func (i *Interpreter) evalUseStatement(node *ast.UseStatement) Value {
 	for name, fn := range BuiltinFunctionMap {
 		modEnv.Set(name, fn)
 	}
+	modEnv.Set("__file__", &StringValue{Val: resolved.SourcePath})
+	modDir := filepath.Dir(resolved.SourcePath)
+	if modDir == "" {
+		modDir = "."
+	}
+	modEnv.Set("__dir__", &StringValue{Val: modDir})
+	modEnv.Set("__dirname__", &StringValue{Val: modDir})
+	modEnv.Set("__name__", &StringValue{Val: modPath})
+	modEnv.Set("__version__", &StringValue{Val: version.Version})
 
 	subInterp := i.Fork(modEnv)
 	// Nested imports inside the module resolve relative to the module file.
@@ -936,21 +1002,16 @@ func BindModule(env *Environment, stmt *ast.UseStatement, modMap *MapValue) {
 	if binding != "" {
 		env.Set(binding, modMap)
 	}
-	if stmt.Alias != "" {
-		return
-	}
-	for _, k := range modMap.Keys() {
-		if _, exists := env.Get(k); exists {
-			continue
-		}
-		val, _ := modMap.Get(k)
-		env.Set(k, val)
-	}
 }
 
 func (i *Interpreter) loadStdModule(node *ast.UseStatement) Value {
 	modMap := NewMap()
 	shortName := strings.TrimPrefix(node.ModulePath, "std.")
+	if shortName == "ai" {
+		errVal := NewError(400, "module 'std.ai' has been removed; use 'std.libtorch' instead")
+		i.recordError(errVal)
+		return errVal
+	}
 
 	// Check if module is already registered in environment or globals (e.g. math, io, sys, cli, etc.)
 	if registered, ok := i.env.Get(node.ModulePath); ok {
@@ -1206,6 +1267,45 @@ func (i *Interpreter) evalTxStatement(node *ast.TxStatement) Value {
 // -----------------------------------------------------------------------------
 
 func (i *Interpreter) evalIdentifier(node *ast.Identifier) Value {
+	switch node.Value {
+	case "__line__":
+		lineVal := int64(node.Token.Line)
+		if lineVal <= 0 {
+			lineVal = 1
+		}
+		return &IntegerValue{Val: lineVal}
+	case "__file__":
+		if val, ok := i.env.Get("__file__"); ok {
+			return val
+		}
+		if i.filename != "" {
+			return &StringValue{Val: i.filename}
+		}
+		return &StringValue{Val: "<stdin>"}
+	case "__dir__", "__dirname__":
+		if val, ok := i.env.Get(node.Value); ok {
+			return val
+		}
+		if i.filename != "" {
+			dir := filepath.Dir(i.filename)
+			if dir == "" {
+				dir = "."
+			}
+			return &StringValue{Val: dir}
+		}
+		return &StringValue{Val: "."}
+	case "__name__":
+		if val, ok := i.env.Get("__name__"); ok {
+			return val
+		}
+		return &StringValue{Val: "__main__"}
+	case "__version__":
+		if val, ok := i.env.Get("__version__"); ok {
+			return val
+		}
+		return &StringValue{Val: version.Version}
+	}
+
 	i.mu.RLock()
 	mock, hasMock := i.mocks[node.Value]
 	i.mu.RUnlock()
@@ -1290,6 +1390,12 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 
 	case "===":
 		if StrictEqual(left, right) {
+			return TRUE
+		}
+		return FALSE
+
+	case "!==":
+		if !StrictEqual(left, right) {
 			return TRUE
 		}
 		return FALSE
@@ -1527,10 +1633,6 @@ func (i *Interpreter) evalCallExpression(node *ast.CallExpression) Value {
 				return ret
 			}
 		}
-		res, err := CallMethod(target, dot.Field, args)
-		if err == nil {
-			return res
-		}
 		// Check map entries for callable values (modules, UI objects, etc.)
 		if m, ok := target.(*MapValue); ok {
 			if fVal, exists := m.Get(dot.Field); exists {
@@ -1540,6 +1642,10 @@ func (i *Interpreter) evalCallExpression(node *ast.CallExpression) Value {
 				}
 				return ret
 			}
+		}
+		res, err := CallMethod(target, dot.Field, args)
+		if err == nil {
+			return res
 		}
 		return NewError(400, err.Error())
 	}
@@ -1782,6 +1888,10 @@ func (i *Interpreter) evalIndexExpression(node *ast.IndexExpression) Value {
 	left := i.Eval(node.Left)
 	index := i.Eval(node.Index)
 
+	if ip, ok := left.(IndexProvider); ok {
+		return ip.Index(index)
+	}
+
 	switch target := left.(type) {
 	case *ListValue:
 		iv, ok := index.(*IntegerValue)
@@ -1852,6 +1962,22 @@ func (i *Interpreter) evalDotExpression(node *ast.DotExpression) Value {
 	left := i.Eval(node.Left)
 
 	switch target := left.(type) {
+	case *EnumDef:
+		if v, exists := target.Variants[node.Field]; exists {
+			return v
+		}
+		return NULL
+
+	case *EnumValue:
+		switch node.Field {
+		case "tag":
+			return &IntegerValue{Val: target.Tag}
+		case "name":
+			return &StringValue{Val: target.Name}
+		default:
+			return NULL
+		}
+
 	case *StructInstance:
 		if val, exists := target.Fields[node.Field]; exists {
 			return val
@@ -2077,8 +2203,18 @@ func extractIterableItems(v Value) []Value {
 	}
 }
 
-// EvalRange generates an integer sequence list from start to end inclusive.
+// EvalRange generates an integer sequence list from start to end (half-open [start, end)).
 func EvalRange(start, end Value) Value {
+	return EvalRangeEx(start, end, false)
+}
+
+// EvalRangeInclusive generates an integer sequence list from start to end inclusive [start, end].
+func EvalRangeInclusive(start, end Value) Value {
+	return EvalRangeEx(start, end, true)
+}
+
+// EvalRangeEx generates an integer sequence list from start to end with inclusive control.
+func EvalRangeEx(start, end Value, inclusive bool) Value {
 	sInt, ok1 := start.(*IntegerValue)
 	eInt, ok2 := end.(*IntegerValue)
 	if !ok1 || !ok2 {
@@ -2090,7 +2226,13 @@ func EvalRange(start, end Value) Value {
 		step = -1
 	}
 
-	n := (eInt.Val-sInt.Val)*step + 1
+	diff := (eInt.Val - sInt.Val) * step
+	var n int64
+	if inclusive {
+		n = diff + 1
+	} else {
+		n = diff
+	}
 	if n <= 0 {
 		return NewIntList(nil)
 	}
@@ -2103,8 +2245,8 @@ func EvalRange(start, end Value) Value {
 	return NewIntList(ints)
 }
 
-func evalRange(start, end Value) Value {
-	return EvalRange(start, end)
+func evalRange(start, end Value, inclusive bool) Value {
+	return EvalRangeEx(start, end, inclusive)
 }
 
 func validateType(val Value, ta *ast.TypeAnnotation) bool {
@@ -2241,7 +2383,7 @@ func hoistDeclarations(stmts []ast.Statement) []ast.Statement {
 	seenOther := false
 	for _, st := range stmts {
 		switch st.(type) {
-		case *ast.FuncDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration:
+		case *ast.FuncDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration, *ast.EnumDeclaration:
 			if seenOther {
 				needs = true
 			}

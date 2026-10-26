@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package token defines all lexical token types, keywords, operators, and literals
 // for the Alca programming language.
 package token
@@ -125,6 +128,8 @@ const (
 	RANGE TokenType = ".."
 	// DOTDOT represents the range literal operator '..'.
 	DOTDOT TokenType = ".."
+	// DOTDOTEQ represents the inclusive range literal operator '..='.
+	DOTDOTEQ TokenType = "..="
 )
 
 // Delimiter token types.
@@ -233,6 +238,16 @@ const (
 	ERR TokenType = "err"
 	// IMPORT represents the 'import' keyword.
 	IMPORT TokenType = "import"
+	// ENUM represents the 'enum' declaration keyword.
+	ENUM TokenType = "enum"
+	// INTERFACE represents the 'interface' contract keyword.
+	INTERFACE TokenType = "interface"
+	// TRAIT represents the 'trait' contract keyword.
+	TRAIT TokenType = "trait"
+	// ASYNC represents the 'async' modifier keyword.
+	ASYNC TokenType = "async"
+	// AWAIT represents the 'await' expression keyword.
+	AWAIT TokenType = "await"
 )
 
 // Type keyword token types.
@@ -255,6 +270,8 @@ const (
 	TYPE_SECRET TokenType = "secret"
 	// TYPE_JSON represents structured JSON data type 'json'.
 	TYPE_JSON TokenType = "json"
+	// TYPE_VOID represents the absence of a value or return type 'void'.
+	TYPE_VOID TokenType = "void"
 )
 
 // Duration suffix constants parsed as part of INT/FLOAT literals.
@@ -295,47 +312,52 @@ func (t Token) String() string {
 // keywords maps identifier names to their corresponding keyword TokenType.
 var keywords = map[string]TokenType{
 	// Keywords
-	"func":     FUNC,
-	"fn":       FUNC,
-	"shfunc":   SHFUNC,
-	"return":   RETURN,
-	"if":       IF,
-	"else":     ELSE,
-	"elif":     ELIF,
-	"while":    WHILE,
-	"for":      FOR,
-	"loop":     LOOP,
-	"foreach":  FOREACH,
-	"in":       IN,
-	"break":    BREAK,
-	"continue": CONTINUE,
-	"and":      AND,
-	"or":       OR,
-	"not":      NOT,
-	"true":     TRUE,
-	"false":    FALSE,
-	"null":     NULL,
-	"struct":   STRUCT,
-	"class":    CLASS,
-	"extends":  EXTENDS,
-	"pub":      PUB,
-	"public":   PUBLIC,
-	"private":  PRIVATE,
-	"const":    CONST,
-	"use":      USE,
-	"as":       AS,
-	"ba":       BA,
-	"threads":  THREADS,
-	"wait":     WAIT,
-	"watch":    WATCH,
-	"test":     TEST,
-	"mock":     MOCK,
-	"assert":   ASSERT,
-	"tx":       TX,
-	"match":    MATCH,
-	"case":     CASE,
-	"err":      ERR,
-	"import":   IMPORT,
+	"func":      FUNC,
+	"fn":        FUNC,
+	"shfunc":    SHFUNC,
+	"return":    RETURN,
+	"if":        IF,
+	"else":      ELSE,
+	"elif":      ELIF,
+	"while":     WHILE,
+	"for":       FOR,
+	"loop":      LOOP,
+	"foreach":   FOREACH,
+	"in":        IN,
+	"break":     BREAK,
+	"continue":  CONTINUE,
+	"and":       AND,
+	"or":        OR,
+	"not":       NOT,
+	"true":      TRUE,
+	"false":     FALSE,
+	"null":      NULL,
+	"struct":    STRUCT,
+	"class":     CLASS,
+	"extends":   EXTENDS,
+	"pub":       PUB,
+	"public":    PUBLIC,
+	"private":   PRIVATE,
+	"const":     CONST,
+	"use":       USE,
+	"as":        AS,
+	"ba":        BA,
+	"threads":   THREADS,
+	"wait":      WAIT,
+	"watch":     WATCH,
+	"test":      TEST,
+	"mock":      MOCK,
+	"assert":    ASSERT,
+	"tx":        TX,
+	"match":     MATCH,
+	"case":      CASE,
+	"err":       ERR,
+	"import":    IMPORT,
+	"enum":      ENUM,
+	"interface": INTERFACE,
+	"trait":     TRAIT,
+	"async":     ASYNC,
+	"await":     AWAIT,
 
 	// Type Keywords
 	"string": TYPE_STRING,
@@ -347,6 +369,7 @@ var keywords = map[string]TokenType{
 	"blob":   TYPE_BLOB,
 	"secret": TYPE_SECRET,
 	"json":   TYPE_JSON,
+	"void":   TYPE_VOID,
 }
 
 // LookupIdent checks if an identifier is a reserved keyword or type keyword.
@@ -402,7 +425,7 @@ func IsKeyword(t TokenType) bool {
 func IsTypeKeyword(t TokenType) bool {
 	switch t {
 	case TYPE_STRING, TYPE_INT, TYPE_FLOAT, TYPE_BOOL, TYPE_LIST,
-		TYPE_MAP, TYPE_BLOB, TYPE_SECRET, TYPE_JSON:
+		TYPE_MAP, TYPE_BLOB, TYPE_SECRET, TYPE_JSON, TYPE_VOID:
 		return true
 	default:
 		return false

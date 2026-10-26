@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit
 
 import (
@@ -44,8 +47,13 @@ func AsNativeFunc(addr uintptr) NativeFunc {
 }
 
 // UnsafeSlice creates a Go byte slice spanning length bytes at addr.
+//
+// addr points into JIT-allocated executable memory, which is not a Go heap
+// allocation, so it must be expressed as uintptr. unsafe.Add keeps the
+// conversion explicit without a bare uintptr-to-Pointer cast, which go vet
+// would flag as a possible unsafe.Pointer misuse.
 func UnsafeSlice(addr uintptr, length int) []byte {
-	return unsafe.Slice((*byte)(unsafe.Pointer(addr)), length)
+	return unsafe.Slice((*byte)(unsafe.Add(unsafe.Pointer(nil), addr)), length)
 }
 
 // unsafeSlice creates a Go byte slice spanning length bytes at addr.

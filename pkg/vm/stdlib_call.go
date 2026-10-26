@@ -1,9 +1,13 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import (
 	"strings"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/version"
 )
 
 // BuildListSlots constructs a list with the same int-optimized representation
@@ -71,6 +75,16 @@ func ResolveBuiltinValue(env *interpreter.Environment, name string) interpreter.
 		if value, ok := env.Get(name); ok {
 			return value
 		}
+	}
+	switch name {
+	case "__file__":
+		return &interpreter.StringValue{Val: "<stdin>"}
+	case "__dir__", "__dirname__":
+		return &interpreter.StringValue{Val: "."}
+	case "__name__":
+		return &interpreter.StringValue{Val: "__main__"}
+	case "__version__":
+		return &interpreter.StringValue{Val: version.Version}
 	}
 	if fn, ok := interpreter.BuiltinFunctionMap[name]; ok {
 		return fn

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package interpreter
 
 import (
@@ -642,5 +645,40 @@ func TestMapMethodCallAndModuleDispatch(t *testing.T) {
 	res2 := interp.Eval(directCall)
 	if sVal, ok := res2.(*StringValue); !ok || sVal.Val != "Hello, Direct" {
 		t.Fatalf("expected 'Hello, Direct', got %v", res2)
+	}
+}
+
+func TestDunderVariables(t *testing.T) {
+	interp := New()
+	interp.SetFilename("path/to/my_script.al")
+
+	f := interp.evalIdentifier(&ast.Identifier{Value: "__file__"})
+	if sv, ok := f.(*StringValue); !ok || sv.Val != "path/to/my_script.al" {
+		t.Fatalf("expected __file__ to be 'path/to/my_script.al', got %v", f)
+	}
+
+	d := interp.evalIdentifier(&ast.Identifier{Value: "__dir__"})
+	if sv, ok := d.(*StringValue); !ok || sv.Val != filepath.FromSlash("path/to") {
+		t.Fatalf("expected __dir__ to be 'path/to', got %v", d)
+	}
+
+	dn := interp.evalIdentifier(&ast.Identifier{Value: "__dirname__"})
+	if sv, ok := dn.(*StringValue); !ok || sv.Val != filepath.FromSlash("path/to") {
+		t.Fatalf("expected __dirname__ to be 'path/to', got %v", dn)
+	}
+
+	n := interp.evalIdentifier(&ast.Identifier{Value: "__name__"})
+	if sv, ok := n.(*StringValue); !ok || sv.Val != "__main__" {
+		t.Fatalf("expected __name__ to be '__main__', got %v", n)
+	}
+
+	v := interp.evalIdentifier(&ast.Identifier{Value: "__version__"})
+	if sv, ok := v.(*StringValue); !ok || sv.Val == "" {
+		t.Fatalf("expected __version__ to be non-empty string, got %v", v)
+	}
+
+	l := interp.evalIdentifier(&ast.Identifier{Value: "__line__", Token: token.Token{Line: 42}})
+	if iv, ok := l.(*IntegerValue); !ok || iv.Val != 42 {
+		t.Fatalf("expected __line__ to be 42, got %v", l)
 	}
 }

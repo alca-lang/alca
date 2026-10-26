@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -119,6 +122,8 @@ func TestInvalidFixturesAreRejected(t *testing.T) {
 		"type_bad_assignment.al":     "cannot assign",
 		"type_bad_return.al":         "return",
 		"type_bad_argument.al":       "argument",
+		"type_loose_equality.al":     "cannot compare",
+		"type_shadow_assignment.al":  "already declared",
 	}
 	for _, file := range files {
 		name := filepath.Base(file)
@@ -192,8 +197,17 @@ var examplesWithDeterministicOutput = []string{
 	"examples/gui_demo.al",
 }
 
+// goldenOutputs holds exact byte-for-byte expected outputs for examples,
+// guaranteeing that semantic changes in ranges, operators or builtins do not pass silently.
+var goldenOutputs = map[string]string{
+	"examples/hello.al":    "listening on 127.0.0.1:8080\n12.566370614359172\nhandled: division by zero\n55\n",
+	"examples/app.al":      "=== Starting Alca Production App ===\nHello from Alca Native Executable!\ncounter = 3\nServer IP: 192.168.1.100\nServer port: 8080\nCalculation: 15 + 27 = 42\nChecking node: web1\nChecking node: web2\nChecking node: database\nLogged operational event to ./audit.log via stream operator '>>'\nBuffer allocated: High memory temporary buffer\nBuffer instantly freed via null assignment: OK\n=== Alca Application Finished Successfully ===\n",
+	"examples/demo.al":     "Alca Language v2.0\nAnswer: 42\nUnion value: Dynamic text\nNull value: null\nServer configured at 127.0.0.1:8080\nmultiply(21) = 42\nCaptured stream text\n\nCaptured value was: Captured stream text\nItem: alpha\nItem: beta\nItem: gamma\nAllocated buffer: Temporary payload\nFreed buffer instantaneously: buffer is null\n10 / 2 = 5\nHandled error gracefully: division by zero forbidden\nDemo complete!\n",
+	"examples/gui_demo.al": "=== Alca GUI Module Loaded ===\n1. Native dialogs API ready: gui.alert, gui.confirm, gui.prompt, gui.open_file, gui.save_file, gui.notify\n2. Desktop WebView API ready: gui.webview(title, htmlOrURL, width, height)\n3. Native Windows & Widgets API ready: win = gui.window(title, w, h)\n   - win.add_label(text)\n   - win.add_button(text, callback)\n   - win.add_input(placeholder)\n   - win.add_checkbox(text, checked)\n   - win.add_progress(percent)\n   - win.show() / win.run()\n=== GUI Verification Complete ===\n",
+}
+
 // TestExamplesEnginesAgree runs deterministic examples on both engines and
-// requires identical output and a zero exit status from each.
+// requires identical output, matching golden references, and a zero exit status from each.
 func TestExamplesEnginesAgree(t *testing.T) {
 	root := repoRoot(t)
 	for _, rel := range examplesWithDeterministicOutput {
@@ -214,6 +228,11 @@ func TestExamplesEnginesAgree(t *testing.T) {
 			}
 			if vmOut != interpOut {
 				t.Errorf("engine output mismatch\n vm: %q\nint: %q", vmOut, interpOut)
+			}
+			if expected, ok := goldenOutputs[rel]; ok {
+				if vmOut != expected {
+					t.Errorf("output does not match golden reference for %s:\n got: %q\nwant: %q", rel, vmOut, expected)
+				}
 			}
 		})
 	}

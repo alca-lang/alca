@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit_test
 
 import (
@@ -93,7 +96,7 @@ println(bump());
 			src: `
 func build() -> string:
     s: string = "";
-    for i in 1..3:
+    for i in 1..=3:
         s = s + "x";
     return s;
 println(build());

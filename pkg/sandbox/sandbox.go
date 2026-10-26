@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package sandbox implements the runtime capability policy used by the Alca
 // CLI and standalone executables.
 //
@@ -30,6 +33,9 @@ type Policy struct {
 	Read  Capability
 	Write Capability
 	Net   Capability
+	Run   Capability
+	Env   Capability
+	FFI   Capability
 }
 
 // AllowAll returns a policy that grants every capability.
@@ -38,6 +44,9 @@ func AllowAll() Policy {
 		Read:  Capability{All: true},
 		Write: Capability{All: true},
 		Net:   Capability{All: true},
+		Run:   Capability{All: true},
+		Env:   Capability{All: true},
+		FFI:   Capability{All: true},
 	}
 }
 
@@ -68,6 +77,9 @@ func (p Policy) clone() Policy {
 	p.Read.Roots = append([]string(nil), p.Read.Roots...)
 	p.Write.Roots = append([]string(nil), p.Write.Roots...)
 	p.Net.Roots = append([]string(nil), p.Net.Roots...)
+	p.Run.Roots = append([]string(nil), p.Run.Roots...)
+	p.Env.Roots = append([]string(nil), p.Env.Roots...)
+	p.FFI.Roots = append([]string(nil), p.FFI.Roots...)
 	return p
 }
 
@@ -110,11 +122,49 @@ func RequireNet(hostport string) error {
 	return &DeniedError{Operation: "network", Resource: hostport, Flag: "--allow-net[=<host[:port]>]"}
 }
 
+// RequireRun checks process execution access for command.
+func RequireRun(command string) error {
+	if CurrentPolicy().Run.AllowsCommand(command) {
+		return nil
+	}
+	return &DeniedError{Operation: "run", Resource: command, Flag: "--allow-run[=<cmd>]"}
+}
+
+// RequireEnv checks environment variable access for variable.
+func RequireEnv(variable string) error {
+	if CurrentPolicy().Env.AllowsEnv(variable) {
+		return nil
+	}
+	return &DeniedError{Operation: "env", Resource: variable, Flag: "--allow-env[=<var>]"}
+}
+
+// RequireFFI checks foreign native library loading access for library.
+func RequireFFI(library string) error {
+	if CurrentPolicy().FFI.AllowsFFI(library) {
+		return nil
+	}
+	return &DeniedError{Operation: "ffi", Resource: library, Flag: "--allow-ffi[=<lib>]"}
+}
+
+// RequireAllCapabilities gates operations that can execute arbitrary native
+// code or change machine-wide state outside path and host capability checks.
+func RequireAllCapabilities(operation string) error {
+	policy := CurrentPolicy()
+	if policy.Read.All && policy.Write.All && policy.Net.All && policy.Run.All && policy.Env.All && policy.FFI.All {
+		return nil
+	}
+	return &DeniedError{
+		Operation: operation,
+		Resource:  "system",
+		Flag:      "--allow-all",
+	}
+}
+
 // RequireURL checks network access for an HTTP(S) or WebSocket URL.
 func RequireURL(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
-		// Let the real client produce the malformed-URL error.
+		// Let the caller return the normal malformed-URL diagnostic.
 		return nil
 	}
 	host := u.Hostname()
@@ -162,6 +212,47 @@ func (c Capability) AllowsHost(hostport string) bool {
 			continue
 		}
 		if strings.EqualFold(host, ruleHost) && (rulePort == "" || rulePort == port) {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowsCommand reports whether command is allowed by the capability.
+func (c Capability) AllowsCommand(command string) bool {
+	if c.All {
+		return true
+	}
+	base := filepath.Base(command)
+	for _, rule := range c.Roots {
+		if rule == "*" || rule == command || rule == base || strings.EqualFold(rule, base) {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowsEnv reports whether variable is allowed by the capability.
+func (c Capability) AllowsEnv(variable string) bool {
+	if c.All {
+		return true
+	}
+	for _, rule := range c.Roots {
+		if rule == "*" || strings.EqualFold(rule, variable) {
+			return true
+		}
+	}
+	return false
+}
+
+// AllowsFFI reports whether native library is allowed by the capability.
+func (c Capability) AllowsFFI(library string) bool {
+	if c.All {
+		return true
+	}
+	base := filepath.Base(library)
+	for _, rule := range c.Roots {
+		if rule == "*" || rule == library || rule == base || strings.EqualFold(rule, base) {
 			return true
 		}
 	}
@@ -279,12 +370,16 @@ func ParseArgs(args []string) (Policy, []string, error) {
 
 func (p *Policy) applyFlag(arg string) error {
 	for _, item := range []struct {
-		name string
-		cap  *Capability
+		name   string
+		cap    *Capability
+		isPath bool
 	}{
-		{"--allow-read", &p.Read},
-		{"--allow-write", &p.Write},
-		{"--allow-net", &p.Net},
+		{"--allow-read", &p.Read, true},
+		{"--allow-write", &p.Write, true},
+		{"--allow-net", &p.Net, false},
+		{"--allow-run", &p.Run, false},
+		{"--allow-env", &p.Env, false},
+		{"--allow-ffi", &p.FFI, false},
 	} {
 		if arg == item.name {
 			item.cap.All = true
@@ -303,7 +398,7 @@ func (p *Policy) applyFlag(arg string) error {
 			if spec == "" {
 				return fmt.Errorf("%s contains an empty value", item.name)
 			}
-			if item.name != "--allow-net" {
+			if item.isPath {
 				abs, err := filepath.Abs(spec)
 				if err != nil {
 					return fmt.Errorf("%s: invalid path %q: %w", item.name, spec, err)
@@ -318,4 +413,4 @@ func (p *Policy) applyFlag(arg string) error {
 }
 
 // FlagHint is the help text for the capability flags.
-const FlagHint = "--allow-read[=<path>] --allow-write[=<path>] --allow-net[=<host[:port]>] --allow-all"
+const FlagHint = "--allow-read[=<path>] --allow-write[=<path>] --allow-net[=<host[:port]>] --allow-run[=<cmd>] --allow-env[=<var>] --allow-ffi[=<lib>] --allow-all"

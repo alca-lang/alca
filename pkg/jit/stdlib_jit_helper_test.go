@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit_test
 
 import (
@@ -195,7 +198,7 @@ func probe():
     println(2 ** 3);
     println(20 in values);
     assert 20 in values;
-    r := 0..2;
+    r := 0..=2;
     println(len(r));
 probe();
 `

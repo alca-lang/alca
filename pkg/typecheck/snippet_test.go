@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package typecheck_test
 
 import (
@@ -52,13 +55,15 @@ func TestCheckSnippetKeepsDeclarations(t *testing.T) {
 		t.Fatalf("using struct P failed: %s", got)
 	}
 
-	// Redeclaration with the same type is shadowing and is accepted.
-	if got := snippetErrors(t, c, "x := 2;"); got != "" {
-		t.Fatalf("same-type shadowing must be accepted, got %q", got)
+	// Repeated declarations are rejected; assignment remains valid.
+	if got := snippetErrors(t, c, "x := 2;"); !strings.Contains(got, "already declared; use assignment") {
+		t.Fatalf("expected redeclaration to be rejected, got %q", got)
 	}
-	// A different type is a hard error.
-	if got := snippetErrors(t, c, `x := "two";`); !strings.Contains(got, "changes its type") {
-		t.Fatalf("expected a type-mismatch shadowing error, got %q", got)
+	if got := snippetErrors(t, c, "x = 2;"); got != "" {
+		t.Fatalf("assignment to an existing variable must be accepted, got %q", got)
+	}
+	if got := snippetErrors(t, c, `x = "two";`); !strings.Contains(got, "cannot assign") {
+		t.Fatalf("expected a type-mismatch assignment error, got %q", got)
 	}
 }
 

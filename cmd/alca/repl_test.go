@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -60,7 +63,7 @@ func TestREPLFunctionsAndBlocksPersist(t *testing.T) {
 	out, errOut := captureOutput(t, func() {
 		session.eval("func twice(n: int) -> int:\n    return n * 2;")
 		session.eval("total := 0;")
-		session.eval("for i in 1..3:\n    total = total + i;")
+		session.eval("for i in 1..=3:\n    total = total + i;")
 		session.eval("println(twice(total));")
 	})
 	if errOut != "" {
@@ -68,6 +71,21 @@ func TestREPLFunctionsAndBlocksPersist(t *testing.T) {
 	}
 	if strings.TrimSpace(out) != "12" {
 		t.Fatalf("expected 12, got %q", out)
+	}
+}
+
+// TestREPLFunctionWithBraces covers function declaration with curly braces syntax.
+func TestREPLFunctionWithBraces(t *testing.T) {
+	session := newREPLSession()
+	out, errOut := captureOutput(t, func() {
+		session.eval("func add(a: int, b: int) -> int { return a + b; }")
+		session.eval("println(add(15, 27));")
+	})
+	if errOut != "" {
+		t.Fatalf("unexpected diagnostics:\n%s", errOut)
+	}
+	if strings.TrimSpace(out) != "42" {
+		t.Fatalf("expected 42, got %q", out)
 	}
 }
 
@@ -116,17 +134,16 @@ func TestREPLTypeErrorsReported(t *testing.T) {
 	}
 }
 
-// TestREPLRejectedRedeclarationRollsBack checks that a snippet rejected for
-// shadowing a variable with a different type leaves the previous value in place
-// and the checker in sync.
+// TestREPLRejectedRedeclarationRollsBack checks that a rejected redeclaration
+// leaves the previous value in place and the checker in sync.
 func TestREPLRejectedRedeclarationRollsBack(t *testing.T) {
 	session := newREPLSession()
 	_, errOut := captureOutput(t, func() {
 		session.eval("x := 1;")
 		session.eval("x := \"two\";")
 	})
-	if !strings.Contains(errOut, "changes its type") {
-		t.Fatalf("expected a type-mismatch shadowing error, got:\n%s", errOut)
+	if !strings.Contains(errOut, "already declared; use assignment") {
+		t.Fatalf("expected a redeclaration error, got:\n%s", errOut)
 	}
 	out, errOut2 := captureOutput(t, func() {
 		session.eval("println(x);")

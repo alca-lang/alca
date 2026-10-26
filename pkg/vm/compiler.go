@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vm implements the Bytecode compiler for the Alca programming language.
 package vm
 
@@ -540,6 +543,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(OpEqual)
 		case "===":
 			c.emit(OpStrictEqual)
+		case "!==":
+			c.emit(OpStrictEqual)
+			c.emit(OpNot)
 		case "!=":
 			c.emit(OpNotEqual)
 		case ">":
@@ -557,6 +563,15 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.Identifier:
+		if n.Value == "__line__" {
+			lineVal := int64(n.Token.Line)
+			if lineVal <= 0 {
+				lineVal = 1
+			}
+			idx := c.addConstant(&interpreter.IntegerValue{Val: lineVal})
+			c.emit(OpConstant, idx)
+			return nil
+		}
 		symbol, ok := c.symbolTable.Resolve(n.Value)
 		if !ok {
 			// Resolve as builtin/stdlib/environment symbol
@@ -573,7 +588,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if err := c.Compile(n.End); err != nil {
 			return err
 		}
-		c.emit(OpRange)
+		if n.Inclusive {
+			c.emit(OpRangeInclusive)
+		} else {
+			c.emit(OpRange)
+		}
 
 	case *ast.AssignExpression:
 		asValue := c.assignAsValue
@@ -757,6 +776,12 @@ func (c *Compiler) Compile(node ast.Node) error {
 			opByte = 1
 		}
 		c.emit(OpStream, int(opByte))
+
+	case *ast.AwaitExpression:
+		if n.Expression != nil {
+			return c.Compile(n.Expression)
+		}
+		c.emit(OpNull)
 	}
 
 	return nil
@@ -1050,9 +1075,22 @@ func (c *Compiler) compileFor(variable string, iterable ast.Expression, body *as
 		// (inclusive, direction-aware) exactly.
 		startLit, startOK := rng.Start.(*ast.IntegerLiteral)
 		endLit, endOK := rng.End.(*ast.IntegerLiteral)
-		if startOK && endOK && startLit.Value <= endLit.Value &&
-			!c.assignedNames[variable] && !writesLoopVariable(body, variable) {
-			return c.compileForRange(variable, rng.Start, rng.End, body)
+		if startOK && endOK && !c.assignedNames[variable] && !writesLoopVariable(body, variable) {
+			if rng.Inclusive {
+				if startLit.Value <= endLit.Value {
+					return c.compileForRange(variable, rng.Start, rng.End, body)
+				}
+			} else {
+				if startLit.Value < endLit.Value {
+					adjustedEnd := &ast.IntegerLiteral{Token: endLit.Token, Value: endLit.Value - 1}
+					return c.compileForRange(variable, rng.Start, adjustedEnd, body)
+				}
+				if startLit.Value == endLit.Value {
+					// 0 iterations for empty half-open range
+					return nil
+				}
+				// descending: fall through to generic iterator
+			}
 		}
 	}
 

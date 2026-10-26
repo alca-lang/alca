@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package interpreter implements the tree-walking runtime engine for the Alca programming language.
 package interpreter
 
@@ -16,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/alca-lang/alca/pkg/limits"
 )
@@ -61,12 +66,28 @@ type HostCallable interface {
 	Call(args []Value) (Value, error)
 }
 
+// MethodProvider is implemented by host types that want to support method
+// calls (obj.method(args...)) from Alca code without a circular dependency
+// between the interpreter and the defining package.
+type MethodProvider interface {
+	CallMethod(name string, args []Value) (Value, error)
+}
+
+// IndexProvider is implemented by host types that want to support indexing
+// (obj[index]) from Alca code without a circular dependency.
+type IndexProvider interface {
+	Index(index Value) Value
+}
+
 // Invoke calls a user-defined function value from host code (for example a GUI
 // button callback). It reports an error when no interpreter is attached or the
 // value is not callable.
 func Invoke(fn Value, args []Value) (Value, error) {
 	if fn == nil {
 		return nil, errors.New("callback is nil")
+	}
+	if b, ok := fn.(*BuiltinFunction); ok {
+		return b.Fn(args...), nil
 	}
 	if callable, ok := fn.(HostCallable); ok {
 		return callable.Call(args)
@@ -801,6 +822,8 @@ func CallMethod(obj Value, method string, args []Value) (Value, error) {
 			return nil, fmt.Errorf("fn.stream() is not supported by the VM backend; run the program with the interpreter")
 		}
 		return nil, fmt.Errorf("value of type %s has no methods", obj.Type())
+	case MethodProvider:
+		return target.CallMethod(method, args)
 	default:
 		return nil, fmt.Errorf("value of type %s has no methods", obj.Type())
 	}
@@ -819,8 +842,12 @@ func callStringMethod(s *StringValue, method string, args []Value) (Value, error
 			elems[i] = &StringValue{Val: p}
 		}
 		return NewList(elems...), nil
-	case "trim":
+	case "trim", "strip":
 		return &StringValue{Val: strings.TrimSpace(s.Val)}, nil
+	case "lstrip":
+		return &StringValue{Val: strings.TrimLeft(s.Val, " \t\r\n")}, nil
+	case "rstrip":
+		return &StringValue{Val: strings.TrimRight(s.Val, " \t\r\n")}, nil
 	case "upper":
 		return &StringValue{Val: strings.ToUpper(s.Val)}, nil
 	case "lower":
@@ -861,6 +888,292 @@ func callStringMethod(s *StringValue, method string, args []Value) (Value, error
 		return FALSE, nil
 	case "len":
 		return &IntegerValue{Val: int64(len(s.RuneSlice()))}, nil
+	case "last_index_of":
+		if len(args) == 0 {
+			return &IntegerValue{Val: -1}, nil
+		}
+		sub := CoerceToString(args[0])
+		idx := strings.LastIndex(s.Val, sub)
+		if idx < 0 {
+			return &IntegerValue{Val: -1}, nil
+		}
+		return &IntegerValue{Val: int64(utf8.RuneCountInString(s.Val[:idx]))}, nil
+	case "count":
+		if len(args) == 0 {
+			return &IntegerValue{Val: 0}, nil
+		}
+		sub := CoerceToString(args[0])
+		return &IntegerValue{Val: int64(strings.Count(s.Val, sub))}, nil
+	case "repeat":
+		if len(args) == 0 {
+			return s, nil
+		}
+		count := int64(0)
+		if iv, ok := args[0].(*IntegerValue); ok && iv.Val > 0 {
+			count = iv.Val
+		}
+		return &StringValue{Val: strings.Repeat(s.Val, int(count))}, nil
+	case "pad_left":
+		if len(args) == 0 {
+			return s, nil
+		}
+		target := int64(0)
+		if iv, ok := args[0].(*IntegerValue); ok {
+			target = iv.Val
+		}
+		pad := " "
+		if len(args) >= 2 {
+			p := CoerceToString(args[1])
+			if p != "" {
+				pad = p
+			}
+		}
+		cur := int64(utf8.RuneCountInString(s.Val))
+		if cur >= target {
+			return s, nil
+		}
+		needed := target - cur
+		var bld strings.Builder
+		for int64(utf8.RuneCountInString(bld.String())) < needed {
+			bld.WriteString(pad)
+		}
+		padRunes := []rune(bld.String())
+		padStr := bld.String()
+		if int64(len(padRunes)) > needed {
+			padStr = string(padRunes[:needed])
+		}
+		return &StringValue{Val: padStr + s.Val}, nil
+	case "pad_right":
+		if len(args) == 0 {
+			return s, nil
+		}
+		target := int64(0)
+		if iv, ok := args[0].(*IntegerValue); ok {
+			target = iv.Val
+		}
+		pad := " "
+		if len(args) >= 2 {
+			p := CoerceToString(args[1])
+			if p != "" {
+				pad = p
+			}
+		}
+		cur := int64(utf8.RuneCountInString(s.Val))
+		if cur >= target {
+			return s, nil
+		}
+		needed := target - cur
+		var bld strings.Builder
+		for int64(utf8.RuneCountInString(bld.String())) < needed {
+			bld.WriteString(pad)
+		}
+		padRunes := []rune(bld.String())
+		padStr := bld.String()
+		if int64(len(padRunes)) > needed {
+			padStr = string(padRunes[:needed])
+		}
+		return &StringValue{Val: s.Val + padStr}, nil
+	case "pad":
+		return callStringMethod(s, "pad_right", args)
+	case "format":
+		template := s.Val
+		if len(args) == 0 {
+			return s, nil
+		}
+		if strings.Contains(template, "{") && strings.Contains(template, "}") {
+			res := template
+			for i, a := range args {
+				placeholder := fmt.Sprintf("{%d}", i)
+				res = strings.ReplaceAll(res, placeholder, CoerceToString(a))
+			}
+			for _, a := range args {
+				if !strings.Contains(res, "{}") {
+					break
+				}
+				res = strings.Replace(res, "{}", CoerceToString(a), 1)
+			}
+			return &StringValue{Val: res}, nil
+		}
+		if strings.Contains(template, "%") {
+			rawArgs := make([]any, len(args))
+			for i, a := range args {
+				switch v := a.(type) {
+				case *IntegerValue:
+					rawArgs[i] = v.Val
+				case *FloatValue:
+					rawArgs[i] = v.Val
+				case *BoolValue:
+					rawArgs[i] = v.Val
+				case *StringValue:
+					rawArgs[i] = v.Val
+				default:
+					rawArgs[i] = a.Inspect()
+				}
+			}
+			return &StringValue{Val: fmt.Sprintf(template, rawArgs...)}, nil
+		}
+		return s, nil
+	case "center":
+		if len(args) == 0 {
+			return s, nil
+		}
+		target := int64(0)
+		if iv, ok := args[0].(*IntegerValue); ok {
+			target = iv.Val
+		}
+		pad := " "
+		if len(args) >= 2 {
+			p := CoerceToString(args[1])
+			if p != "" {
+				pad = p
+			}
+		}
+		cur := int64(utf8.RuneCountInString(s.Val))
+		if cur >= target {
+			return s, nil
+		}
+		total := target - cur
+		left := total / 2
+		right := total - left
+		makeP := func(n int64) string {
+			var b strings.Builder
+			for int64(utf8.RuneCountInString(b.String())) < n {
+				b.WriteString(pad)
+			}
+			r := []rune(b.String())
+			if int64(len(r)) > n {
+				return string(r[:n])
+			}
+			return b.String()
+		}
+		return &StringValue{Val: makeP(left) + s.Val + makeP(right)}, nil
+	case "capitalize":
+		runes := []rune(s.Val)
+		if len(runes) == 0 {
+			return s, nil
+		}
+		runes[0] = unicode.ToUpper(runes[0])
+		for i := 1; i < len(runes); i++ {
+			runes[i] = unicode.ToLower(runes[i])
+		}
+		return &StringValue{Val: string(runes)}, nil
+	case "title":
+		runes := []rune(s.Val)
+		inWord := false
+		for i, r := range runes {
+			if unicode.IsSpace(r) || unicode.IsPunct(r) {
+				inWord = false
+			} else if !inWord {
+				runes[i] = unicode.ToUpper(r)
+				inWord = true
+			} else {
+				runes[i] = unicode.ToLower(r)
+			}
+		}
+		return &StringValue{Val: string(runes)}, nil
+	case "is_empty":
+		return &BoolValue{Val: len(s.Val) == 0}, nil
+	case "is_blank":
+		return &BoolValue{Val: strings.TrimSpace(s.Val) == ""}, nil
+	case "is_alpha":
+		if len(s.Val) == 0 {
+			return FALSE, nil
+		}
+		for _, r := range s.Val {
+			if !unicode.IsLetter(r) {
+				return FALSE, nil
+			}
+		}
+		return TRUE, nil
+	case "is_digit", "is_numeric":
+		if len(s.Val) == 0 {
+			return FALSE, nil
+		}
+		for _, r := range s.Val {
+			if !unicode.IsDigit(r) {
+				return FALSE, nil
+			}
+		}
+		return TRUE, nil
+	case "is_alphanumeric":
+		if len(s.Val) == 0 {
+			return FALSE, nil
+		}
+		for _, r := range s.Val {
+			if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+				return FALSE, nil
+			}
+		}
+		return TRUE, nil
+	case "is_upper":
+		hasCased := false
+		for _, r := range s.Val {
+			if unicode.IsUpper(r) {
+				hasCased = true
+			} else if unicode.IsLower(r) {
+				return FALSE, nil
+			}
+		}
+		return &BoolValue{Val: hasCased}, nil
+	case "is_lower":
+		hasCased := false
+		for _, r := range s.Val {
+			if unicode.IsLower(r) {
+				hasCased = true
+			} else if unicode.IsUpper(r) {
+				return FALSE, nil
+			}
+		}
+		return &BoolValue{Val: hasCased}, nil
+	case "trim_prefix":
+		if len(args) == 0 {
+			return s, nil
+		}
+		return &StringValue{Val: strings.TrimPrefix(s.Val, CoerceToString(args[0]))}, nil
+	case "trim_suffix":
+		if len(args) == 0 {
+			return s, nil
+		}
+		return &StringValue{Val: strings.TrimSuffix(s.Val, CoerceToString(args[0]))}, nil
+	case "char_at":
+		if len(args) == 0 {
+			return &StringValue{Val: ""}, nil
+		}
+		idx := int64(0)
+		if iv, ok := args[0].(*IntegerValue); ok {
+			idx = iv.Val
+		}
+		runes := []rune(s.Val)
+		n := int64(len(runes))
+		if idx < 0 {
+			idx += n
+		}
+		if idx < 0 || idx >= n {
+			return &StringValue{Val: ""}, nil
+		}
+		return &StringValue{Val: string(runes[idx])}, nil
+	case "lines":
+		normalized := strings.ReplaceAll(s.Val, "\r\n", "\n")
+		normalized = strings.ReplaceAll(normalized, "\r", "\n")
+		parts := strings.Split(normalized, "\n")
+		values := make([]Value, len(parts))
+		for i, p := range parts {
+			values[i] = &StringValue{Val: p}
+		}
+		return NewList(values...), nil
+	case "words":
+		parts := strings.Fields(s.Val)
+		values := make([]Value, len(parts))
+		for i, p := range parts {
+			values[i] = &StringValue{Val: p}
+		}
+		return NewList(values...), nil
+	case "reverse":
+		runes := []rune(s.Val)
+		for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+			runes[i], runes[j] = runes[j], runes[i]
+		}
+		return &StringValue{Val: string(runes)}, nil
 	default:
 		return nil, fmt.Errorf("string has no method %q", method)
 	}
@@ -868,9 +1181,9 @@ func callStringMethod(s *StringValue, method string, args []Value) (Value, error
 
 func callListMethod(l *ListValue, method string, args []Value) (Value, error) {
 	switch method {
-	case "push":
+	case "push", "append":
 		if len(args) == 0 {
-			return nil, fmt.Errorf(".push() requires an element")
+			return nil, fmt.Errorf(".%s() requires an element", method)
 		}
 		l.Append(args[0])
 		return l, nil
@@ -957,12 +1270,211 @@ func callListMethod(l *ListValue, method string, args []Value) (Value, error) {
 			}
 		}
 		return NewList(res...), nil
+	case "reduce":
+		if len(args) == 0 {
+			return nil, fmt.Errorf(".reduce() requires a function argument")
+		}
+		fn := args[0]
+		elems := l.ElementsSlice()
+		var acc Value
+		start := 0
+		if len(args) >= 2 {
+			acc = args[1]
+		} else {
+			if len(elems) == 0 {
+				return nil, fmt.Errorf(".reduce() on empty list with no initial value")
+			}
+			acc = elems[0]
+			start = 1
+		}
+		for idx := start; idx < len(elems); idx++ {
+			ret, err := invokeCallable(fn, []Value{acc, elems[idx], &IntegerValue{Val: int64(idx)}})
+			if err != nil {
+				ret, err = invokeCallable(fn, []Value{acc, elems[idx]})
+			}
+			if err != nil {
+				return nil, err
+			}
+			acc = ret
+		}
+		return acc, nil
+	case "slice":
+		if len(args) == 0 {
+			return nil, fmt.Errorf(".slice() requires start index")
+		}
+		startVal, ok := args[0].(*IntegerValue)
+		if !ok {
+			return nil, fmt.Errorf(".slice() start index must be integer")
+		}
+		elems := l.ElementsSlice()
+		n := int64(len(elems))
+		start := startVal.Val
+		if start < 0 {
+			start += n
+			if start < 0 {
+				start = 0
+			}
+		}
+		end := n
+		if len(args) >= 2 {
+			if endVal, ok := args[1].(*IntegerValue); ok {
+				end = endVal.Val
+				if end < 0 {
+					end += n
+				}
+				if end > n {
+					end = n
+				}
+			}
+		}
+		if start > end {
+			start = end
+		}
+		if start > n {
+			start = n
+		}
+		return NewList(elems[start:end]...), nil
+	case "find":
+		if len(args) == 0 {
+			return nil, fmt.Errorf(".find() requires a predicate function")
+		}
+		fn := args[0]
+		for idx, el := range l.ElementsSlice() {
+			ret, err := invokeCallable(fn, []Value{el, &IntegerValue{Val: int64(idx)}})
+			if err != nil {
+				ret, err = invokeCallable(fn, []Value{el})
+			}
+			if err != nil {
+				return nil, err
+			}
+			if IsTruthy(ret) {
+				return el, nil
+			}
+		}
+		return NULL, nil
+	case "find_index":
+		if len(args) == 0 {
+			return nil, fmt.Errorf(".find_index() requires a predicate function")
+		}
+		fn := args[0]
+		for idx, el := range l.ElementsSlice() {
+			ret, err := invokeCallable(fn, []Value{el, &IntegerValue{Val: int64(idx)}})
+			if err != nil {
+				ret, err = invokeCallable(fn, []Value{el})
+			}
+			if err != nil {
+				return nil, err
+			}
+			if IsTruthy(ret) {
+				return &IntegerValue{Val: int64(idx)}, nil
+			}
+		}
+		return &IntegerValue{Val: -1}, nil
+	case "index_of":
+		if len(args) == 0 {
+			return &IntegerValue{Val: -1}, nil
+		}
+		for idx, el := range l.ElementsSlice() {
+			if ValuesEqual(el, args[0]) {
+				return &IntegerValue{Val: int64(idx)}, nil
+			}
+		}
+		return &IntegerValue{Val: -1}, nil
+	case "any":
+		elems := l.ElementsSlice()
+		if len(args) > 0 && args[0] != nil && args[0].Type() != NULL_VAL {
+			fn := args[0]
+			for idx, el := range elems {
+				ret, err := invokeCallable(fn, []Value{el, &IntegerValue{Val: int64(idx)}})
+				if err != nil {
+					ret, err = invokeCallable(fn, []Value{el})
+				}
+				if err != nil {
+					return nil, err
+				}
+				if IsTruthy(ret) {
+					return TRUE, nil
+				}
+			}
+		} else {
+			for _, el := range elems {
+				if IsTruthy(el) {
+					return TRUE, nil
+				}
+			}
+		}
+		return FALSE, nil
+	case "all":
+		elems := l.ElementsSlice()
+		if len(args) > 0 && args[0] != nil && args[0].Type() != NULL_VAL {
+			fn := args[0]
+			for idx, el := range elems {
+				ret, err := invokeCallable(fn, []Value{el, &IntegerValue{Val: int64(idx)}})
+				if err != nil {
+					ret, err = invokeCallable(fn, []Value{el})
+				}
+				if err != nil {
+					return nil, err
+				}
+				if !IsTruthy(ret) {
+					return FALSE, nil
+				}
+			}
+		} else {
+			for _, el := range elems {
+				if !IsTruthy(el) {
+					return FALSE, nil
+				}
+			}
+		}
+		return TRUE, nil
+	case "flatten":
+		res := make([]Value, 0)
+		for _, el := range l.ElementsSlice() {
+			if sub, ok := el.(*ListValue); ok {
+				res = append(res, sub.ElementsSlice()...)
+			} else {
+				res = append(res, el)
+			}
+		}
+		return NewList(res...), nil
+	case "unique":
+		res := make([]Value, 0)
+		seen := make(map[string]bool)
+		for _, el := range l.ElementsSlice() {
+			k := el.Inspect()
+			if !seen[k] {
+				seen[k] = true
+				res = append(res, el)
+			}
+		}
+		return NewList(res...), nil
+	case "concat":
+		if len(args) == 0 {
+			return l.Clone(), nil
+		}
+		other, ok := args[0].(*ListValue)
+		if !ok {
+			return nil, fmt.Errorf(".concat() requires a list argument")
+		}
+		e1 := l.ElementsSlice()
+		e2 := other.ElementsSlice()
+		res := make([]Value, len(e1)+len(e2))
+		copy(res, e1)
+		copy(res[len(e1):], e2)
+		return NewList(res...), nil
 	default:
 		return nil, fmt.Errorf("list has no method %q", method)
 	}
 }
 
 func callMapMethod(m *MapValue, method string, args []Value) (Value, error) {
+	if fnVal, ok := m.Get(method); ok {
+		switch fnVal.(type) {
+		case *BuiltinFunction, *FuncValue, HostCallable:
+			return invokeCallable(fnVal, args)
+		}
+	}
 	switch method {
 	case "keys":
 		keys := m.Keys()
@@ -992,6 +1504,181 @@ func callMapMethod(m *MapValue, method string, args []Value) (Value, error) {
 		return NULL, nil
 	case "len":
 		return &IntegerValue{Val: int64(m.Len())}, nil
+	case "get":
+		if len(args) == 0 {
+			return NULL, nil
+		}
+		key := CoerceToString(args[0])
+		if v, ok := m.Get(key); ok {
+			return v, nil
+		}
+		if len(args) >= 2 {
+			return args[1], nil
+		}
+		return NULL, nil
+	case "set":
+		if len(args) < 2 {
+			return nil, fmt.Errorf(".set() requires key and value arguments")
+		}
+		key := CoerceToString(args[0])
+		m.Set(key, args[1])
+		return m, nil
+	case "reverse":
+		keys := m.Keys()
+		res := NewMap()
+		for i := len(keys) - 1; i >= 0; i-- {
+			k := keys[i]
+			v, _ := m.Get(k)
+			res.Set(k, v)
+		}
+		return res, nil
+	case "sort":
+		keys := m.Keys()
+		if len(args) > 0 && args[0] != nil && args[0].Type() != NULL_VAL {
+			fn := args[0]
+			var sortErr error
+			sort.SliceStable(keys, func(i, j int) bool {
+				if sortErr != nil {
+					return false
+				}
+				k1, k2 := keys[i], keys[j]
+				v1, _ := m.Get(k1)
+				v2, _ := m.Get(k2)
+				res, err := invokeCallable(fn, []Value{
+					&StringValue{Val: k1}, v1,
+					&StringValue{Val: k2}, v2,
+				})
+				if err != nil {
+					res, err = invokeCallable(fn, []Value{
+						&StringValue{Val: k1}, &StringValue{Val: k2},
+					})
+				}
+				if err != nil {
+					sortErr = err
+					return false
+				}
+				if bVal, ok := res.(*BoolValue); ok {
+					return bVal.Val
+				}
+				if iVal, ok := res.(*IntegerValue); ok {
+					return iVal.Val < 0
+				}
+				return IsTruthy(res)
+			})
+			if sortErr != nil {
+				return nil, sortErr
+			}
+		} else {
+			sort.Strings(keys)
+		}
+		res := NewMap()
+		for _, k := range keys {
+			v, _ := m.Get(k)
+			res.Set(k, v)
+		}
+		return res, nil
+	case "filter":
+		if len(args) == 0 {
+			return nil, fmt.Errorf(".filter() requires a predicate function")
+		}
+		fn := args[0]
+		res := NewMap()
+		for _, k := range m.Keys() {
+			v, _ := m.Get(k)
+			ret, err := invokeCallable(fn, []Value{&StringValue{Val: k}, v})
+			if err != nil {
+				ret, err = invokeCallable(fn, []Value{v})
+			}
+			if err != nil {
+				return nil, err
+			}
+			if IsTruthy(ret) {
+				res.Set(k, v)
+			}
+		}
+		return res, nil
+	case "map":
+		if len(args) == 0 {
+			return nil, fmt.Errorf(".map() requires a function argument")
+		}
+		fn := args[0]
+		res := NewMap()
+		for _, k := range m.Keys() {
+			v, _ := m.Get(k)
+			ret, err := invokeCallable(fn, []Value{&StringValue{Val: k}, v})
+			if err != nil {
+				ret, err = invokeCallable(fn, []Value{v})
+			}
+			if err != nil {
+				return nil, err
+			}
+			if lVal, ok := ret.(*ListValue); ok && lVal.Len() == 2 {
+				s := lVal.ElementsSlice()
+				res.Set(CoerceToString(s[0]), s[1])
+			} else {
+				res.Set(k, ret)
+			}
+		}
+		return res, nil
+	case "reduce":
+		if len(args) == 0 {
+			return nil, fmt.Errorf(".reduce() requires a function argument")
+		}
+		fn := args[0]
+		keys := m.Keys()
+		var acc Value
+		start := 0
+		if len(args) >= 2 {
+			acc = args[1]
+		} else {
+			if len(keys) == 0 {
+				return nil, fmt.Errorf(".reduce() on empty map with no initial value")
+			}
+			firstV, _ := m.Get(keys[0])
+			acc = firstV
+			start = 1
+		}
+		for i := start; i < len(keys); i++ {
+			k := keys[i]
+			v, _ := m.Get(k)
+			ret, err := invokeCallable(fn, []Value{acc, &StringValue{Val: k}, v})
+			if err != nil {
+				ret, err = invokeCallable(fn, []Value{acc, v})
+			}
+			if err != nil {
+				return nil, err
+			}
+			acc = ret
+		}
+		return acc, nil
+	case "merge":
+		if len(args) == 0 {
+			return m, nil
+		}
+		other, ok := args[0].(*MapValue)
+		if !ok {
+			return nil, fmt.Errorf(".merge() requires a map argument")
+		}
+		res := NewMap()
+		for _, k := range m.Keys() {
+			v, _ := m.Get(k)
+			res.Set(k, v)
+		}
+		for _, k := range other.Keys() {
+			v, _ := other.Get(k)
+			res.Set(k, v)
+		}
+		return res, nil
+	case "entries":
+		keys := m.Keys()
+		res := make([]Value, len(keys))
+		for i, k := range keys {
+			v, _ := m.Get(k)
+			res[i] = NewList(&StringValue{Val: k}, v)
+		}
+		return NewList(res...), nil
+	case "clone":
+		return m.Clone(), nil
 	default:
 		if fnVal, ok := m.Get(method); ok {
 			return invokeCallable(fnVal, args)

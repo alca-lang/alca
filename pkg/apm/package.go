@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package apm
 
 import (
@@ -248,7 +251,12 @@ func UnpackArchive(data []byte, dir string) error {
 		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(name)), 0o755); err != nil {
+			dirTarget := filepath.Join(dir, filepath.FromSlash(name))
+			rel, err := filepath.Rel(dir, dirTarget)
+			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+				return fmt.Errorf("package archive directory escapes target directory: %q", hdr.Name)
+			}
+			if err := os.MkdirAll(dirTarget, 0o755); err != nil {
 				return err
 			}
 			continue
@@ -264,6 +272,10 @@ func UnpackArchive(data []byte, dir string) error {
 			return fmt.Errorf("package archive expands to more than %d bytes", MaxPackageBytes)
 		}
 		target := filepath.Join(dir, filepath.FromSlash(name))
+		rel, err := filepath.Rel(dir, target)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+			return fmt.Errorf("package archive member escapes target directory: %q", hdr.Name)
+		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}

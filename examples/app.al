@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // ==========================================
 // Production Alca Application
 // ==========================================
@@ -40,7 +43,7 @@ println("Logged operational event to ./audit.log via stream operator '>>'");
 buf: string | null = "High memory temporary buffer";
 println("Buffer allocated: " + string(buf));
 buf = null;
-if buf == null:
+if buf === null:
     println("Buffer instantly freed via null assignment: OK");
 
 println("=== Alca Application Finished Successfully ===");

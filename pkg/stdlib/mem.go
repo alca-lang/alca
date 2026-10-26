@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the low-level memory module for the Alca programming
 // language.
 //
@@ -106,14 +109,12 @@ func RegisterMemBuiltins(env *interpreter.Environment) {
 		if !ok {
 			return interpreter.NewError(400, "mem.zero requires an address and a size")
 		}
-		if !withinBounds(addr, 0, size) {
+		if !withBlockInRange(addr, 0, size, func(block *memoryBlock) {
+			for i := int64(0); i < size; i++ {
+				block.data[i] = 0
+			}
+		}) {
 			return interpreter.NewError(400, "mem.zero: the range is outside of the block")
-		}
-		memoryMu.Lock()
-		block := memoryBlocks[addr]
-		memoryMu.Unlock()
-		for i := int64(0); i < size; i++ {
-			block.data[i] = 0
 		}
 		return interpreter.TRUE
 	})
@@ -132,14 +133,9 @@ func RegisterMemBuiltins(env *interpreter.Environment) {
 		if !ok || size < 0 {
 			return interpreter.NewError(400, "mem.copy requires a size")
 		}
-		if !withinBounds(dst, 0, size) || !withinBounds(src, 0, size) {
+		if !copyBetweenBlocks(dst, src, size) {
 			return interpreter.NewError(400, "mem.copy: the range is outside of the block")
 		}
-		memoryMu.Lock()
-		dstBlock := memoryBlocks[dst]
-		srcBlock := memoryBlocks[src]
-		memoryMu.Unlock()
-		copy(dstBlock.data[:size], srcBlock.data[:size])
 		return interpreter.TRUE
 	})
 
@@ -157,14 +153,12 @@ func RegisterMemBuiltins(env *interpreter.Environment) {
 		if !ok || size < 0 {
 			return interpreter.NewError(400, "mem.fill requires a size")
 		}
-		if !withinBounds(addr, 0, size) {
+		if !withBlockInRange(addr, 0, size, func(block *memoryBlock) {
+			for i := int64(0); i < size; i++ {
+				block.data[i] = byte(value)
+			}
+		}) {
 			return interpreter.NewError(400, "mem.fill: the range is outside of the block")
-		}
-		memoryMu.Lock()
-		block := memoryBlocks[addr]
-		memoryMu.Unlock()
-		for i := int64(0); i < size; i++ {
-			block.data[i] = byte(value)
 		}
 		return interpreter.TRUE
 	})
@@ -262,26 +256,24 @@ func RegisterMemBuiltins(env *interpreter.Environment) {
 			if !ok {
 				return interpreter.NewError(400, fmt.Sprintf("mem.read_%s requires an address", accessor.name))
 			}
-			if !withinBounds(addr, offset, size) {
+			var result int64
+			if !withBlockInRange(addr, offset, size, func(block *memoryBlock) {
+				result = read(block, offset)
+			}) {
 				return interpreter.NewError(400, fmt.Sprintf("mem.read_%s: the address is outside of the block", accessor.name))
 			}
-			memoryMu.Lock()
-			block := memoryBlocks[addr]
-			memoryMu.Unlock()
-			return &interpreter.IntegerValue{Val: read(block, offset)}
+			return &interpreter.IntegerValue{Val: result}
 		})
 		register("write_"+accessor.name, func(args ...interpreter.Value) interpreter.Value {
 			addr, offset, value, ok := addressValueAndOffset(args)
 			if !ok {
 				return interpreter.NewError(400, fmt.Sprintf("mem.write_%s requires an address and a value", accessor.name))
 			}
-			if !withinBounds(addr, offset, size) {
+			if !withBlockInRange(addr, offset, size, func(block *memoryBlock) {
+				write(block, offset, value)
+			}) {
 				return interpreter.NewError(400, fmt.Sprintf("mem.write_%s: the address is outside of the block", accessor.name))
 			}
-			memoryMu.Lock()
-			block := memoryBlocks[addr]
-			memoryMu.Unlock()
-			write(block, offset, value)
 			return interpreter.TRUE
 		})
 	}
@@ -292,15 +284,13 @@ func RegisterMemBuiltins(env *interpreter.Environment) {
 		if !ok {
 			return interpreter.NewError(400, "mem.read_f64 requires an address")
 		}
-		if !withinBounds(addr, offset, 8) {
+		var bits uint64
+		if !withBlockInRange(addr, offset, 8, func(block *memoryBlock) {
+			for i := int64(7); i >= 0; i-- {
+				bits = bits<<8 | uint64(block.data[offset+i])
+			}
+		}) {
 			return interpreter.NewError(400, "mem.read_f64: the address is outside of the block")
-		}
-		memoryMu.Lock()
-		block := memoryBlocks[addr]
-		memoryMu.Unlock()
-		bits := uint64(0)
-		for i := int64(7); i >= 0; i-- {
-			bits = bits<<8 | uint64(block.data[offset+i])
 		}
 		return &interpreter.FloatValue{Val: float64FromBits(bits)}
 	})
@@ -323,15 +313,13 @@ func RegisterMemBuiltins(env *interpreter.Environment) {
 			}
 			offset = raw
 		}
-		if !withinBounds(addr, offset, 8) {
+		if !withBlockInRange(addr, offset, 8, func(block *memoryBlock) {
+			bits := float64Bits(value)
+			for i := int64(0); i < 8; i++ {
+				block.data[offset+i] = byte(bits >> (8 * i))
+			}
+		}) {
 			return interpreter.NewError(400, "mem.write_f64: the address is outside of the block")
-		}
-		memoryMu.Lock()
-		block := memoryBlocks[addr]
-		memoryMu.Unlock()
-		bits := float64Bits(value)
-		for i := int64(0); i < 8; i++ {
-			block.data[offset+i] = byte(bits >> (8 * i))
 		}
 		return interpreter.TRUE
 	})
@@ -346,13 +334,13 @@ func RegisterMemBuiltins(env *interpreter.Environment) {
 		if !ok || size < 0 {
 			return interpreter.NewError(400, "mem.read_bytes requires a size")
 		}
-		if !withinBounds(addr, offset, size) {
+		var data []byte
+		if !withBlockInRange(addr, offset, size, func(block *memoryBlock) {
+			data = append([]byte(nil), block.data[offset:offset+size]...)
+		}) {
 			return interpreter.NewError(400, "mem.read_bytes: the range is outside of the block")
 		}
-		memoryMu.Lock()
-		block := memoryBlocks[addr]
-		memoryMu.Unlock()
-		return &interpreter.BlobValue{Data: append([]byte(nil), block.data[offset:offset+size]...)}
+		return &interpreter.BlobValue{Data: data}
 	})
 
 	// mem.write_bytes(address, data, offset?) -> bool
@@ -373,13 +361,11 @@ func RegisterMemBuiltins(env *interpreter.Environment) {
 			}
 			offset = raw
 		}
-		if !withinBounds(addr, offset, int64(len(data))) {
+		if !withBlockInRange(addr, offset, int64(len(data)), func(block *memoryBlock) {
+			copy(block.data[offset:offset+int64(len(data))], data)
+		}) {
 			return interpreter.NewError(400, "mem.write_bytes: the range is outside of the block")
 		}
-		memoryMu.Lock()
-		block := memoryBlocks[addr]
-		memoryMu.Unlock()
-		copy(block.data[offset:offset+int64(len(data))], data)
 		return interpreter.TRUE
 	})
 
@@ -522,18 +508,53 @@ func blockArgs(args []interpreter.Value, addrIndex, sizeIndex int) (uintptr, int
 	return addr, size, true
 }
 
-// withinBounds reports whether a range lies inside the block of an address.
-func withinBounds(addr uintptr, offset, size int64) bool {
-	memoryMu.Lock()
-	block, found := memoryBlocks[addr]
-	memoryMu.Unlock()
-	if !found {
-		return false
-	}
+// withinRange reports whether the byte range [offset, offset+size) lies inside
+// a block of the given length. It never computes offset+size, so the check is
+// safe against integer overflow even when offset or size are attacker-supplied.
+func withinRange(length, offset, size int64) bool {
 	if offset < 0 || size < 0 {
 		return false
 	}
-	return offset+size <= int64(len(block.data))
+	if offset > length {
+		return false
+	}
+	return size <= length-offset
+}
+
+// withBlockInRange looks up the block for addr, validates that [offset,
+// offset+size) lies inside it, and then runs fn against the block — all while
+// holding memoryMu. Performing the lookup, the bounds check and the access in
+// one critical section means a concurrent mem.free cannot release the block
+// (which would otherwise leave fn dereferencing a nil block) and the overflow-
+// safe withinRange check cannot be bypassed by a racing mutation.
+func withBlockInRange(addr uintptr, offset, size int64, fn func(block *memoryBlock)) bool {
+	memoryMu.Lock()
+	block, found := memoryBlocks[addr]
+	if !found || !withinRange(int64(len(block.data)), offset, size) {
+		memoryMu.Unlock()
+		return false
+	}
+	fn(block)
+	memoryMu.Unlock()
+	return true
+}
+
+// copyBetweenBlocks copies size bytes from the block at src to the block at
+// dst while holding memoryMu for the whole operation, so neither block can be
+// freed mid-copy.
+func copyBetweenBlocks(dst, src uintptr, size int64) bool {
+	memoryMu.Lock()
+	dstBlock, dstFound := memoryBlocks[dst]
+	srcBlock, srcFound := memoryBlocks[src]
+	if !dstFound || !srcFound ||
+		!withinRange(int64(len(dstBlock.data)), 0, size) ||
+		!withinRange(int64(len(srcBlock.data)), 0, size) {
+		memoryMu.Unlock()
+		return false
+	}
+	copy(dstBlock.data[:size], srcBlock.data[:size])
+	memoryMu.Unlock()
+	return true
 }
 
 // memoryTypeSize returns the size of a C type in bytes.

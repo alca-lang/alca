@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import (
@@ -19,7 +22,7 @@ func TestBuiltinConversionsMatchInterpreter(t *testing.T) {
 		{
 			name: "float of int in a loop",
 			src: `x := 0.0;
-for i in 1..5:
+for i in 1..=5:
     x = x + float(i);
 println(string(int(x)));
 `,

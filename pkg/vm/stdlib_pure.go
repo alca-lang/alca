@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import "strings"
@@ -47,18 +50,6 @@ var mixedPureStdlibMembers = map[string]map[string]bool{
 	"ini": {
 		"parse":     true,
 		"stringify": true,
-	},
-	"ai": {
-		"add":           true,
-		"dense_forward": true,
-		"dot":           true,
-		"matmul":        true,
-		"mse":           true,
-		"relu":          true,
-		"sigmoid":       true,
-		"softmax":       true,
-		"tanh":          true,
-		"transpose":     true,
 	},
 	"path": {
 		"join":       true,

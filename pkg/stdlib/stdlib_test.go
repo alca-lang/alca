@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package stdlib_test
 
 import (
@@ -6,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1088,9 +1092,67 @@ func TestSystemTracking(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected sys.load_avg to be registered")
 	}
-	loads := loadFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.MapValue)
-	if !loads.Has("1m") || !loads.Has("5m") || !loads.Has("15m") {
-		t.Errorf("expected load_avg map to have 1m, 5m, 15m")
+	loadValue := loadFn.(*interpreter.BuiltinFunction).Fn()
+	if runtime.GOOS == "windows" {
+		if err, ok := loadValue.(*interpreter.ErrorValue); !ok || err.Code != 501 {
+			t.Errorf("Windows load_avg should report unsupported: %v", loadValue)
+		}
+	} else {
+		loads, ok := loadValue.(*interpreter.MapValue)
+		if !ok || !loads.Has("1m") || !loads.Has("5m") || !loads.Has("15m") {
+			t.Errorf("expected load_avg map to have 1m, 5m, 15m, got %v", loadValue)
+		}
+	}
+
+	pidsFn, ok := sysMod.Get("pids")
+	if !ok {
+		t.Fatal("expected sys.pids to be registered")
+	}
+	pids := pidsFn.(*interpreter.BuiltinFunction).Fn()
+	if pids.Type() != interpreter.LIST_VAL || len(pids.(*interpreter.ListValue).ElementsSlice()) == 0 {
+		t.Fatalf("expected sys.pids to return a non-empty list, got %v", pids)
+	}
+	bootTimeFn, ok := sysMod.Get("boot_time")
+	if !ok {
+		t.Fatal("expected sys.boot_time to be registered")
+	}
+	if bootTime := bootTimeFn.(*interpreter.BuiltinFunction).Fn(); bootTime.Type() != interpreter.FLOAT_VAL {
+		t.Fatalf("expected sys.boot_time to return a float, got %T", bootTime)
+	}
+}
+
+func TestSystemAPIModulesAndPowerControlPermission(t *testing.T) {
+	previousPolicy := sandbox.CurrentPolicy()
+	sandbox.SetPolicy(sandbox.DenyAll())
+	defer sandbox.SetPolicy(previousPolicy)
+
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterPlatformBuiltins(env)
+	stdlib.RegisterPowerBuiltins(env)
+	stdlib.RegisterDevicesBuiltins(env)
+	stdlib.RegisterWin32Builtins(env)
+	for _, moduleName := range []string{"platform", "power", "devices", "win32"} {
+		if _, ok := env.Get("std." + moduleName); !ok {
+			t.Fatalf("expected std.%s to be registered", moduleName)
+		}
+	}
+
+	powerModule, _ := env.Get("power")
+	shutdown, _ := powerModule.(*interpreter.MapValue).Get("shutdown")
+	result := shutdown.(*interpreter.BuiltinFunction).Fn()
+	if result.Type() != interpreter.ERROR_VAL || result.(*interpreter.ErrorValue).Code != 403 {
+		t.Fatalf("power.shutdown should be denied without system-control permission, got %v", result)
+	}
+	if runtime.GOOS == "windows" {
+		win32Module, _ := env.Get("win32")
+		openKey, _ := win32Module.(*interpreter.MapValue).Get("reg_open_key")
+		result := openKey.(*interpreter.BuiltinFunction).Fn(
+			&interpreter.StringValue{Val: "HKEY_CURRENT_USER"},
+			&interpreter.StringValue{Val: "Software"},
+		)
+		if result.Type() != interpreter.ERROR_VAL || result.(*interpreter.ErrorValue).Code != 403 {
+			t.Fatalf("registry access should be denied without --allow-all, got %v", result)
+		}
 	}
 }
 
@@ -1108,8 +1170,16 @@ func TestFFIModule(t *testing.T) {
 	sizeOfFn, _ := ffiMod.Get("size_of")
 	intSize := sizeOfFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "int32"}).(*interpreter.IntegerValue).Val
 	ptrSize := sizeOfFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "ptr"}).(*interpreter.IntegerValue).Val
-	if intSize != 4 || ptrSize != 8 {
+	if intSize != 4 || ptrSize != int64(strconv.IntSize/8) {
 		t.Errorf("size_of mismatch: int32=%d, ptr=%d", intSize, ptrSize)
+	}
+	longSize := sizeOfFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "long"}).(*interpreter.IntegerValue).Val
+	expectedLongSize := int64(strconv.IntSize / 8)
+	if runtime.GOOS == "windows" {
+		expectedLongSize = 4
+	}
+	if longSize != expectedLongSize {
+		t.Errorf("size_of long = %d, want %d", longSize, expectedLongSize)
 	}
 
 	// 2. alloc
@@ -1126,6 +1196,31 @@ func TestFFIModule(t *testing.T) {
 	recovered := ptrToStrFn.(*interpreter.BuiltinFunction).Fn(ptr).(*interpreter.StringValue).Val
 	if recovered != "Alca Native FFI" {
 		t.Errorf("expected 'Alca Native FFI', got %q", recovered)
+	}
+
+	allocPtrFn, _ := ffiMod.Get("alloc_ptr")
+	freeFn, _ := ffiMod.Get("free")
+	copyToPtrFn, _ := ffiMod.Get("copy_to_ptr")
+	readFromPtrFn, _ := ffiMod.Get("read_from_ptr")
+	ownedPtr := allocPtrFn.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 8})
+	if ownedPtr.Type() == interpreter.ERROR_VAL {
+		t.Fatalf("alloc_ptr failed: %s", ownedPtr.(*interpreter.ErrorValue).Message)
+	}
+	if result := copyToPtrFn.(*interpreter.BuiltinFunction).Fn(
+		ownedPtr,
+		&interpreter.StringValue{Val: "Alca"},
+	); result != interpreter.TRUE {
+		t.Fatalf("copy_to_ptr failed: %v", result)
+	}
+	copied := readFromPtrFn.(*interpreter.BuiltinFunction).Fn(
+		ownedPtr,
+		&interpreter.IntegerValue{Val: 4},
+	).(*interpreter.BlobValue)
+	if string(copied.Data) != "Alca" {
+		t.Fatalf("read_from_ptr returned %q, want Alca", copied.Data)
+	}
+	if result := freeFn.(*interpreter.BuiltinFunction).Fn(ownedPtr); result != interpreter.TRUE {
+		t.Fatalf("free failed: %v", result)
 	}
 
 	// 4. On Windows: test loading kernel32.dll and calling GetCurrentProcessId
@@ -1161,33 +1256,77 @@ func TestFFIModule(t *testing.T) {
 	}
 }
 
-func TestAIModule(t *testing.T) {
+func TestFFISandboxAndAllocationLimits(t *testing.T) {
+	const maxAllocation = 16 << 20
+	previousPolicy := sandbox.CurrentPolicy()
+	defer sandbox.SetPolicy(previousPolicy)
 	env := interpreter.NewEnvironment()
-	stdlib.RegisterAIBuiltins(env)
-
-	aiVal, ok := env.Get("std.ai")
-	if !ok {
-		t.Fatalf("expected std.ai to be registered")
+	stdlib.RegisterFFIBuiltins(env)
+	moduleValue, _ := env.Get("std.ffi")
+	module := moduleValue.(*interpreter.MapValue)
+	load, _ := module.Get("load")
+	// FFI is now permitted by default (no --allow-all required); only the
+	// allocation limits and invalid arguments are still rejected.
+	allocPtr, _ := module.Get("alloc_ptr")
+	if result := allocPtr.(*interpreter.BuiltinFunction).Fn(interpreter.NewInteger(8)); result.Type() != interpreter.ERROR_VAL {
+		// alloc_ptr may succeed for a small allocation; that is acceptable.
 	}
-	aiMod := aiVal.(*interpreter.MapValue)
+	_ = load
+
+	sandbox.SetPolicy(sandbox.AllowAll())
+	alloc, _ := module.Get("alloc")
+	for _, size := range []interpreter.Value{
+		interpreter.NewInteger(0),
+		interpreter.NewInteger(-1),
+		interpreter.NewInteger(maxAllocation + 1),
+		&interpreter.FloatValue{Val: 1},
+	} {
+		if result := alloc.(*interpreter.BuiltinFunction).Fn(size); result.Type() != interpreter.ERROR_VAL {
+			t.Errorf("ffi.alloc accepted invalid size %v and returned %T", size, result)
+		}
+	}
+	if result := allocPtr.(*interpreter.BuiltinFunction).Fn(interpreter.NewInteger(maxAllocation + 1)); result.Type() != interpreter.ERROR_VAL {
+		t.Errorf("ffi.alloc_ptr accepted oversized allocation and returned %T", result)
+	}
+}
+
+func TestLibtorchHelpers(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterLibtorchBuiltins(env)
+
+	ltVal, ok := env.Get("std.libtorch")
+	if !ok {
+		t.Fatalf("expected std.libtorch to be registered")
+	}
+	ltMod := ltVal.(*interpreter.MapValue)
+	toListFn, _ := ltMod.Get("to_list")
+	itemFn, _ := ltMod.Get("item")
+
+	toList := func(v interpreter.Value) *interpreter.ListValue {
+		return toListFn.(*interpreter.BuiltinFunction).Fn(v).(*interpreter.ListValue)
+	}
+	toItem := func(v interpreter.Value) float64 {
+		return itemFn.(*interpreter.BuiltinFunction).Fn(v).(*interpreter.FloatValue).Val
+	}
 
 	// 1. matrix creation
-	matrixFn, _ := aiMod.Get("matrix")
+	matrixFn, _ := ltMod.Get("matrix")
 	mVal := matrixFn.(*interpreter.BuiltinFunction).Fn(
 		&interpreter.IntegerValue{Val: 2},
 		&interpreter.IntegerValue{Val: 3},
 		&interpreter.FloatValue{Val: 1.5},
-	).(*interpreter.ListValue)
-	if len(mVal.ElementsSlice()) != 2 {
-		t.Fatalf("expected 2 rows, got %d", len(mVal.ElementsSlice()))
+	)
+	mList := toList(mVal)
+	if len(mList.ElementsSlice()) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(mList.ElementsSlice()))
 	}
-	r0 := mVal.ElementsSlice()[0].(*interpreter.ListValue)
+	r0 := mList.ElementsSlice()[0].(*interpreter.ListValue)
 	if len(r0.ElementsSlice()) != 3 || r0.ElementsSlice()[0].(*interpreter.FloatValue).Val != 1.5 {
 		t.Errorf("unexpected matrix contents: %+v", r0)
 	}
 
-	// 2. matmul: [ [1, 2], [3, 4] ] x [ [2, 0], [1, 2] ] = [ [4, 4], [10, 8] ]
-	matmulFn, _ := aiMod.Get("matmul")
+	// 2. matmul with raw lists: [ [1, 2], [3, 4] ] x [ [2, 0], [1, 2] ] = [ [4, 4], [10, 8] ]
+	matmulFn, _ := ltMod.Get("matmul")
 	matA := interpreter.NewList(
 		interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 2}),
 		interpreter.NewList(&interpreter.FloatValue{Val: 3}, &interpreter.FloatValue{Val: 4}),
@@ -1196,7 +1335,7 @@ func TestAIModule(t *testing.T) {
 		interpreter.NewList(&interpreter.FloatValue{Val: 2}, &interpreter.FloatValue{Val: 0}),
 		interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 2}),
 	)
-	resMat := matmulFn.(*interpreter.BuiltinFunction).Fn(matA, matB).(*interpreter.ListValue)
+	resMat := toList(matmulFn.(*interpreter.BuiltinFunction).Fn(matA, matB))
 	row0 := resMat.ElementsSlice()[0].(*interpreter.ListValue)
 	row1 := resMat.ElementsSlice()[1].(*interpreter.ListValue)
 	if row0.ElementsSlice()[0].(*interpreter.FloatValue).Val != 4 || row0.ElementsSlice()[1].(*interpreter.FloatValue).Val != 4 ||
@@ -1204,30 +1343,34 @@ func TestAIModule(t *testing.T) {
 		t.Errorf("matmul result mismatch: row0=%+v, row1=%+v", row0, row1)
 	}
 
-	// 3. dot product: [1, 2, 3] . [4, 5, 6] = 4 + 10 + 18 = 32
-	dotFn, _ := aiMod.Get("dot")
+	// 3. dot product with raw lists: [1, 2, 3] . [4, 5, 6] = 4 + 10 + 18 = 32
+	dotFn, _ := ltMod.Get("dot")
 	v1 := interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 2}, &interpreter.FloatValue{Val: 3})
 	v2 := interpreter.NewList(&interpreter.FloatValue{Val: 4}, &interpreter.FloatValue{Val: 5}, &interpreter.FloatValue{Val: 6})
-	dotRes := dotFn.(*interpreter.BuiltinFunction).Fn(v1, v2).(*interpreter.FloatValue).Val
+	dotRes := toItem(dotFn.(*interpreter.BuiltinFunction).Fn(v1, v2))
 	if dotRes != 32.0 {
 		t.Errorf("expected dot product 32.0, got %f", dotRes)
 	}
 
-	// 4. relu and sigmoid
-	reluFn, _ := aiMod.Get("relu")
-	sigFn, _ := aiMod.Get("sigmoid")
-	if reluFn.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: -5.0}).(*interpreter.FloatValue).Val != 0.0 {
+	// 4. relu and sigmoid with raw lists and scalars
+	reluFn, _ := ltMod.Get("relu")
+	sigFn, _ := ltMod.Get("sigmoid")
+	if toItem(reluFn.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: -5.0})) != 0.0 {
 		t.Errorf("expected relu(-5) == 0")
 	}
-	if sigFn.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: 0.0}).(*interpreter.FloatValue).Val != 0.5 {
+	reluListRes := toList(reluFn.(*interpreter.BuiltinFunction).Fn(interpreter.NewList(&interpreter.FloatValue{Val: -1.0}, &interpreter.FloatValue{Val: 2.0})))
+	if reluListRes.ElementsSlice()[0].(*interpreter.FloatValue).Val != 0.0 || reluListRes.ElementsSlice()[1].(*interpreter.FloatValue).Val != 2.0 {
+		t.Errorf("expected relu([-1.0, 2.0]) == [0.0, 2.0], got %+v", reluListRes)
+	}
+	if toItem(sigFn.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: 0.0})) != 0.5 {
 		t.Errorf("expected sigmoid(0) == 0.5")
 	}
 
-	// 5. softmax: sum of outputs == 1.0
-	softmaxFn, _ := aiMod.Get("softmax")
-	softRes := softmaxFn.(*interpreter.BuiltinFunction).Fn(
+	// 5. softmax with raw list: sum of outputs == 1.0
+	softmaxFn, _ := ltMod.Get("softmax")
+	softRes := toList(softmaxFn.(*interpreter.BuiltinFunction).Fn(
 		interpreter.NewList(&interpreter.FloatValue{Val: 1.0}, &interpreter.FloatValue{Val: 2.0}, &interpreter.FloatValue{Val: 3.0}),
-	).(*interpreter.ListValue)
+	))
 	sum := 0.0
 	for _, e := range softRes.ElementsSlice() {
 		sum += e.(*interpreter.FloatValue).Val
@@ -1236,18 +1379,27 @@ func TestAIModule(t *testing.T) {
 		t.Errorf("expected softmax sum to be 1.0, got %f", sum)
 	}
 
-	// 6. dense_forward: input [ [1, 2] ] * weights [ [1, 0], [0, 1] ] + bias [ 5, 10 ] = [ [6, 12] ]
-	denseFn, _ := aiMod.Get("dense_forward")
+	// 6. dense_forward with raw lists: input [ [1, 2] ] * weights [ [1, 0], [0, 1] ] + bias [ 5, 10 ] = [ [6, 12] ]
+	denseFn, _ := ltMod.Get("dense_forward")
 	inMat := interpreter.NewList(interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 2}))
 	wMat := interpreter.NewList(
 		interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 0}),
 		interpreter.NewList(&interpreter.FloatValue{Val: 0}, &interpreter.FloatValue{Val: 1}),
 	)
 	bias := interpreter.NewList(&interpreter.FloatValue{Val: 5}, &interpreter.FloatValue{Val: 10})
-	denseOut := denseFn.(*interpreter.BuiltinFunction).Fn(inMat, wMat, bias, &interpreter.StringValue{Val: "linear"}).(*interpreter.ListValue)
+	denseOut := toList(denseFn.(*interpreter.BuiltinFunction).Fn(inMat, wMat, bias, &interpreter.StringValue{Val: "linear"}))
 	outRow := denseOut.ElementsSlice()[0].(*interpreter.ListValue)
 	if outRow.ElementsSlice()[0].(*interpreter.FloatValue).Val != 6.0 || outRow.ElementsSlice()[1].(*interpreter.FloatValue).Val != 12.0 {
 		t.Errorf("dense_forward mismatch: %+v", outRow)
+	}
+
+	// 7. mse with raw lists
+	mseFn, _ := ltMod.Get("mse")
+	yTrue := interpreter.NewList(&interpreter.FloatValue{Val: 1.0}, &interpreter.FloatValue{Val: 2.0})
+	yPred := interpreter.NewList(&interpreter.FloatValue{Val: 3.0}, &interpreter.FloatValue{Val: 4.0})
+	mseVal := toItem(mseFn.(*interpreter.BuiltinFunction).Fn(yTrue, yPred))
+	if math.Abs(mseVal-4.0) > 1e-6 {
+		t.Errorf("expected mse == 4.0, got %f", mseVal)
 	}
 }
 
@@ -1257,9 +1409,16 @@ func TestCompressAndCryptoAndHTTPBuiltins(t *testing.T) {
 	stdlib.RegisterCryptoBuiltins(env)
 	stdlib.RegisterHTTPBuiltins(env)
 
+	compressModVal, _ := env.Get("compress")
+	compressMod := compressModVal.(*interpreter.MapValue)
+	cryptoModVal, _ := env.Get("crypto")
+	cryptoMod := cryptoModVal.(*interpreter.MapValue)
+	httpModVal, _ := env.Get("http")
+	httpMod := httpModVal.(*interpreter.MapValue)
+
 	// 1. Gzip
-	gzipComp, _ := env.Get("gzip_compress")
-	gzipDecomp, _ := env.Get("gzip_decompress")
+	gzipComp, _ := compressMod.Get("gzip_compress")
+	gzipDecomp, _ := compressMod.Get("gzip_decompress")
 	original := "Hello Alca Compression!"
 	compRes := gzipComp.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: original})
 	decompRes := gzipDecomp.(*interpreter.BuiltinFunction).Fn(compRes)
@@ -1268,8 +1427,8 @@ func TestCompressAndCryptoAndHTTPBuiltins(t *testing.T) {
 	}
 
 	// 2. Zlib
-	zlibComp, _ := env.Get("zlib_compress")
-	zlibDecomp, _ := env.Get("zlib_decompress")
+	zlibComp, _ := compressMod.Get("zlib_compress")
+	zlibDecomp, _ := compressMod.Get("zlib_decompress")
 	zcompRes := zlibComp.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: original})
 	zdecompRes := zlibDecomp.(*interpreter.BuiltinFunction).Fn(zcompRes)
 	if zdecompRes.(*interpreter.StringValue).Val != original {
@@ -1277,8 +1436,8 @@ func TestCompressAndCryptoAndHTTPBuiltins(t *testing.T) {
 	}
 
 	// 3. AES GCM
-	aesEnc, _ := env.Get("aes_encrypt")
-	aesDec, _ := env.Get("aes_decrypt")
+	aesEnc, _ := cryptoMod.Get("aes_encrypt")
+	aesDec, _ := cryptoMod.Get("aes_decrypt")
 	key := "0123456789abcdef0123456789abcdef"
 	secretText := "Top Secret Alca Data 12345"
 	encRes := aesEnc.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: key}, &interpreter.StringValue{Val: secretText})
@@ -1294,7 +1453,7 @@ func TestCompressAndCryptoAndHTTPBuiltins(t *testing.T) {
 	}
 
 	// 4. HMAC SHA512
-	hmac512, _ := env.Get("hmac_sha512")
+	hmac512, _ := cryptoMod.Get("hmac_sha512")
 	hRes := hmac512.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "key"}, &interpreter.StringValue{Val: "data"})
 	hStr := hRes.(*interpreter.StringValue).Val
 	if len(hStr) != 128 { // SHA512 is 64 bytes = 128 hex chars
@@ -1306,8 +1465,14 @@ func TestCompressAndCryptoAndHTTPBuiltins(t *testing.T) {
 	sandbox.SetPolicy(sandbox.Policy{Net: sandbox.Capability{All: true}})
 	defer sandbox.SetPolicy(prevPolicy)
 
-	httpServe, _ := env.Get("http_serve")
-	httpReq, _ := env.Get("http_request")
+	httpServe, _ := httpMod.Get("serve")
+	if httpServe == nil {
+		httpServe, _ = httpMod.Get("http_serve")
+	}
+	httpReq, _ := httpMod.Get("request")
+	if httpReq == nil {
+		httpReq, _ = httpMod.Get("http_request")
+	}
 	handler := &interpreter.BuiltinFunction{
 		Name: "handler",
 		Fn: func(a ...interpreter.Value) interpreter.Value {
@@ -1335,5 +1500,68 @@ func TestCompressAndCryptoAndHTTPBuiltins(t *testing.T) {
 	bodyVal, _ := respMap.Get("body")
 	if bodyVal.(*interpreter.StringValue).Val != "alca-http-ok" {
 		t.Fatalf("expected body 'alca-http-ok', got %q", bodyVal.(*interpreter.StringValue).Val)
+	}
+}
+
+func TestStringFormatAndPad(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterStringBuiltins(env)
+
+	sVal, _ := env.Get("std.string")
+	strMod := sVal.(*interpreter.MapValue)
+	fmtFnVal, _ := strMod.Get("format")
+	fmtFn := fmtFnVal.(*interpreter.BuiltinFunction)
+	padFnVal, _ := strMod.Get("pad")
+	padFn := padFnVal.(*interpreter.BuiltinFunction)
+
+	// format indexed
+	res1 := fmtFn.Fn(&interpreter.StringValue{Val: "Hello {0}, count {1}!"}, &interpreter.StringValue{Val: "Alice"}, &interpreter.IntegerValue{Val: 5})
+	if res1.(*interpreter.StringValue).Val != "Hello Alice, count 5!" {
+		t.Errorf("unexpected format indexed: %q", res1.(*interpreter.StringValue).Val)
+	}
+
+	// format sequential
+	res2 := fmtFn.Fn(&interpreter.StringValue{Val: "val={}, ok={}"}, &interpreter.IntegerValue{Val: 42}, interpreter.TRUE)
+	if res2.(*interpreter.StringValue).Val != "val=42, ok=true" {
+		t.Errorf("unexpected format sequential: %q", res2.(*interpreter.StringValue).Val)
+	}
+
+	// pad both
+	res3 := padFn.Fn(&interpreter.StringValue{Val: "hi"}, &interpreter.IntegerValue{Val: 6}, &interpreter.StringValue{Val: "*"}, &interpreter.StringValue{Val: "both"})
+	if res3.(*interpreter.StringValue).Val != "**hi**" {
+		t.Errorf("unexpected pad both: %q", res3.(*interpreter.StringValue).Val)
+	}
+
+	// pad left
+	res4 := padFn.Fn(&interpreter.StringValue{Val: "hi"}, &interpreter.IntegerValue{Val: 5}, &interpreter.StringValue{Val: "-"}, &interpreter.StringValue{Val: "left"})
+	if res4.(*interpreter.StringValue).Val != "---hi" {
+		t.Errorf("unexpected pad left: %q", res4.(*interpreter.StringValue).Val)
+	}
+}
+
+func TestErrorValueCategoriesAndMethods(t *testing.T) {
+	errVal := interpreter.NewError(interpreter.ErrCodeNotFound, "user profile not found")
+	if errVal.Category() != "not_found" {
+		t.Errorf("expected not_found category, got %q", errVal.Category())
+	}
+
+	codeRes, err := errVal.CallMethod("code", nil)
+	if err != nil || codeRes.(*interpreter.IntegerValue).Val != 404 {
+		t.Errorf("expected code() == 404, got %v (err=%v)", codeRes, err)
+	}
+
+	catRes, err := errVal.CallMethod("category", nil)
+	if err != nil || catRes.(*interpreter.StringValue).Val != "not_found" {
+		t.Errorf("expected category() == 'not_found', got %v (err=%v)", catRes, err)
+	}
+
+	msgRes, err := errVal.CallMethod("message", nil)
+	if err != nil || msgRes.(*interpreter.StringValue).Val != "user profile not found" {
+		t.Errorf("expected message(), got %v (err=%v)", msgRes, err)
+	}
+
+	timeRes, err := errVal.CallMethod("time", nil)
+	if err != nil || timeRes.(*interpreter.StringValue).Val == "" {
+		t.Errorf("expected RFC3339 timestamp string from time(), got %v (err=%v)", timeRes, err)
 	}
 }

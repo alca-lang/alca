@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package compiler
 
 import (
@@ -234,5 +237,78 @@ func TestMissingRuntimeExplainsHowToGetOne(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), "build-runtimes") && !strings.Contains(err.Error(), "make runtimes") {
 		t.Fatalf("error must tell the user how to obtain a runtime, got: %v", err)
+	}
+}
+
+func TestEncryptedPayloadRoundTrip(t *testing.T) {
+	b := &Bundle{
+		Kind:      KindBytecode,
+		Encrypted: true,
+		Name:      "secret.al",
+		Code:      sampleBytecode(),
+	}
+	data, err := b.Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify plaintext strings are NOT visible in the encrypted payload
+	if bytes.Contains(data, []byte("héllo")) {
+		t.Fatalf("encrypted payload must not contain plaintext string constant")
+	}
+	if bytes.Contains(data, []byte("Server")) {
+		t.Fatalf("encrypted payload must not contain plaintext struct name")
+	}
+
+	got, err := DecodeBundle(data)
+	if err != nil {
+		t.Fatalf("DecodeBundle failed: %v", err)
+	}
+	if !got.Encrypted {
+		t.Fatalf("expected Encrypted=true")
+	}
+	if got.Name != "secret.al" {
+		t.Fatalf("expected name 'secret.al', got %q", got.Name)
+	}
+	if v := got.Code.Constants[2].(*interpreter.StringValue).Val; v != "héllo" {
+		t.Fatalf("string constant mismatch: %q", v)
+	}
+}
+
+func TestObfuscator(t *testing.T) {
+	prog := &ast.Program{
+		Statements: []ast.Statement{
+			&ast.VarDeclaration{
+				Name:  &ast.Identifier{Value: "mySecretApiKey"},
+				Value: &ast.IntegerLiteral{Value: 12345},
+			},
+			&ast.FuncDeclaration{
+				Name: "calculateSuperSecretHash",
+				Params: []*ast.FuncParam{
+					{Name: "userSecretPassword"},
+				},
+				Body: &ast.BlockStatement{
+					Statements: []ast.Statement{
+						&ast.ReturnStatement{
+							Value: &ast.Identifier{Value: "userSecretPassword"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obf := ObfuscateProgram(prog)
+	varDecl := obf.Statements[0].(*ast.VarDeclaration)
+	if varDecl.Name.Value == "mySecretApiKey" || !strings.HasPrefix(varDecl.Name.Value, "_0x") {
+		t.Fatalf("expected obfuscated variable name, got %q", varDecl.Name.Value)
+	}
+
+	fnDecl := obf.Statements[1].(*ast.FuncDeclaration)
+	if fnDecl.Name == "calculateSuperSecretHash" || !strings.HasPrefix(fnDecl.Name, "_0x") {
+		t.Fatalf("expected obfuscated function name, got %q", fnDecl.Name)
+	}
+	if fnDecl.Params[0].Name == "userSecretPassword" || !strings.HasPrefix(fnDecl.Params[0].Name, "_0x") {
+		t.Fatalf("expected obfuscated parameter name, got %q", fnDecl.Params[0].Name)
 	}
 }

@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+
+# Copyright 2026 Alca Programming Language
+# SPDX-License-Identifier: Apache-2.0
+
+# Copyright 2026 Alca Programming Language
+# SPDX-License-Identifier: Apache-2.0
+
 # Builds the releases/ bundle on Linux/macOS hosts.
 #
 # Usage: scripts/make-release.sh [registry-url]

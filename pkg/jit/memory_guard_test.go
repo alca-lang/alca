@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit_test
 
 import (
@@ -130,7 +133,7 @@ use std.str;
 func probe():
     items := [1, 2, 3];
     total := 0;
-    for i in 0..2:
+    for i in 0..=2:
         total = total + items[i];
     println(str.upper("ok"));
     println(total);

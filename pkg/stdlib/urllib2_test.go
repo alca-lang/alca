@@ -1,11 +1,18 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package stdlib
 
 import (
+	"crypto/sha1"
+	"encoding/base64"
+	"encoding/binary"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
@@ -159,6 +166,7 @@ func TestUrllib2ModuleRegistration(t *testing.T) {
 	if !ok {
 		t.Fatal("std.urllib2 was not registered")
 	}
+
 	moduleMap, ok := module.(*interpreter.MapValue)
 	if !ok {
 		t.Fatalf("std.urllib2 has type %T, want map", module)
@@ -168,5 +176,107 @@ func TestUrllib2ModuleRegistration(t *testing.T) {
 	}
 	if flat, ok := env.Get("urllib2"); !ok || flat != module {
 		t.Fatal("urllib2 shorthand was not registered to the same module")
+	}
+}
+
+func TestUrllib2TcpRequestHonorsNetworkSandbox(t *testing.T) {
+	previousPolicy := sandbox.CurrentPolicy()
+	sandbox.SetPolicy(sandbox.Policy{Net: sandbox.Capability{Roots: []string{"allowed.example"}}})
+	defer sandbox.SetPolicy(previousPolicy)
+
+	result := urllib2TcpRequest(
+		&interpreter.StringValue{Val: "GET"},
+		&interpreter.StringValue{Val: "http://blocked.example/test"},
+	)
+	if err, ok := result.(*interpreter.ErrorValue); !ok || err.Code != 403 {
+		t.Fatalf("tcp_request bypassed the network policy: %v", result)
+	}
+	wsResult := websocket_handshake(&interpreter.StringValue{Val: "ws://blocked.example/test"})
+	if err, ok := wsResult.(*interpreter.ErrorValue); !ok || err.Code != 403 {
+		t.Fatalf("legacy websocket_handshake bypassed the network policy: %v", wsResult)
+	}
+}
+
+func TestWebSocketTransportHandshakeAndMessageExchange(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			t.Error("HTTP test server does not support hijacking")
+			return
+		}
+		conn, rw, err := hijacker.Hijack()
+		if err != nil {
+			t.Errorf("hijack connection: %v", err)
+			return
+		}
+		defer conn.Close()
+		sum := sha1.Sum([]byte(r.Header.Get("Sec-WebSocket-Key") + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+		accept := base64.StdEncoding.EncodeToString(sum[:])
+		_, _ = rw.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n")
+		if err := rw.Flush(); err != nil {
+			t.Errorf("flush handshake response: %v", err)
+			return
+		}
+
+		header := make([]byte, 2)
+		if _, err := io.ReadFull(rw, header); err != nil {
+			t.Errorf("read client frame header: %v", err)
+			return
+		}
+		if header[0] != 0x81 || header[1]&0x80 == 0 {
+			t.Errorf("client frame header = %x, want masked text frame", header)
+			return
+		}
+		size := int(header[1] & 0x7f)
+		if size == 126 {
+			var extended [2]byte
+			if _, err := io.ReadFull(rw, extended[:]); err != nil {
+				t.Errorf("read extended frame length: %v", err)
+				return
+			}
+			size = int(binary.BigEndian.Uint16(extended[:]))
+		}
+		var mask [4]byte
+		if _, err := io.ReadFull(rw, mask[:]); err != nil {
+			t.Errorf("read mask: %v", err)
+			return
+		}
+		payload := make([]byte, size)
+		if _, err := io.ReadFull(rw, payload); err != nil {
+			t.Errorf("read client payload: %v", err)
+			return
+		}
+		for i := range payload {
+			payload[i] ^= mask[i&3]
+		}
+		if string(payload) != "hello" {
+			t.Errorf("client payload = %q", payload)
+			return
+		}
+		_, _ = conn.Write([]byte{0x81, 0x05, 'w', 'o', 'r', 'l', 'd'})
+		_, _ = io.ReadFull(rw, header)
+	}))
+	defer server.Close()
+
+	previousPolicy := sandbox.CurrentPolicy()
+	sandbox.SetPolicy(sandbox.AllowAll())
+	defer sandbox.SetPolicy(previousPolicy)
+
+	wsURL := strings.Replace(server.URL, "http://", "ws://", 1)
+	result := websocket_connect(&interpreter.StringValue{Val: wsURL})
+	connected, ok := result.(*interpreter.MapValue)
+	if !ok {
+		t.Fatalf("websocket_connect returned %T: %v", result, result)
+	}
+	id := mustGet(connected, "id").(*interpreter.StringValue).Val
+	if sent := websocket_send(&interpreter.StringValue{Val: id}, &interpreter.StringValue{Val: "hello"}); sent != interpreter.TRUE {
+		t.Fatalf("websocket_send returned %v", sent)
+	}
+	received := websocket_receive(&interpreter.StringValue{Val: id})
+	if value, ok := received.(*interpreter.StringValue); !ok || value.Val != "world" {
+		t.Fatalf("websocket_receive returned %v", received)
+	}
+	if closed := websocket_close_impl(&interpreter.StringValue{Val: id}); closed != interpreter.TRUE {
+		t.Fatalf("websocket_close returned %v", closed)
 	}
 }

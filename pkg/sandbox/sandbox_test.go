@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package sandbox
 
 import (
@@ -133,11 +136,82 @@ func TestParseArgsAllowAllAndSeparator(t *testing.T) {
 	}
 }
 
+func TestRequireAllCapabilities(t *testing.T) {
+	old := CurrentPolicy()
+	defer SetPolicy(old)
+
+	SetPolicy(Policy{Read: Capability{All: true}, Write: Capability{All: true}})
+	if err := RequireAllCapabilities("native code"); err == nil || !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("partial unrestricted policy must be denied, got %v", err)
+	}
+	SetPolicy(AllowAll())
+	if err := RequireAllCapabilities("native code"); err != nil {
+		t.Fatalf("allow-all policy must pass: %v", err)
+	}
+}
+
 func TestParseArgsRejectsUnknownAllowFlag(t *testing.T) {
 	if _, _, err := ParseArgs([]string{"--allow-everything"}); err == nil {
 		t.Fatal("unknown capability flag must be rejected")
 	}
 	if _, _, err := ParseArgs([]string{"--allow-read="}); err == nil {
 		t.Fatal("an empty path must be rejected")
+	}
+}
+
+func TestRunEnvFFICapabilities(t *testing.T) {
+	old := CurrentPolicy()
+	defer SetPolicy(old)
+
+	// 1. DenyAll denies all
+	SetPolicy(DenyAll())
+	if err := RequireRun("curl"); err == nil || !errors.Is(err, os.ErrPermission) {
+		t.Errorf("RequireRun must be denied by default, got %v", err)
+	}
+	if err := RequireEnv("MY_KEY"); err == nil || !errors.Is(err, os.ErrPermission) {
+		t.Errorf("RequireEnv must be denied by default, got %v", err)
+	}
+	if err := RequireFFI("user32.dll"); err == nil || !errors.Is(err, os.ErrPermission) {
+		t.Errorf("RequireFFI must be denied by default, got %v", err)
+	}
+
+	// 2. Granular flags
+	policy, _, err := ParseArgs([]string{"--allow-run=git,curl", "--allow-env=ALCA_ENV", "--allow-ffi=user32.dll"})
+	if err != nil {
+		t.Fatalf("ParseArgs failed: %v", err)
+	}
+	SetPolicy(policy)
+
+	if err := RequireRun("curl"); err != nil {
+		t.Errorf("RequireRun(curl) must be allowed: %v", err)
+	}
+	if err := RequireRun("sh"); err == nil {
+		t.Errorf("RequireRun(sh) must be denied")
+	}
+
+	if err := RequireEnv("ALCA_ENV"); err != nil {
+		t.Errorf("RequireEnv(ALCA_ENV) must be allowed: %v", err)
+	}
+	if err := RequireEnv("SECRET_TOKEN"); err == nil {
+		t.Errorf("RequireEnv(SECRET_TOKEN) must be denied")
+	}
+
+	if err := RequireFFI("user32.dll"); err != nil {
+		t.Errorf("RequireFFI(user32.dll) must be allowed: %v", err)
+	}
+	if err := RequireFFI("kernel32.dll"); err == nil {
+		t.Errorf("RequireFFI(kernel32.dll) must be denied")
+	}
+
+	// 3. AllowAll grants all
+	SetPolicy(AllowAll())
+	if err := RequireRun("anything"); err != nil {
+		t.Errorf("AllowAll must permit Run: %v", err)
+	}
+	if err := RequireEnv("anything"); err != nil {
+		t.Errorf("AllowAll must permit Env: %v", err)
+	}
+	if err := RequireFFI("anything.so"); err != nil {
+		t.Errorf("AllowAll must permit FFI: %v", err)
 	}
 }

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package lexer implements the lexical scanner for the Alca programming language.
 // It tokenizes source code into a stream of tokens, recognizing keywords, operators,
 // literals, identifiers, comments, and Python-like indentation blocks.
@@ -351,9 +354,15 @@ func (l *Lexer) NextToken() token.Token {
 
 	case '.':
 		if l.peekChar() == '.' {
-			tok = token.Token{Type: token.RANGE, Literal: "..", Line: line, Column: col}
 			l.readChar()
-			l.readChar()
+			if l.peekChar() == '=' {
+				l.readChar()
+				l.readChar()
+				tok = token.Token{Type: token.DOTDOTEQ, Literal: "..=", Line: line, Column: col}
+			} else {
+				l.readChar()
+				tok = token.Token{Type: token.RANGE, Literal: "..", Line: line, Column: col}
+			}
 		} else if isDigit(l.peekChar()) {
 			tok.Line = line
 			tok.Column = col

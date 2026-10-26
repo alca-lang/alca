@@ -1,8 +1,12 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package typecheck
 
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/alca-lang/alca/pkg/ast"
 	"github.com/alca-lang/alca/pkg/token"
@@ -69,6 +73,8 @@ func tokOf(e ast.Expression) token.Token {
 	case *ast.RangeLiteral:
 		return n.Token
 	case *ast.StructInstantiation:
+		return n.Token
+	case *ast.AwaitExpression:
 		return n.Token
 	}
 	return token.Token{}
@@ -251,6 +257,9 @@ func (c *Checker) expr0(e ast.Expression, sc *scope, expected Type) Type {
 
 	case *ast.LambdaExpression:
 		return c.lambda(n, sc)
+
+	case *ast.AwaitExpression:
+		return c.expr(n.Expression, sc, expected)
 	}
 	return JSON
 }
@@ -258,6 +267,16 @@ func (c *Checker) expr0(e ast.Expression, sc *scope, expected Type) Type {
 func (c *Checker) identifier(n *ast.Identifier, sc *scope) Type {
 	sym, t := sc.lookup(n.Value)
 	if sym == nil {
+		if mod, ok := deprecatedGlobalAliases[n.Value]; ok {
+			c.addError(n.Token, fmt.Sprintf("global alias '%s' is deprecated and has been removed", n.Value),
+				fmt.Sprintf("import the module first: 'use std.%s;' then '%s.%s(...)'", mod, mod, n.Value))
+			return JSON
+		}
+		if strings.HasPrefix(n.Value, "gui_") {
+			c.addError(n.Token, fmt.Sprintf("global alias '%s' is deprecated and has been removed", n.Value),
+				fmt.Sprintf("use 'use std.gui;' then 'gui.%s(...)'", strings.TrimPrefix(n.Value, "gui_")))
+			return JSON
+		}
 		hint := ""
 		if s := suggest(n.Value, sc.names()); s != "" {
 			hint = fmt.Sprintf("did you mean '%s'?", s)
@@ -395,7 +414,14 @@ func (c *Checker) infix(n *ast.InfixExpression, sc *scope) Type {
 		}
 		return Bool
 
-	case "==", "!=", "===":
+	case "==", "!=":
+		lt, rt = c.widenLiterals(n, lt, rt)
+		if !Comparable(lt, rt) {
+			return bad(fmt.Sprintf("cannot compare %s and %s with '%s'", lt, rt, op), conversionHint(lt, rt))
+		}
+		return Bool
+
+	case "===", "!==":
 		return Bool
 
 	case "<", ">", "<=", ">=", "LT_EQ", "GT_EQ", "<=>":
@@ -657,6 +683,24 @@ func (c *Checker) dot(n *ast.DotExpression, sc *scope) Type {
 		return Invalid
 	}
 	switch x := ot.(type) {
+	case *EnumType:
+		if n.Field == "tag" {
+			return Int
+		}
+		if n.Field == "name" {
+			return String
+		}
+		if vt, ok := x.Variants[n.Field]; ok {
+			return vt
+		}
+		c.addError(n.Token, fmt.Sprintf("enum '%s' has no variant '%s'", x.Name, n.Field), "")
+		return x
+	case *InterfaceType:
+		if m, ok := x.Methods[n.Field]; ok {
+			return m
+		}
+		c.addError(n.Token, fmt.Sprintf("interface '%s' has no method '%s'", x.Name, n.Field), "")
+		return JSON
 	case *ModuleType:
 		if t, ok := x.Members[n.Field]; ok {
 			return t
@@ -728,6 +772,68 @@ func (c *Checker) dot(n *ast.DotExpression, sc *scope) Type {
 			return &FuncType{Params: x.Params, Ret: x.Ret, Variadic: x.Variadic}
 		}
 		c.addError(n.Token, fmt.Sprintf("type %s has no field '%s'", ot, n.Field), "")
+		return JSON
+	case *ListType:
+		switch n.Field {
+		case "append", "push":
+			return &FuncType{Params: []Param{{Name: "elem", Type: x.Elem}}, Ret: x}
+		case "pop":
+			return &FuncType{Ret: x.Elem}
+		case "len":
+			return &FuncType{Ret: Int}
+		case "sort", "reverse":
+			return &FuncType{Ret: x}
+		case "contains":
+			return &FuncType{Params: []Param{{Name: "elem", Type: x.Elem}}, Ret: Bool}
+		case "join":
+			return &FuncType{Params: []Param{{Name: "sep", Type: String, Optional: true}}, Ret: String}
+		case "map":
+			return &FuncType{Dynamic: true, Ret: &ListType{Elem: JSON}}
+		case "filter":
+			return &FuncType{Dynamic: true, Ret: x}
+		case "reduce":
+			return &FuncType{Dynamic: true, Ret: JSON}
+		case "slice":
+			return &FuncType{Params: []Param{{Name: "start", Type: Int}, {Name: "end", Type: Int, Optional: true}}, Ret: x}
+		}
+		c.addError(n.Token, fmt.Sprintf("list has no method '%s'", n.Field), "")
+		return JSON
+	case *MapType:
+		switch n.Field {
+		case "keys":
+			return &FuncType{Ret: &ListType{Elem: x.Key}}
+		case "values":
+			return &FuncType{Ret: &ListType{Elem: x.Val}}
+		case "contains":
+			return &FuncType{Params: []Param{{Name: "key", Type: x.Key}}, Ret: Bool}
+		case "len":
+			return &FuncType{Ret: Int}
+		case "delete":
+			return &FuncType{Params: []Param{{Name: "key", Type: x.Key}}, Ret: Bool}
+		}
+		c.addError(n.Token, fmt.Sprintf("map has no method '%s'", n.Field), "")
+		return JSON
+	}
+	if ot == String {
+		switch n.Field {
+		case "split":
+			return &FuncType{Params: []Param{{Name: "sep", Type: String, Optional: true}}, Ret: &ListType{Elem: String}}
+		case "trim", "strip", "upper", "lower", "capitalize", "title", "reverse", "lstrip", "rstrip":
+			return &FuncType{Ret: String}
+		case "contains", "starts_with", "ends_with", "is_empty", "is_blank", "is_alpha", "is_digit", "is_numeric", "is_upper", "is_lower":
+			return &FuncType{Params: []Param{{Name: "sub", Type: String, Optional: true}}, Ret: Bool}
+		case "replace":
+			return &FuncType{Params: []Param{{Name: "old", Type: String}, {Name: "new", Type: String}}, Ret: String}
+		case "len", "count", "last_index_of":
+			return &FuncType{Params: []Param{{Name: "sub", Type: String, Optional: true}}, Ret: Int}
+		case "repeat", "pad", "pad_left", "pad_right", "center":
+			return &FuncType{Params: []Param{{Name: "count", Type: Int}, {Name: "pad", Type: String, Optional: true}}, Ret: String}
+		case "format":
+			return &FuncType{Variadic: true, Ret: String}
+		case "lines", "words":
+			return &FuncType{Ret: &ListType{Elem: String}}
+		}
+		c.addError(n.Token, fmt.Sprintf("string has no method '%s'", n.Field), "")
 		return JSON
 	}
 	if ot == JSON {
@@ -820,6 +926,23 @@ func (c *Checker) call(n *ast.CallExpression, sc *scope) Type {
 		if sym, _ := sc.lookup(id.Value); sym != nil && sym.kind == kBuiltin {
 			if t, handled := c.specialCall(id.Value, n, sc); handled {
 				return t
+			}
+		}
+	}
+	if dot, ok := n.Function.(*ast.DotExpression); ok {
+		if id, ok := dot.Left.(*ast.Identifier); ok {
+			if id.Value == "list" || id.Value == "map" {
+				if t, handled := c.specialCollectionCall(id.Value, dot.Field, n, sc); handled {
+					return t
+				}
+			}
+		} else if dot2, ok := dot.Left.(*ast.DotExpression); ok {
+			if id2, ok := dot2.Left.(*ast.Identifier); ok && id2.Value == "std" {
+				if dot2.Field == "list" || dot2.Field == "map" {
+					if t, handled := c.specialCollectionCall(dot2.Field, dot.Field, n, sc); handled {
+						return t
+					}
+				}
 			}
 		}
 	}
@@ -1169,6 +1292,172 @@ func (c *Checker) specialCall(name string, n *ast.CallExpression, sc *scope) (Ty
 			return &ListType{Elem: String}, true
 		}
 		return &ListType{Elem: JSON}, true
+	}
+	return nil, false
+}
+
+func (c *Checker) specialCollectionCall(mod, method string, n *ast.CallExpression, sc *scope) (Type, bool) {
+	if mod == "list" {
+		switch method {
+		case "sort", "reverse", "unique":
+			if len(n.Arguments) >= 1 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				if len(n.Arguments) > 1 {
+					c.expr(n.Arguments[1], sc, nil)
+				}
+				if lt, ok := t.(*ListType); ok {
+					return lt, true
+				}
+				return &ListType{Elem: JSON}, true
+			}
+		case "filter":
+			if len(n.Arguments) >= 2 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				c.expr(n.Arguments[1], sc, nil)
+				if lt, ok := t.(*ListType); ok {
+					return lt, true
+				}
+				return &ListType{Elem: JSON}, true
+			}
+		case "map":
+			if len(n.Arguments) >= 2 {
+				c.expr(n.Arguments[0], sc, nil)
+				fnType := c.expr(n.Arguments[1], sc, nil)
+				var retElem Type = JSON
+				if ft, ok := fnType.(*FuncType); ok && ft.Ret != nil {
+					retElem = ft.Ret
+				}
+				return &ListType{Elem: retElem}, true
+			}
+		case "reduce":
+			if len(n.Arguments) >= 2 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				fnType := c.expr(n.Arguments[1], sc, nil)
+				if len(n.Arguments) >= 3 {
+					initType := c.expr(n.Arguments[2], sc, nil)
+					return initType, true
+				}
+				if ft, ok := fnType.(*FuncType); ok && ft.Ret != nil {
+					return ft.Ret, true
+				}
+				if lt, ok := t.(*ListType); ok {
+					return lt.Elem, true
+				}
+				return JSON, true
+			}
+		case "keys":
+			if len(n.Arguments) >= 1 {
+				c.expr(n.Arguments[0], sc, nil)
+				return &ListType{Elem: Int}, true
+			}
+		case "values":
+			if len(n.Arguments) >= 1 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				if lt, ok := t.(*ListType); ok {
+					return lt, true
+				}
+				return &ListType{Elem: JSON}, true
+			}
+		case "push":
+			if len(n.Arguments) >= 2 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				c.expr(n.Arguments[1], sc, nil)
+				if lt, ok := t.(*ListType); ok {
+					return lt, true
+				}
+				return &ListType{Elem: JSON}, true
+			}
+		case "pop":
+			if len(n.Arguments) >= 1 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				if lt, ok := t.(*ListType); ok {
+					return NewUnion(lt.Elem, Null), true
+				}
+				return JSON, true
+			}
+		case "slice", "concat":
+			if len(n.Arguments) >= 1 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				for i := 1; i < len(n.Arguments); i++ {
+					c.expr(n.Arguments[i], sc, nil)
+				}
+				if lt, ok := t.(*ListType); ok {
+					return lt, true
+				}
+				return &ListType{Elem: JSON}, true
+			}
+		}
+	} else if mod == "map" {
+		switch method {
+		case "keys":
+			if len(n.Arguments) >= 1 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				if mt, ok := t.(*MapType); ok {
+					return &ListType{Elem: mt.Key}, true
+				}
+				return &ListType{Elem: String}, true
+			}
+		case "values":
+			if len(n.Arguments) >= 1 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				if mt, ok := t.(*MapType); ok {
+					return &ListType{Elem: mt.Val}, true
+				}
+				return &ListType{Elem: JSON}, true
+			}
+		case "sort", "reverse", "filter", "set", "clone", "merge":
+			if len(n.Arguments) >= 1 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				for i := 1; i < len(n.Arguments); i++ {
+					c.expr(n.Arguments[i], sc, nil)
+				}
+				if mt, ok := t.(*MapType); ok {
+					return mt, true
+				}
+				return &MapType{Key: String, Val: JSON}, true
+			}
+		case "map":
+			if len(n.Arguments) >= 2 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				c.expr(n.Arguments[1], sc, nil)
+				if mt, ok := t.(*MapType); ok {
+					return mt, true
+				}
+				return &MapType{Key: String, Val: JSON}, true
+			}
+		case "reduce":
+			if len(n.Arguments) >= 2 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				fnType := c.expr(n.Arguments[1], sc, nil)
+				if len(n.Arguments) >= 3 {
+					initType := c.expr(n.Arguments[2], sc, nil)
+					return initType, true
+				}
+				if ft, ok := fnType.(*FuncType); ok && ft.Ret != nil {
+					return ft.Ret, true
+				}
+				if mt, ok := t.(*MapType); ok {
+					return mt.Val, true
+				}
+				return JSON, true
+			}
+		case "get":
+			if len(n.Arguments) >= 2 {
+				t := c.expr(n.Arguments[0], sc, nil)
+				c.expr(n.Arguments[1], sc, nil)
+				if len(n.Arguments) >= 3 {
+					defType := c.expr(n.Arguments[2], sc, nil)
+					if mt, ok := t.(*MapType); ok {
+						return NewUnion(mt.Val, defType), true
+					}
+					return defType, true
+				}
+				if mt, ok := t.(*MapType); ok {
+					return NewUnion(mt.Val, Null), true
+				}
+				return JSON, true
+			}
+		}
 	}
 	return nil, false
 }

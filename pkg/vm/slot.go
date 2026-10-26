@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import "github.com/alca-lang/alca/pkg/interpreter"
@@ -85,14 +88,14 @@ func (s *StackSlot) SetBool(v bool) {
 	}
 	s.obj = nil
 }
-func (s *StackSlot) SetNull()   { s.tag = SlotNull; s.i64 = 0; s.f64 = 0; s.obj = nil }
+func (s *StackSlot) SetNull() { s.tag = SlotNull; s.i64 = 0; s.f64 = 0; s.obj = nil }
 func (s *StackSlot) IsFalsy() bool {
 	return s.tag == SlotNull || (s.tag == SlotBool && s.i64 == 0)
 }
 
 // Slot constructor helpers
 
-func FromInt(v int64) StackSlot { return StackSlot{tag: SlotInt, i64: v} }
+func FromInt(v int64) StackSlot     { return StackSlot{tag: SlotInt, i64: v} }
 func FromFloat(v float64) StackSlot { return StackSlot{tag: SlotFloat, f64: v} }
 func FromBool(v bool) StackSlot {
 	if v {

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -36,7 +39,7 @@ func TestNativeLibraryIsBuiltIntoTheProgram(t *testing.T) {
 		t.Fatalf("the build must report the native library:\n%s", buildOutput)
 	}
 
-	run := exec.Command(output)
+	run := exec.Command(output, "--allow-all")
 	runOutput, err := run.CombinedOutput()
 	if err != nil {
 		t.Fatalf("the program failed: %v\n%s", err, runOutput)

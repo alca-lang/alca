@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the Regex standard library module for the Alca programming language.
 // It supports fast pattern matching, searches, capture groups, splits, and replacements using Go's RE2 engine.
 package stdlib
@@ -9,19 +12,93 @@ import (
 	"github.com/alca-lang/alca/pkg/interpreter"
 )
 
-var (
-	regexCache sync.Map // thread-safe cache for compiled regular expressions
-)
+type regexLRUEntry struct {
+	pattern string
+	re      *regexp.Regexp
+	prev    *regexLRUEntry
+	next    *regexLRUEntry
+}
+
+type regexLRUCache struct {
+	mu       sync.Mutex
+	capacity int
+	entries  map[string]*regexLRUEntry
+	head     *regexLRUEntry
+	tail     *regexLRUEntry
+}
+
+func newRegexLRUCache(capacity int) *regexLRUCache {
+	c := &regexLRUCache{
+		capacity: capacity,
+		entries:  make(map[string]*regexLRUEntry, capacity),
+	}
+	c.head = &regexLRUEntry{}
+	c.tail = &regexLRUEntry{}
+	c.head.next = c.tail
+	c.tail.prev = c.head
+	return c
+}
+
+func (c *regexLRUCache) get(pattern string) (*regexp.Regexp, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	node, ok := c.entries[pattern]
+	if !ok {
+		return nil, false
+	}
+	c.removeNode(node)
+	c.addToHead(node)
+	return node.re, true
+}
+
+func (c *regexLRUCache) put(pattern string, re *regexp.Regexp) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if node, ok := c.entries[pattern]; ok {
+		node.re = re
+		c.removeNode(node)
+		c.addToHead(node)
+		return
+	}
+
+	if len(c.entries) >= c.capacity {
+		oldest := c.tail.prev
+		if oldest != c.head {
+			c.removeNode(oldest)
+			delete(c.entries, oldest.pattern)
+		}
+	}
+
+	node := &regexLRUEntry{pattern: pattern, re: re}
+	c.entries[pattern] = node
+	c.addToHead(node)
+}
+
+func (c *regexLRUCache) removeNode(node *regexLRUEntry) {
+	node.prev.next = node.next
+	node.next.prev = node.prev
+}
+
+func (c *regexLRUCache) addToHead(node *regexLRUEntry) {
+	node.next = c.head.next
+	node.prev = c.head
+	c.head.next.prev = node
+	c.head.next = node
+}
+
+var regexCache = newRegexLRUCache(512)
 
 func getCompiledRegex(pattern string) (*regexp.Regexp, error) {
-	if re, ok := regexCache.Load(pattern); ok {
-		return re.(*regexp.Regexp), nil
+	if re, ok := regexCache.get(pattern); ok {
+		return re, nil
 	}
 	re, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, err
 	}
-	regexCache.Store(pattern, re)
+	regexCache.put(pattern, re)
 	return re, nil
 }
 

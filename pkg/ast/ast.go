@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package ast defines the abstract syntax tree (AST) node types and interfaces
 // for the Alca programming language.
 package ast
@@ -134,6 +137,7 @@ type FuncDeclaration struct {
 	Decorators []*Decorator    // Annotations applied to the function
 	IsPublic   bool            // True if exported via 'pub'
 	IsShell    bool            // True if declared as 'shfunc'
+	IsAsync    bool            // True if declared as 'async'
 	Name       string          // Name of the function
 	Params     []*FuncParam    // Function parameters
 	ReturnType *TypeAnnotation // Declared return type, or nil if omitted
@@ -157,7 +161,9 @@ func (fd *FuncDeclaration) String() string {
 	if fd.IsPublic {
 		out.WriteString("pub ")
 	}
-	if fd.IsShell {
+	if fd.Token.Type == token.TYPE_VOID {
+		out.WriteString("void ")
+	} else if fd.IsShell {
 		out.WriteString("shfunc ")
 	} else {
 		out.WriteString("func ")
@@ -172,7 +178,7 @@ func (fd *FuncDeclaration) String() string {
 	}
 	out.WriteString(strings.Join(params, ", "))
 	out.WriteString(")")
-	if fd.ReturnType != nil {
+	if fd.ReturnType != nil && fd.Token.Type != token.TYPE_VOID {
 		out.WriteString(" -> ")
 		out.WriteString(fd.ReturnType.String())
 	}
@@ -1530,11 +1536,12 @@ func (ee *ErrExpression) String() string {
 	return out.String()
 }
 
-// RangeLiteral represents an integer or sequential range expression (start..end).
+// RangeLiteral represents an integer or sequential range expression (start..end or start..=end).
 type RangeLiteral struct {
-	Token token.Token // token.RANGE ("..")
-	Start Expression  // Starting bound expression
-	End   Expression  // Ending bound expression
+	Token     token.Token // token.RANGE ("..") or token.DOTDOTEQ ("..=")
+	Start     Expression  // Starting bound expression
+	End       Expression  // Ending bound expression
+	Inclusive bool        // true if ..= (inclusive), false if .. (half-open)
 }
 
 func (rl *RangeLiteral) expressionNode() {}
@@ -1548,7 +1555,11 @@ func (rl *RangeLiteral) String() string {
 	if rl.Start != nil {
 		out.WriteString(rl.Start.String())
 	}
-	out.WriteString("..")
+	if rl.Inclusive {
+		out.WriteString("..=")
+	} else {
+		out.WriteString("..")
+	}
 	if rl.End != nil {
 		out.WriteString(rl.End.String())
 	}
@@ -1581,6 +1592,90 @@ func (si *StructInstantiation) String() string {
 	out.WriteString(strings.Join(args, ", "))
 	out.WriteString(")")
 	return out.String()
+}
+
+// EnumVariant represents an individual case in an enum declaration.
+type EnumVariant struct {
+	Token token.Token // variant name token
+	Name  string
+	Value Expression // optional discriminant or payload expression
+}
+
+// EnumDeclaration represents an enumeration type definition.
+type EnumDeclaration struct {
+	Token      token.Token // token.ENUM
+	Name       string
+	Variants   []*EnumVariant
+	IsPublic   bool
+	Decorators []*Decorator
+}
+
+func (ed *EnumDeclaration) statementNode()       {}
+func (ed *EnumDeclaration) TokenLiteral() string { return ed.Token.Literal }
+func (ed *EnumDeclaration) String() string {
+	var out strings.Builder
+	if ed.IsPublic {
+		out.WriteString("pub ")
+	}
+	out.WriteString("enum ")
+	out.WriteString(ed.Name)
+	out.WriteString(" { ")
+	vars := make([]string, 0, len(ed.Variants))
+	for _, v := range ed.Variants {
+		if v.Value != nil {
+			vars = append(vars, v.Name+" = "+v.Value.String())
+		} else {
+			vars = append(vars, v.Name)
+		}
+	}
+	out.WriteString(strings.Join(vars, ", "))
+	out.WriteString(" }")
+	return out.String()
+}
+
+// MethodSignature represents a method contract in an interface or trait.
+type MethodSignature struct {
+	Token      token.Token // 'fn' or 'func'
+	Name       string
+	Params     []*FuncParam
+	ReturnType *TypeAnnotation
+}
+
+// InterfaceDeclaration represents an interface/trait contract definition.
+type InterfaceDeclaration struct {
+	Token      token.Token // token.INTERFACE or token.TRAIT
+	Name       string
+	Methods    []*MethodSignature
+	IsPublic   bool
+	Decorators []*Decorator
+}
+
+func (id *InterfaceDeclaration) statementNode()       {}
+func (id *InterfaceDeclaration) TokenLiteral() string { return id.Token.Literal }
+func (id *InterfaceDeclaration) String() string {
+	var out strings.Builder
+	if id.IsPublic {
+		out.WriteString("pub ")
+	}
+	out.WriteString("interface ")
+	out.WriteString(id.Name)
+	out.WriteString(" { ... }")
+	return out.String()
+}
+
+// AwaitExpression represents an asynchronous await expression (await expr).
+type AwaitExpression struct {
+	Token      token.Token // token.AWAIT
+	Expression Expression
+}
+
+func (ae *AwaitExpression) expressionNode()      {}
+func (ae *AwaitExpression) TokenLiteral() string { return ae.Token.Literal }
+func (ae *AwaitExpression) String() string {
+	if ae.Expression != nil {
+		return "await " + ae.Expression.String()
+	}
+	return "await"
 }
 
 // NodePosition extracts the 1-based source line and column of any AST node.
@@ -1685,6 +1780,12 @@ func NodePosition(node Node) (int, int) {
 	case *RangeLiteral:
 		return n.Token.Line, n.Token.Column
 	case *StructInstantiation:
+		return n.Token.Line, n.Token.Column
+	case *EnumDeclaration:
+		return n.Token.Line, n.Token.Column
+	case *InterfaceDeclaration:
+		return n.Token.Line, n.Token.Column
+	case *AwaitExpression:
 		return n.Token.Line, n.Token.Column
 	}
 	return 0, 0

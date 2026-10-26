@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import (
@@ -80,13 +83,13 @@ func TestLooseAndStrictEqualityOnBothEngines(t *testing.T) {
 		src  string
 		want string
 	}{
-		{name: "int and float loose", src: `println(1 == 1.0);`, want: "true"},
+		{name: "JSON int and float loose", src: `dynamic: json = 1.0; println(dynamic == 1);`, want: "true"},
 		{name: "int and float strict", src: `println(1 === 1.0);`, want: "false"},
-		{name: "string and int loose", src: `println("1" == 1);`, want: "true"},
+		{name: "JSON string and int loose", src: `dynamic: json = "1"; println(dynamic == 1);`, want: "true"},
 		{name: "string and int strict", src: `println("1" === 1);`, want: "false"},
-		{name: "nested loose equality", src: `println([1] == [1.0]);`, want: "true"},
 		{name: "nested strict equality", src: `println([1] === [1.0]);`, want: "false"},
 		{name: "same type strict equality", src: `println("alca" === "alca");`, want: "true"},
+		{name: "strict inequality", src: `println(1 != 2);`, want: "true"},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -216,7 +219,7 @@ func TestCounterLoopFinalValueMatchesInterpreter(t *testing.T) {
 			name: "loop variable captured by closure keeps last item",
 			src: `func probe() -> void:
     a := |x: int| x;
-    for i in 0..4:
+    for i in 0..=4:
         if i == 0:
             a = |x: int| x + i;
     println(a(0));
@@ -228,7 +231,7 @@ probe();
 		{
 			name: "writing the loop variable does not change iteration count",
 			src: `n := 0;
-for i in 0..4:
+for i in 0..=4:
     n = n + 1;
     i = i + 1;
 println(n);

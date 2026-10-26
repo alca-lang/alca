@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package main
 
 import (
@@ -61,11 +64,8 @@ func loadProgram(filename string) (*ast.Program, string, bool) {
 // cmdRun implements `alca run`.
 func cmdRun(args []string) int {
 	eng := engineAuto
-
-	// By default, activate JIT acceleration for maximum performance
 	if jitEng := jit.Default(); jitEng != nil {
-		jitEng.SetEnabled(true)
-		jitEng.SetThreshold(1)
+		jitEng.SetEnabled(false)
 	}
 
 	var policyArgs, rest []string
@@ -323,10 +323,6 @@ func runStandalone() int {
 	if bundle.Kind == compiler.KindNative || bundle.Kind == compiler.KindBytecode {
 		interp := newInterpreter()
 		interp.SetFilename(bundle.Name)
-		if jitEng := jit.Default(); jitEng != nil {
-			jitEng.SetEnabled(true)
-			jitEng.SetThreshold(1)
-		}
 		machine := vm.NewWithEnv(bundle.Code, interp.Env())
 		if bundle.Kind == compiler.KindNative && len(bundle.NativeCode) > 0 {
 			if jitEng := jit.Default(); jitEng != nil {
@@ -579,6 +575,9 @@ func cmdBuild(args []string) int {
 	forceNative := false
 	forceBytecode := false
 	noConsole := false
+	protect := false
+	forceDLL := false
+	forceAPK := false
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
 		case a == "-o" && i+1 < len(args):
@@ -599,12 +598,18 @@ func cmdBuild(args []string) int {
 		case a == "--native-lib" && i+1 < len(args):
 			nativeLibraries = append(nativeLibraries, args[i+1])
 			i++
+		case a == "--protect" || a == "-p" || a == "--encrypted" || a == "--obfuscate":
+			protect = true
 		case a == "--source":
 			forceSource = true
 		case a == "--native" || a == "--aot":
 			forceNative = true
 		case a == "--bytecode":
 			forceBytecode = true
+		case a == "--dll" || a == "--shared":
+			forceDLL = true
+		case a == "--apk" || a == "-apk":
+			forceAPK = true
 		case a == "--noconsole" || a == "--gui" || a == "-noconsole":
 			noConsole = true
 		case strings.HasPrefix(a, "-"):
@@ -614,9 +619,42 @@ func cmdBuild(args []string) int {
 			input = a
 		}
 	}
+
+	if forceAPK || targetStr == "android" {
+		projDir := input
+		if projDir == "" {
+			projDir = "."
+		}
+		var buildArgs []string
+		if output != "" {
+			buildArgs = append(buildArgs, "-o", output)
+		}
+		buildArgs = append(buildArgs, projDir)
+		return cmdAndroidBuild(buildArgs)
+	}
+
 	if input == "" {
-		fmt.Fprintln(os.Stderr, "Usage: alca build <file.al> [-o output] [--embed file-or-directory ...] [--noconsole] [--target os/arch] [--runtime file] [--source]")
+		if _, err := os.Stat("AndroidManifest.xml"); err == nil {
+			var buildArgs []string
+			if output != "" {
+				buildArgs = append(buildArgs, "-o", output)
+			}
+			buildArgs = append(buildArgs, ".")
+			return cmdAndroidBuild(buildArgs)
+		}
+		fmt.Fprintln(os.Stderr, "Usage: alca build <file.al> [-o output] [--embed file-or-directory ...] [--noconsole] [--target os/arch] [--runtime file] [--source] [--apk]")
 		return 1
+	}
+
+	ext := strings.ToLower(filepath.Ext(input))
+	if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" || ext == ".s" || ext == ".asm" {
+		outPath, err := stdlib.CompileSharedLibrary(input, output)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		fmt.Printf("Compiled shared library: %s\n", outPath)
+		return 0
 	}
 
 	target := compiler.HostTarget()
@@ -634,6 +672,26 @@ func cmdBuild(args []string) int {
 		return 1
 	}
 
+	if forceDLL || strings.HasSuffix(strings.ToLower(output), ".dll") {
+		if output == "" {
+			base := filepath.Base(input)
+			output = strings.TrimSuffix(base, filepath.Ext(base)) + ".dll"
+		}
+		if !strings.HasSuffix(strings.ToLower(output), ".dll") {
+			output += ".dll"
+		}
+		absOutput, err := filepath.Abs(output)
+		if err != nil {
+			absOutput = output
+		}
+		if err := compiler.BuildNativeDLLFromAlca(content, absOutput); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		fmt.Printf("Compiled pure native DLL: %s\n", absOutput)
+		return 0
+	}
+
 	if output == "" {
 		base := filepath.Base(input)
 		output = strings.TrimSuffix(base, filepath.Ext(base))
@@ -645,7 +703,10 @@ func cmdBuild(args []string) int {
 	}
 
 	var stub string
-	bundle := &compiler.Bundle{Name: filepath.Base(input)}
+	bundle := &compiler.Bundle{Name: filepath.Base(input), Encrypted: protect}
+	if protect {
+		prog = compiler.ObfuscateProgram(prog)
+	}
 	if len(embedPaths) > 0 {
 		root, err := filepath.Abs(filepath.Dir(input))
 		if err != nil {
@@ -767,6 +828,9 @@ func cmdBuild(args []string) int {
 
 	if noConsole {
 		mode += ", noconsole / GUI"
+	}
+	if protect {
+		mode += ", protected (AES-256-GCM encrypted + obfuscated)"
 	}
 
 	fmt.Printf("Building %s -> %s [%s, %s]\n", input, absOutput, target, mode)

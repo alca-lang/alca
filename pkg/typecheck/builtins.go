@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package typecheck
 
 import "strings"
@@ -128,6 +131,29 @@ var httpServerStaticType = &StructType{
 	},
 }
 
+var fileHandleStaticType = &StructType{
+	Name: "FileHandle",
+	Fields: []Field{
+		{Name: "path", Type: String, Visibility: "public"},
+		{Name: "mode", Type: String, Visibility: "public"},
+		{Name: "closed", Type: Bool, Visibility: "public"},
+	},
+	Methods: map[string]*Method{
+		"read":        {Name: "read", Signature: &FuncType{Params: []Param{{Type: Int, Optional: true}}, Ret: String}},
+		"read_bytes":  {Name: "read_bytes", Signature: &FuncType{Params: []Param{{Type: Int, Optional: true}}, Ret: Blob}},
+		"read_line":   {Name: "read_line", Signature: &FuncType{Ret: String}},
+		"lines":       {Name: "lines", Signature: &FuncType{Ret: &ListType{Elem: String}}},
+		"write":       {Name: "write", Signature: &FuncType{Params: []Param{{Type: String}}, Ret: Int}},
+		"write_bytes": {Name: "write_bytes", Signature: &FuncType{Params: []Param{{Type: Blob}}, Ret: Int}},
+		"seek":        {Name: "seek", Signature: &FuncType{Params: []Param{{Type: Int}, {Type: Int, Optional: true}}, Ret: Int}},
+		"tell":        {Name: "tell", Signature: &FuncType{Ret: Int}},
+		"flush":       {Name: "flush", Signature: &FuncType{Ret: Bool}},
+		"close":       {Name: "close", Signature: &FuncType{Ret: Bool}},
+		"lock":        {Name: "lock", Signature: &FuncType{Params: []Param{{Type: Bool, Optional: true}}, Ret: Bool}},
+		"unlock":      {Name: "unlock", Signature: &FuncType{Ret: Bool}},
+	},
+}
+
 // moduleByName returns the typed std module (canonical or alias name).
 func moduleByName(name string) (*ModuleType, bool) {
 	if canon, ok := moduleAliases[name]; ok {
@@ -149,6 +175,9 @@ func moduleByName(name string) (*ModuleType, bool) {
 	}
 	if name == "http" {
 		m.Members["http_serve"] = &FuncType{Params: []Param{{Type: Int}, {Type: Any}}, Ret: httpServerStaticType}
+	}
+	if name == "io" {
+		m.Members["open"] = &FuncType{Params: []Param{{Type: String}, {Type: String, Optional: true}}, Ret: fileHandleStaticType}
 	}
 	moduleCache[name] = m
 	return m, true
@@ -175,22 +204,6 @@ func globalBuiltins() map[string]Type {
 	g := map[string]Type{}
 	for name, sig := range globalSigs {
 		g[name] = parseSig(sig)
-	}
-	for name, mod := range globalAliases {
-		if m, ok := moduleByName(mod); ok {
-			if t, ok := m.Members[name]; ok {
-				g[name] = t
-			}
-		}
-	}
-	for _, name := range dynamicGlobals {
-		if _, exists := g[name]; !exists {
-			g[name] = &FuncType{Dynamic: true, Ret: JSON}
-		}
-	}
-	// gui_* convenience functions are dynamic wrappers of std.gui.
-	for member := range moduleMembers["gui"] {
-		g["gui_"+member] = &FuncType{Dynamic: true, Ret: JSON}
 	}
 	return g
 }

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vm implements a high-performance register/stack-based bytecode virtual machine
 // and optimizing compiler for the Alca programming language.
 package vm
@@ -74,6 +77,7 @@ const (
 	OpStream          // Execute stream operator: source OP target (1 byte stream op code)
 	OpUse             // Execute module import use statement (2 bytes constant index)
 	OpRange           // Create integer range list from start..end
+	OpRangeInclusive  // Create integer range list from start..=end (inclusive)
 	OpIncGlobal       // Increment global integer by 1 in-place (2 bytes index)
 	OpIncLocal        // Increment local integer by 1 in-place (1 byte index)
 	OpAddGlobal       // Add top of stack to global integer in-place (2 bytes index)
@@ -172,6 +176,7 @@ var definitions = map[Opcode]*Definition{
 	OpStream:          {"OpStream", []int{1}},
 	OpUse:             {"OpUse", []int{2}},
 	OpRange:           {"OpRange", []int{}},
+	OpRangeInclusive:  {"OpRangeInclusive", []int{}},
 	OpIncGlobal:       {"OpIncGlobal", []int{2}},
 	OpIncLocal:        {"OpIncLocal", []int{1}},
 	OpAddGlobal:       {"OpAddGlobal", []int{2}},

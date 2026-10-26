@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm_test
 
 import (
@@ -84,12 +87,12 @@ func TestPeepholeDirectRelocation(t *testing.T) {
 	// 11: OpReturnValue              -> 1 byte
 	opt := vm.NewOptimizer()
 	ins := vm.Instructions{}
-	ins = append(ins, vm.Make(vm.OpConstant, 0)...)  // 3 bytes (0..2)
-	ins = append(ins, vm.Make(vm.OpSetLocal, 1)...)  // 2 bytes (3..4)
-	ins = append(ins, vm.Make(vm.OpGetLocal, 1)...)  // 2 bytes (5..6)
-	ins = append(ins, vm.Make(vm.OpJump, 11)...)     // 3 bytes (7..9)
-	ins = append(ins, vm.Make(vm.OpPop)...)          // 1 byte  (10)
-	ins = append(ins, vm.Make(vm.OpReturnValue)...)  // 1 byte  (11)
+	ins = append(ins, vm.Make(vm.OpConstant, 0)...) // 3 bytes (0..2)
+	ins = append(ins, vm.Make(vm.OpSetLocal, 1)...) // 2 bytes (3..4)
+	ins = append(ins, vm.Make(vm.OpGetLocal, 1)...) // 2 bytes (5..6)
+	ins = append(ins, vm.Make(vm.OpJump, 11)...)    // 3 bytes (7..9)
+	ins = append(ins, vm.Make(vm.OpPop)...)         // 1 byte  (10)
+	ins = append(ins, vm.Make(vm.OpReturnValue)...) // 1 byte  (11)
 
 	optIns := opt.OptimizePeephole(ins)
 

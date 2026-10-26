@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package stdlib
 
 import (
@@ -52,8 +55,10 @@ func TestAuditedBytesWalkJSONAndStringModules(t *testing.T) {
 	RegisterStringBuiltins(env)
 
 	path := filepath.Join(t.TempDir(), "data.bin")
-	writeBytes, _ := env.Get("write_bytes")
-	readBytes, _ := env.Get("read_bytes")
+	ioVal, _ := env.Get("io")
+	ioMod := ioVal.(*interpreter.MapValue)
+	writeBytes, _ := ioMod.Get("write_bytes")
+	readBytes, _ := ioMod.Get("read_bytes")
 	payload := []byte{0, 1, 2, 255}
 	if result := writeBytes.(*interpreter.BuiltinFunction).Fn(
 		&interpreter.StringValue{Val: path},

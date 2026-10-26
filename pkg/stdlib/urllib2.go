@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package stdlib
 
 import (
@@ -35,10 +38,27 @@ func RegisterUrllib2Builtins(env *interpreter.Environment) {
 	register("parse_qs", urllib2ParseQuery)
 	register("parse_qsl", urllib2ParseQueryList)
 	register("request", urllib2Request)
+	register("tcp_request", urllib2TcpRequest)
 	register("urlopen", urllib2URLopen)
 	register("get", urllib2Get)
 	register("post", urllib2Post)
+	register("put", urllib2Put)
+	register("delete", urllib2Delete)
+	register("patch", urllib2Patch)
+	register("head", urllib2Head)
+	register("options", urllib2Options)
 	register("urlretrieve", urllib2URLRetrieve)
+	// WebSocket functions
+	register("websocket_connect", websocket_connect)
+	register("websocket_send", websocket_send)
+	register("websocket_receive", websocket_receive)
+	register("websocket_ping", websocket_ping)
+	register("websocket_pong", websocket_pong)
+	register("websocket_close", websocket_close_impl)
+	// Legacy WebSocket functions (deprecated)
+	register("websocket_handshake", websocket_handshake)
+	register("websocket_frame_read", websocket_frame_read)
+	register("websocket_frame_write", websocket_frame_write)
 
 	env.Set("urllib2", module)
 	env.Set("std.urllib2", module)
@@ -406,6 +426,81 @@ func urllib2Post(args ...interpreter.Value) interpreter.Value {
 	return urllib2Request(&interpreter.StringValue{Val: http.MethodPost}, args[0], args[1], headers, timeout)
 }
 
+func urllib2Put(args ...interpreter.Value) interpreter.Value {
+	if len(args) < 2 || len(args) > 4 {
+		return interpreter.NewError(400, "urllib2.put requires (url, data, headers?, timeout?)")
+	}
+	var headers interpreter.Value = interpreter.NULL
+	var timeout interpreter.Value = interpreter.NULL
+	if len(args) > 2 {
+		headers = args[2]
+	}
+	if len(args) > 3 {
+		timeout = args[3]
+	}
+	return urllib2Request(&interpreter.StringValue{Val: http.MethodPut}, args[0], args[1], headers, timeout)
+}
+
+func urllib2Delete(args ...interpreter.Value) interpreter.Value {
+	if len(args) < 1 || len(args) > 3 {
+		return interpreter.NewError(400, "urllib2.delete requires (url, headers?, timeout?)")
+	}
+	var headers interpreter.Value = interpreter.NULL
+	var timeout interpreter.Value = interpreter.NULL
+	if len(args) > 1 {
+		headers = args[1]
+	}
+	if len(args) > 2 {
+		timeout = args[2]
+	}
+	return urllib2Request(&interpreter.StringValue{Val: http.MethodDelete}, args[0], interpreter.NULL, headers, timeout)
+}
+
+func urllib2Patch(args ...interpreter.Value) interpreter.Value {
+	if len(args) < 2 || len(args) > 4 {
+		return interpreter.NewError(400, "urllib2.patch requires (url, data, headers?, timeout?)")
+	}
+	var headers interpreter.Value = interpreter.NULL
+	var timeout interpreter.Value = interpreter.NULL
+	if len(args) > 2 {
+		headers = args[2]
+	}
+	if len(args) > 3 {
+		timeout = args[3]
+	}
+	return urllib2Request(&interpreter.StringValue{Val: "PATCH"}, args[0], args[1], headers, timeout)
+}
+
+func urllib2Head(args ...interpreter.Value) interpreter.Value {
+	if len(args) < 1 || len(args) > 3 {
+		return interpreter.NewError(400, "urllib2.head requires (url, headers?, timeout?)")
+	}
+	var headers interpreter.Value = interpreter.NULL
+	var timeout interpreter.Value = interpreter.NULL
+	if len(args) > 1 {
+		headers = args[1]
+	}
+	if len(args) > 2 {
+		timeout = args[2]
+	}
+	return urllib2Request(&interpreter.StringValue{Val: http.MethodHead}, args[0], interpreter.NULL, headers, timeout)
+}
+
+func urllib2Options(args ...interpreter.Value) interpreter.Value {
+	if len(args) < 1 || len(args) > 3 {
+		return interpreter.NewError(400, "urllib2.options requires (url, headers?, timeout?)")
+	}
+	var headers interpreter.Value = interpreter.NULL
+	var timeout interpreter.Value = interpreter.NULL
+	if len(args) > 1 {
+		headers = args[1]
+	}
+	if len(args) > 2 {
+		timeout = args[2]
+	}
+	return urllib2Request(&interpreter.StringValue{Val: http.MethodOptions}, args[0], interpreter.NULL, headers, timeout)
+}
+
 func urllib2URLRetrieve(args ...interpreter.Value) interpreter.Value {
 	if len(args) != 2 {
 		return interpreter.NewError(400, "urllib2.urlretrieve requires (url, destination)")
@@ -455,4 +550,44 @@ func urllib2HeaderMap(source http.Header) *interpreter.MapValue {
 		result.Set(key, interpreter.NewList(items...))
 	}
 	return result
+}
+
+// urllib2TcpRequest keeps the legacy name but uses the policy-aware HTTP path.
+// Accetta: (method, url, data?, headers?, timeout?)
+func urllib2TcpRequest(args ...interpreter.Value) interpreter.Value {
+	return urllib2Request(args...)
+}
+
+// websocket_handshake esegue la handshake del protocollo WebSocket (deprecated - use websocket_connect).
+// Accetta: (url, headers?)
+func websocket_handshake(args ...interpreter.Value) interpreter.Value {
+	if len(args) < 1 || len(args) > 2 {
+		return interpreter.NewError(400, "urllib2.websocket_handshake requires (url, headers?)")
+	}
+	var headers interpreter.Value = interpreter.NULL
+	if len(args) == 2 {
+		headers = args[1]
+	}
+	return websocket_connect(args[0], headers, interpreter.NULL, interpreter.NULL)
+}
+
+// websocket_frame_read legge un frame WebSocket (deprecated - use websocket_receive).
+// Accetta: (conn?, size?)
+func websocket_frame_read(args ...interpreter.Value) interpreter.Value {
+	if len(args) < 1 || len(args) > 2 {
+		return interpreter.NewError(400, "urllib2.websocket_frame_read requires (conn, size?)")
+	}
+	// Per simplicità, restituisce un errore indicando che la connessione raw non è supportata
+	// nell'implementazione base. Gli utenti dovrebbero usare librerie specifiche WebSocket.
+	return interpreter.NewError(501, "websocket_frame_read: deprecated - use websocket_connect and websocket_receive instead")
+}
+
+// websocket_frame_write scrive un frame WebSocket (deprecated - use websocket_send).
+// Accetta: (data, type?, mask?)
+func websocket_frame_write(args ...interpreter.Value) interpreter.Value {
+	if len(args) < 2 || len(args) > 3 {
+		return interpreter.NewError(400, "urllib2.websocket_frame_write requires (data, type?, mask?)")
+	}
+	// Simile al read, il writing raw non è supportato nell'implementazione base
+	return interpreter.NewError(501, "websocket_frame_write: deprecated - use websocket_connect and websocket_send instead")
 }

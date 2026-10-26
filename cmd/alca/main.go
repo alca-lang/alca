@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package main implements the Alca language CLI tool and native runner.
 package main
 
@@ -5,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/alca-lang/alca/pkg/ast"
+	"github.com/alca-lang/alca/pkg/compiler"
 	"github.com/alca-lang/alca/pkg/diag"
 	"github.com/alca-lang/alca/pkg/format"
 	"github.com/alca-lang/alca/pkg/interpreter"
@@ -25,6 +30,10 @@ import (
 // Version of the Alca language CLI. The canonical value lives in pkg/version
 // so the package manager and registry node report the same toolchain version.
 const Version = version.Version
+
+func init() {
+	stdlib.NativeDLLBuilder = compiler.BuildNativeDLLFromAlca
+}
 
 func main() {
 	enableUTF8Console()
@@ -54,6 +63,15 @@ func main() {
 
 	case "build":
 		os.Exit(cmdBuild(os.Args[2:]))
+
+	case "android":
+		os.Exit(cmdAndroid(os.Args[2:]))
+
+	case "init":
+		os.Exit(cmdInit(os.Args[2:]))
+
+	case "dll":
+		os.Exit(cmdBuildDLL(os.Args[2:]))
 
 	case "targets":
 		os.Exit(cmdTargets())
@@ -109,6 +127,10 @@ func printUsage() {
 	fmt.Println("Commands:")
 	fmt.Println("  run <file.al> [args...]     Run an Alca program (Bytecode VM with JIT acceleration)")
 	fmt.Println("  build <file.al> [-o out]    Compile program into a standalone native executable")
+	fmt.Println("  android <init|build|check>  Build Android APK projects without Android Studio or SDK")
+	fmt.Println("  init [--android] [name]     Initialize a new Alca or Android project")
+	fmt.Println("  dll <src.c|cpp> [-o out]    Compile native C/C++ source into a shared library (.dll / .so)")
+	fmt.Println("        --protect, -p         protect binary: AES-256-GCM encryption + symbol obfuscation")
 	fmt.Println("        --noconsole, --gui    build a GUI application without opening a console window")
 	fmt.Println("        --target os/arch      cross-compile (e.g. linux/amd64, windows/arm64, darwin/arm64)")
 	fmt.Println("        --runtime <file>      use a specific runtime binary for the target")
@@ -124,9 +146,10 @@ func printUsage() {
 	fmt.Println("  lsp                         Language Server Protocol daemon for editors")
 	fmt.Println("  version | help")
 	fmt.Println()
-	fmt.Println("Runtime capabilities (file and network access are denied by default):")
+	fmt.Println("Runtime capabilities (denied by default):")
 	fmt.Println("  " + sandbox.FlagHint)
-	fmt.Println("  Use --allow-read=<path>, --allow-write=<path>, --allow-net=<host[:port]>")
+	fmt.Println("  Use --allow-read=<path>, --allow-write=<path>, --allow-net=<host[:port]>,")
+	fmt.Println("  --allow-run[=<cmd>], --allow-env[=<var>], --allow-ffi[=<lib>]")
 	fmt.Println("  before the file name; --allow-all grants everything.")
 	fmt.Println()
 	fmt.Print(memoryFlagHint)
@@ -163,8 +186,62 @@ func checkFile(filename string) int {
 		return 1
 	}
 
+	checkRangeLoops(prog, func(line int, iterStr string) {
+		fmt.Printf("note: %s:%d: range '%s' in for loop is half-open [start, end); use '..=' if inclusive was intended\n", filename, line, iterStr)
+	})
+
 	fmt.Printf("[OK] %s: No syntax or static type errors found (passed all static checks).\n", filename)
 	return 0
+}
+
+func checkRangeLoops(prog *ast.Program, noteFn func(line int, expr string)) {
+	if prog == nil {
+		return
+	}
+	var walkStmt func(st ast.Statement)
+	walkStmt = func(st ast.Statement) {
+		if st == nil {
+			return
+		}
+		switch s := st.(type) {
+		case *ast.ForStatement:
+			if r, ok := s.Iterable.(*ast.RangeLiteral); ok && !r.Inclusive {
+				noteFn(r.Token.Line, r.String())
+			}
+			if s.Body != nil {
+				for _, inner := range s.Body.Statements {
+					walkStmt(inner)
+				}
+			}
+		case *ast.BlockStatement:
+			if s != nil {
+				for _, inner := range s.Statements {
+					walkStmt(inner)
+				}
+			}
+		case *ast.FuncDeclaration:
+			if s.Body != nil {
+				for _, inner := range s.Body.Statements {
+					walkStmt(inner)
+				}
+			}
+		case *ast.IfStatement:
+			if s.Consequence != nil {
+				walkStmt(s.Consequence)
+			}
+			for _, alt := range s.Alternatives {
+				if alt != nil && alt.Body != nil {
+					walkStmt(alt.Body)
+				}
+			}
+			if s.ElseBlock != nil {
+				walkStmt(s.ElseBlock)
+			}
+		}
+	}
+	for _, s := range prog.Statements {
+		walkStmt(s)
+	}
 }
 
 // newInterpreter creates an interpreter instance with all standard libraries registered.
@@ -197,6 +274,10 @@ func newInterpreter() *interpreter.Interpreter {
 	stdlib.RegisterFormatsBuiltins(env)
 	stdlib.RegisterStringBuiltins(env)
 	stdlib.RegisterSysBuiltins(env)
+	stdlib.RegisterPlatformBuiltins(env)
+	stdlib.RegisterPowerBuiltins(env)
+	stdlib.RegisterDevicesBuiltins(env)
+	stdlib.RegisterWin32Builtins(env)
 	stdlib.RegisterCLIBuiltins(env)
 	stdlib.RegisterLogBuiltins(env)
 	stdlib.RegisterMathBuiltins(env)
@@ -206,11 +287,18 @@ func newInterpreter() *interpreter.Interpreter {
 	stdlib.RegisterFFIBuiltins(env)
 	stdlib.RegisterMemBuiltins(env)
 	stdlib.RegisterMTProtoBuiltins(env)
-	stdlib.RegisterAIBuiltins(env)
+	stdlib.RegisterLibtorchBuiltins(env)
+	stdlib.RegisterEncodingBuiltins(env)
+	stdlib.RegisterMarshalBuiltins(env)
+	stdlib.RegisterAudioBuiltins(env)
+	stdlib.RegisterImageBuiltins(env)
 	stdlib.RegisterCompressBuiltins(env)
 	stdlib.RegisterEmbedBuiltins(env)
 	stdlib.RegisterHTTPBuiltins(env)
 	stdlib.RegisterUrllib2Builtins(env)
+	stdlib.RegisterListBuiltins(env)
+	stdlib.RegisterMapBuiltins(env)
+	stdlib.RegisterRandomBuiltins(env)
 
 	// Build the top-level 'std' namespace object so std.io, std.math, etc. work seamlessly
 	stdModule := interpreter.NewMap()
@@ -218,10 +306,12 @@ func newInterpreter() *interpreter.Interpreter {
 		"io", "env", "net", "process", "gui", "time", "path", "crypto",
 		"regex", "re", "archive", "zip", "formats", "csv", "ini", "json",
 		"sys", "cli", "log", "math", "db", "sql", "sqlite", "postgres", "metrics",
-		"ffi", "ai", "security", "compress", "embed", "http", "urllib2", "string", "str",
-		"mem", "mtproto",
+		"ffi", "libtorch", "encoding", "marshal", "audio", "image", "security", "compress", "embed", "http", "urllib2", "string", "str",
+		"mem", "mtproto", "platform", "power", "devices", "win32", "list", "map", "random",
 	} {
-		if val, ok := env.Get(name); ok {
+		if val, ok := env.Get("std." + name); ok {
+			stdModule.Set(name, val)
+		} else if val, ok := env.Get(name); ok {
 			stdModule.Set(name, val)
 		}
 	}
@@ -464,6 +554,37 @@ func hasUnclosedTripleQuote(s string) bool {
 	return inTriple != 0
 }
 
+// hasUnclosedBraces reports whether s contains more opening '{' than closing '}'.
+func hasUnclosedBraces(s string) bool {
+	depth := 0
+	inString := false
+	var strChar byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inString {
+			if c == '\\' && i+1 < len(s) {
+				i++
+				continue
+			}
+			if c == strChar {
+				inString = false
+			}
+			continue
+		}
+		if c == '"' || c == '\'' {
+			inString = true
+			strChar = c
+			continue
+		}
+		if c == '{' {
+			depth++
+		} else if c == '}' && depth > 0 {
+			depth--
+		}
+	}
+	return depth > 0
+}
+
 // startREPL runs the interactive Alca REPL session.
 func startREPL(args []string) {
 	memFlags, args, merr := parseMemoryFlags(args)
@@ -493,7 +614,7 @@ func startREPL(args []string) {
 	fmt.Println("Every simple statement ends with ';'. A line ending with ':' starts a block;")
 	fmt.Println("finish the block with an empty line. Type 'exit' or 'quit' to leave.")
 	if !policy.Read.All && !policy.Write.All && !policy.Net.All && len(policy.Read.Roots) == 0 && len(policy.Write.Roots) == 0 && len(policy.Net.Roots) == 0 {
-		fmt.Println("File and network access are disabled; restart with --allow-read/--allow-write/--allow-net or --allow-all.")
+		fmt.Println("Capabilities are restricted; restart with --allow-* or --allow-all.")
 	}
 
 	session := newREPLSession()
@@ -521,20 +642,20 @@ func startREPL(args []string) {
 		var inputBuilder strings.Builder
 		inputBuilder.WriteString(line)
 
-		isBlock := strings.HasSuffix(trimmed, ":")
-		for isBlock || hasUnclosedTripleQuote(inputBuilder.String()) {
+		isBlock := strings.HasSuffix(trimmed, ":") || strings.HasSuffix(trimmed, "{")
+		for isBlock || hasUnclosedTripleQuote(inputBuilder.String()) || hasUnclosedBraces(inputBuilder.String()) {
 			fmt.Print("...   ")
 			subLine, ok := interpreter.ReadStdinLine()
 			if !ok {
 				break
 			}
-			// Block input ends on an empty line, unless inside an unclosed multiline string
-			if isBlock && !hasUnclosedTripleQuote(inputBuilder.String()) && strings.TrimSpace(subLine) == "" {
+			// Block input ends on an empty line, unless inside an unclosed multiline string or unclosed braces
+			if isBlock && !hasUnclosedTripleQuote(inputBuilder.String()) && !hasUnclosedBraces(inputBuilder.String()) && strings.TrimSpace(subLine) == "" {
 				break
 			}
 			inputBuilder.WriteString("\n")
 			inputBuilder.WriteString(subLine)
-			if !isBlock && !hasUnclosedTripleQuote(inputBuilder.String()) {
+			if !isBlock && !hasUnclosedTripleQuote(inputBuilder.String()) && !hasUnclosedBraces(inputBuilder.String()) {
 				break
 			}
 		}
@@ -546,26 +667,31 @@ func startREPL(args []string) {
 
 // cmdFmt implements the 'alca fmt' command: it formats a source file, printing
 // the result to stdout, or rewriting the file in place when -w is given.
+// When --migrate-ranges (or --migrate) is given, it rewrites half-open 'for i in a..b:'
+// loops into inclusive 'for i in a..=b:'.
 func cmdFmt(args []string) int {
 	write := false
+	migrateRanges := false
 	var files []string
 	for _, arg := range args {
 		switch arg {
 		case "-w", "--write":
 			write = true
+		case "--migrate-ranges", "--migrate":
+			migrateRanges = true
 		default:
 			files = append(files, arg)
 		}
 	}
 	if len(files) != 1 {
-		fmt.Fprintln(os.Stderr, "Usage: alca fmt [-w] <file.al>")
+		fmt.Fprintln(os.Stderr, "Usage: alca fmt [-w] [--migrate-ranges] <file.al>")
 		return 1
 	}
-	return formatFile(files[0], write)
+	return formatFile(files[0], write, migrateRanges)
 }
 
 // formatFile reformats a .al file with the canonical formatter.
-func formatFile(filename string, write bool) int {
+func formatFile(filename string, write bool, migrateRanges ...bool) int {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprint(os.Stderr, diag.FormatPanicReport(filename, r, isTerminal(os.Stderr)))
@@ -578,7 +704,13 @@ func formatFile(filename string, write bool) int {
 		return 1
 	}
 
-	formatted, err := format.FormatSource(filename, string(data))
+	rawSrc := string(data)
+	if len(migrateRanges) > 0 && migrateRanges[0] {
+		rxRange := regexp.MustCompile(`for\s+([a-zA-Z_]\w*)\s+in\s+([^.\n]+)\.\.([^=:\n{]+)([:{])`)
+		rawSrc = rxRange.ReplaceAllString(rawSrc, "for $1 in $2..=$3$4")
+	}
+
+	formatted, err := format.FormatSource(filename, rawSrc)
 	if err != nil {
 		var syntaxErr *format.SyntaxError
 		if errors.As(err, &syntaxErr) {

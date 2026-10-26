@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package vm
 
 import "testing"
@@ -10,28 +13,37 @@ import "testing"
 func TestDynamicRangeLoopMatchesInterpreter(t *testing.T) {
 	cases := []struct{ name, src, want string }{
 		{
-			name: "ascending bounds",
+			name: "half open ascending bounds",
 			src: `a := 2;
 b := 5;
 for i in a..b:
     print(string(i) + "-");
 `,
+			want: "2-3-4-",
+		},
+		{
+			name: "ascending bounds inclusive",
+			src: `a := 2;
+b := 5;
+for i in a..=b:
+    print(string(i) + "-");
+`,
 			want: "2-3-4-5-",
 		},
 		{
-			name: "descending bounds",
+			name: "descending bounds inclusive",
 			src: `a := 5;
 b := 2;
-for i in a..b:
+for i in a..=b:
     print(string(i) + "-");
 `,
 			want: "5-4-3-2-",
 		},
 		{
-			name: "equal bounds iterate once",
+			name: "equal bounds iterate once inclusive",
 			src: `a := 7;
 b := 7;
-for i in a..b:
+for i in a..=b:
     print(string(i) + "-");
 `,
 			want: "7-",
@@ -40,7 +52,7 @@ for i in a..b:
 			name: "break stops early",
 			src: `a := 1;
 b := 10;
-for i in a..b:
+for i in a..=b:
     if i == 4:
         break;
     print(string(i) + "-");
@@ -51,7 +63,7 @@ for i in a..b:
 			name: "continue skips even values ascending",
 			src: `a := 1;
 b := 6;
-for i in a..b:
+for i in a..=b:
     if i % 2 == 0:
         continue;
     print(string(i) + "-");
@@ -62,7 +74,7 @@ for i in a..b:
 			name: "continue skips even values descending",
 			src: `a := 6;
 b := 1;
-for i in a..b:
+for i in a..=b:
     if i % 2 == 0:
         continue;
     print(string(i) + "-");
@@ -73,7 +85,7 @@ for i in a..b:
 			name: "final value ascending is last item",
 			src: `a := 3;
 b := 6;
-for i in a..b:
+for i in a..=b:
     x := i;
 println(string(i));
 `,
@@ -83,7 +95,7 @@ println(string(i));
 			name: "final value descending is last item",
 			src: `a := 6;
 b := 3;
-for i in a..b:
+for i in a..=b:
     x := i;
 println(string(i));
 `,
@@ -92,7 +104,7 @@ println(string(i));
 		{
 			name: "expression bounds are evaluated once",
 			src: `n := 2;
-for i in 1..n*2:
+for i in 1..=n*2:
     print(string(i) + "-");
 `,
 			want: "1-2-3-4-",
@@ -100,8 +112,8 @@ for i in 1..n*2:
 		{
 			name: "nested dynamic loops",
 			src: `n := 3;
-for i in 1..n:
-    for j in 1..n:
+for i in 1..=n:
+    for j in 1..=n:
         print(string(i) + string(j) + " ");
 `,
 			want: "11 12 13 21 22 23 31 32 33 ",
@@ -110,7 +122,7 @@ for i in 1..n:
 			name: "writing the loop variable does not change iteration count",
 			src: `n := 0;
 b := 4;
-for i in 0..b:
+for i in 0..=b:
     n = n + 1;
     i = i + 1;
 println(string(n));
@@ -120,7 +132,7 @@ println(string(n));
 		{
 			name: "bound referring to the loop name uses enclosing binding",
 			src: `i := 3;
-for i in 0..i:
+for i in 0..=i:
     print(string(i) + "-");
 `,
 			want: "0-1-2-3-",

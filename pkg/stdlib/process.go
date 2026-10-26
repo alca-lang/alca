@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the standard library modules and builtins for the Alca programming language.
 package stdlib
 
@@ -12,12 +15,16 @@ import (
 	"time"
 
 	"github.com/alca-lang/alca/pkg/interpreter"
+	"github.com/alca-lang/alca/pkg/sandbox"
 )
 
 var processStartTime = time.Now()
 
 // Exec executes a shell command, waiting for it to complete and returning its output, exit code, and any error.
 func Exec(cmd string) (string, int, error) {
+	if err := sandbox.RequireRun(cmd); err != nil {
+		return "", 1, err
+	}
 	var c *exec.Cmd
 	if runtime.GOOS == "windows" {
 		c = exec.Command("cmd", "/c", cmd)
@@ -41,6 +48,9 @@ func Exec(cmd string) (string, int, error) {
 
 // ExecBackground starts a shell command asynchronously in the background and returns its process PID.
 func ExecBackground(cmd string) (int, error) {
+	if err := sandbox.RequireRun(cmd); err != nil {
+		return 0, err
+	}
 	var c *exec.Cmd
 	if runtime.GOOS == "windows" {
 		c = exec.Command("cmd", "/c", cmd)
@@ -150,7 +160,6 @@ func RegisterProcessBuiltins(env *interpreter.Environment) {
 
 	register := func(name string, fn func(args ...interpreter.Value) interpreter.Value) {
 		builtin := &interpreter.BuiltinFunction{Name: name, Fn: fn}
-		env.Set(name, builtin)
 		processModule.Set(name, builtin)
 	}
 

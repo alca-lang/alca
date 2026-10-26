@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package vm provides compile-time AST and bytecode peephole optimization passes for Alca.
 package vm
 
@@ -356,6 +359,8 @@ func (opt *Optimizer) foldInfix(e *ast.InfixExpression) ast.Expression {
 			return &ast.BooleanLiteral{Value: l == r, Token: e.Token}
 		case "===":
 			return &ast.BooleanLiteral{Value: l == r, Token: e.Token}
+		case "!==":
+			return &ast.BooleanLiteral{Value: l != r, Token: e.Token}
 		case "!=":
 			return &ast.BooleanLiteral{Value: l != r, Token: e.Token}
 		case "<":
@@ -390,6 +395,8 @@ func (opt *Optimizer) foldInfix(e *ast.InfixExpression) ast.Expression {
 			return &ast.BooleanLiteral{Value: l == r, Token: e.Token}
 		case "===":
 			return &ast.BooleanLiteral{Value: l == r, Token: e.Token}
+		case "!==":
+			return &ast.BooleanLiteral{Value: l != r, Token: e.Token}
 		case "!=":
 			return &ast.BooleanLiteral{Value: l != r, Token: e.Token}
 		case "<":
@@ -414,6 +421,8 @@ func (opt *Optimizer) foldInfix(e *ast.InfixExpression) ast.Expression {
 			return &ast.BooleanLiteral{Value: leftStr.Value == rightStr.Value, Token: e.Token}
 		case "===":
 			return &ast.BooleanLiteral{Value: leftStr.Value == rightStr.Value, Token: e.Token}
+		case "!==":
+			return &ast.BooleanLiteral{Value: leftStr.Value != rightStr.Value, Token: e.Token}
 		case "!=":
 			return &ast.BooleanLiteral{Value: leftStr.Value != rightStr.Value, Token: e.Token}
 		}
@@ -432,6 +441,8 @@ func (opt *Optimizer) foldInfix(e *ast.InfixExpression) ast.Expression {
 			return &ast.BooleanLiteral{Value: leftBool.Value == rightBool.Value, Token: e.Token}
 		case "===":
 			return &ast.BooleanLiteral{Value: leftBool.Value == rightBool.Value, Token: e.Token}
+		case "!==":
+			return &ast.BooleanLiteral{Value: leftBool.Value != rightBool.Value, Token: e.Token}
 		case "!=":
 			return &ast.BooleanLiteral{Value: leftBool.Value != rightBool.Value, Token: e.Token}
 		}

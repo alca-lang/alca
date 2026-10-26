@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit
 
 import (
@@ -27,7 +30,7 @@ type Config struct {
 // DefaultConfig returns the recommended JIT configuration.
 func DefaultConfig() Config {
 	return Config{
-		Enabled:      true,
+		Enabled:      false,
 		Native:       HasNativeAMD64,
 		Threshold:    5,
 		MaxArtifacts: DefaultMaxArtifacts,

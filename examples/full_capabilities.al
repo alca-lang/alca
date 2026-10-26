@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Full capabilities integration test:
 // 1. Permission error logging and security auditing
 // 2. Advanced file operations (stream handles, seek, tell, permissions)
@@ -9,7 +12,8 @@ use std.log;
 use std.io;
 use std.sys;
 use std.ffi;
-use std.ai;
+use std.libtorch;
+use std.env;
 
 println("==================================================");
 println("🚀 ALCA FULL CAPABILITIES & SECURITY AUDIT TEST");
@@ -75,7 +79,7 @@ if len(parts) > 0:
 
 // 4. Динамический FFI (вызов нативных C/Win32 библиотек напрямую)
 println("\n[4] Проверка Foreign Function Interface (FFI):");
-if is_windows():
+if env.is_windows():
     k32 := ffi.load("kernel32.dll");
     current_pid := k32.call("GetCurrentProcessId");
     println("Native FFI вызов GetCurrentProcessId(): PID = " + string(current_pid));
@@ -87,28 +91,28 @@ if is_windows():
 else:
     println("FFI-демонстрация использует Win32 API, поэтому пропущена на этой платформе.");
 
-// 5. Машинное обучение и тензорные вычисления (std.ai)
+// 5. Машинное обучение и тензорные вычисления (std.libtorch)
 println("\n[5] Проверка ИИ-фреймворка и тензорных матричных вычислений:");
 // Создание матриц и умножение
-mat_a := ai.matrix(2, 2, 2.0);
-mat_b := ai.matrix(2, 2, 3.0);
-mat_c := ai.matmul(mat_a, mat_b);
+mat_a := libtorch.matrix(2, 2, 2.0);
+mat_b := libtorch.matrix(2, 2, 3.0);
+mat_c := libtorch.matmul(mat_a, mat_b);
 println("Результат matmul(2x2, 2x2): " + string(mat_c));
 
 // Векторные операции и функции активации
 v1: list[float] = [1.0, 2.0, 3.0];
 v2: list[float] = [4.0, 5.0, 6.0];
-dot_res := ai.dot(v1, v2);
+dot_res := libtorch.dot(v1, v2);
 println("Скалярное произведение векторов dot(): " + string(dot_res));
 
-soft := ai.softmax([1.0, 2.0, 3.0]);
+soft := libtorch.softmax([1.0, 2.0, 3.0]);
 println("Softmax вероятности: " + string(soft));
 
 // Прямой проход полносвязного нейросетевого слоя (Dense Forward)
 inputs := [ [0.5, 1.5] ];
 weights := [ [0.2, 0.8], [0.5, -0.5] ];
 biases := [0.1, 0.1];
-dense_out := ai.dense_forward(inputs, weights, biases, "relu");
+dense_out := libtorch.dense_forward(inputs, weights, biases, "relu");
 println("Прямой проход слоя нейросети (Dense Forward + ReLU): " + string(dense_out));
 
 println("\n==================================================");
