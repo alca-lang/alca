@@ -17,7 +17,7 @@ import (
 //
 // It is consulted only when neither --registry nor $ALCA_REGISTRY is set, so
 // an unstamped build keeps the offline-by-default behaviour.
-var DefaultRegistry = "http://91.92.34.94:9977"
+var DefaultRegistry = "https://pkg.alca-lang.org"
 
 // DefaultRegistryURL returns the registry node URL baked into this binary at
 // build time, or "" when none was stamped in.

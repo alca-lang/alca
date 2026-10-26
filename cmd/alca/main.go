@@ -64,9 +64,6 @@ func main() {
 	case "build":
 		os.Exit(cmdBuild(os.Args[2:]))
 
-	case "android":
-		os.Exit(cmdAndroid(os.Args[2:]))
-
 	case "init":
 		os.Exit(cmdInit(os.Args[2:]))
 
@@ -127,15 +124,14 @@ func printUsage() {
 	fmt.Println("Commands:")
 	fmt.Println("  run <file.al> [args...]     Run an Alca program (Bytecode VM with JIT acceleration)")
 	fmt.Println("  build <file.al> [-o out]    Compile program into a standalone native executable")
-	fmt.Println("  android <init|build|check>  Build Android APK projects without Android Studio or SDK")
-	fmt.Println("  init [--android] [name]     Initialize a new Alca or Android project")
-	fmt.Println("  dll <src.c|cpp> [-o out]    Compile native C/C++ source into a shared library (.dll / .so)")
 	fmt.Println("        --protect, -p         protect binary: AES-256-GCM encryption + symbol obfuscation")
 	fmt.Println("        --noconsole, --gui    build a GUI application without opening a console window")
 	fmt.Println("        --target os/arch      cross-compile (e.g. linux/amd64, windows/arm64, darwin/arm64)")
 	fmt.Println("        --runtime <file>      use a specific runtime binary for the target")
 	fmt.Println("        --source              embed source instead of bytecode")
 	fmt.Println("        --embed <path>        embed a project file or directory (repeatable)")
+	fmt.Println("  init [name]                 Initialize a new Alca project")
+	fmt.Println("  dll <src.c|cpp|al> [-o out] Compile native C/C++ or Alca source into a shared library (.dll / .so)")
 	fmt.Println("  test <file.al>              Run test blocks and report PASS/FAIL")
 	fmt.Println("  check <file.al>             Syntax + strict type check (CI friendly)")
 	fmt.Println("  fmt [-w] <file.al>          Format the program (-w rewrites the file in place)")

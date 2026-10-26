@@ -9,3 +9,18 @@
 /alca
 /alca.exe
 *.test
+
+# Compiled binaries and build outputs
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.a
+*.o
+*.tar.gz
+*.zip
+
+# Local runtime data & caches
+/data/

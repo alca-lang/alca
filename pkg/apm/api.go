@@ -50,6 +50,8 @@ type PackageSummary struct {
 	Description string `json:"description,omitempty"`
 	Latest      string `json:"latest,omitempty"`
 	Versions    int    `json:"versions"`
+	Publisher   string `json:"publisher,omitempty"`
+	Yanked      bool   `json:"yanked,omitempty"`
 }
 
 // ListResponse is the response of GET /api/v1/packages.

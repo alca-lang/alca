@@ -420,6 +420,26 @@ func (s *AccountStore) RevokeToken(token string) (*Account, error) {
 	return nil, ErrTokenNotFound
 }
 
+// RevokeTokenByPrefix deletes any token matching prefix for the given username.
+func (s *AccountStore) RevokeTokenByPrefix(username, prefix string) (*Account, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	acct, ok := s.accounts[strings.ToLower(strings.TrimSpace(username))]
+	if !ok {
+		return nil, ErrAccountNotFound
+	}
+	for i := range acct.Tokens {
+		if acct.Tokens[i].Prefix == prefix || strings.HasPrefix(acct.Tokens[i].Prefix, prefix) {
+			acct.Tokens = append(acct.Tokens[:i], acct.Tokens[i+1:]...)
+			if err := s.saveLocked(); err != nil {
+				return nil, err
+			}
+			return cloneAccount(acct), nil
+		}
+	}
+	return nil, ErrTokenNotFound
+}
+
 // TouchToken records that a token was used. Callers may log a failure but
 // should let the request proceed: the timestamp is informational.
 func (s *AccountStore) TouchToken(username, tokenID string) error {

@@ -12,8 +12,12 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"strings"
+	"text/tabwriter"
 
 	"golang.org/x/term"
 
@@ -29,8 +33,14 @@ Usage:
   apm install -u <directory>              install a library from local sources
   apm remove <package> [--force]          uninstall a library
   apm show [package]                      show installed libraries
+  apm search <query>                      search packages in registry or local index
+  apm outdated                            check for newer versions of dependencies
+  apm tree                                display dependency tree of project
+  apm pack [directory]                    create a .tar.gz package archive locally
+  apm cache [clean|list|dir]              manage local download cache
+  apm run <script>                        run a script defined in alca.toml [scripts]
   apm register [username] [email]         create an account; prints a one-time token
-  apm login [username]                    sign in and print a new one-time token
+  apm login [username]                    sign in and save credentials securely
   apm whoami                              show the signed-in account
   apm logout                              revoke the saved token on the node
   apm version                             print the APM version
@@ -60,7 +70,7 @@ func usageText() string {
 }
 
 func displayRegistry(raw string) string {
-	if raw == apm.DefaultRegistryURL() || strings.Contains(raw, "91.92.34.94") {
+	if raw == apm.DefaultRegistryURL() || strings.Contains(raw, "pkg.alca-lang.org") || strings.Contains(raw, "91.92.34.94") {
 		return "registry"
 	}
 	return apm.StripServerInfo(raw)
@@ -103,6 +113,18 @@ func run(args []string) int {
 		return cmdRemove(args[1:])
 	case "show", "list":
 		return cmdShow(args[1:])
+	case "search":
+		return cmdSearch(args[1:])
+	case "outdated":
+		return cmdOutdated(args[1:])
+	case "tree":
+		return cmdTree(args[1:])
+	case "pack":
+		return cmdPack(args[1:])
+	case "cache":
+		return cmdCache(args[1:])
+	case "run":
+		return cmdRun(args[1:])
 	case "register", "signup":
 		return cmdRegister(args[1:])
 	case "login", "signin":
@@ -468,6 +490,405 @@ func printDetails(pkgs []apm.InstalledPackage) {
 	}
 }
 
+func cmdSearch(args []string) int {
+	opts, err := parseOptions(args, false)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+	if len(opts.positional) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: apm search <query>")
+		return 2
+	}
+	query := strings.ToLower(opts.positional[0])
+	registryURL := apm.ResolveRegistryURL(opts.registry)
+
+	type searchResult struct {
+		Name        string
+		Version     string
+		Description string
+		Source      string
+	}
+	var results []searchResult
+	seen := map[string]bool{}
+
+	if registryURL != "" {
+		client := apm.NewClient(registryURL, apm.ClientOptions{InsecureTLS: opts.insecure})
+		if resp, err := client.List(query, 100, 0); err == nil && resp != nil {
+			for _, p := range resp.Packages {
+				results = append(results, searchResult{
+					Name:        p.Name,
+					Version:     p.Latest,
+					Description: p.Description,
+					Source:      "remote",
+				})
+				seen[p.Name] = true
+			}
+		}
+	}
+
+	reg, err := apm.NewRegistry(opts.home)
+	if err == nil {
+		if idx, err := reg.LoadIndex(); err == nil {
+			for name := range idx.Packages {
+				if seen[name] {
+					continue
+				}
+				if strings.Contains(strings.ToLower(name), query) {
+					vStr := ""
+					desc := ""
+					if ve, ok, _ := idx.Installed(name); ok && ve != nil {
+						vStr = ve.Version
+						desc = ve.Description
+					}
+					results = append(results, searchResult{
+						Name:        name,
+						Version:     vStr,
+						Description: desc,
+						Source:      "installed",
+					})
+					seen[name] = true
+				}
+			}
+		}
+	}
+
+	if len(results) == 0 {
+		fmt.Printf("No packages matching %q found.\n", query)
+		return 0
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+	fmt.Fprintln(w, "NAME\tVERSION\tSOURCE\tDESCRIPTION")
+	for _, r := range results {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Name, r.Version, r.Source, r.Description)
+	}
+	w.Flush()
+	return 0
+}
+
+func cmdOutdated(args []string) int {
+	opts, err := parseOptions(args, false)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+
+	reg, err := apm.NewRegistry(opts.home)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	idx, err := reg.LoadIndex()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+
+	registryURL := apm.ResolveRegistryURL(opts.registry)
+	var client *apm.Client
+	if registryURL != "" {
+		client = apm.NewClient(registryURL, apm.ClientOptions{InsecureTLS: opts.insecure})
+	}
+
+	type outdatedRow struct {
+		Name      string
+		Installed string
+		Wanted    string
+		Latest    string
+	}
+	var rows []outdatedRow
+
+	m, _ := apm.ReadManifest(wd)
+	if m != nil {
+		for dep, constraintStr := range m.Dependencies {
+			installedVer := "missing"
+			if ve, ok, _ := idx.Installed(dep); ok && ve != nil {
+				installedVer = ve.Version
+			}
+			latestVer := "unknown"
+			if client != nil {
+				if vs, err := client.Versions(dep); err == nil && len(vs) > 0 {
+					latestVer = vs[len(vs)-1].Version
+				}
+			}
+			if latestVer != "unknown" && installedVer != "missing" && installedVer != latestVer {
+				rows = append(rows, outdatedRow{
+					Name:      dep,
+					Installed: installedVer,
+					Wanted:    constraintStr,
+					Latest:    latestVer,
+				})
+			}
+		}
+	} else {
+		for name := range idx.Packages {
+			installedVer := ""
+			if ve, ok, _ := idx.Installed(name); ok && ve != nil {
+				installedVer = ve.Version
+			}
+			latestVer := "unknown"
+			if client != nil {
+				if vs, err := client.Versions(name); err == nil && len(vs) > 0 {
+					latestVer = vs[len(vs)-1].Version
+				}
+			}
+			if latestVer != "unknown" && installedVer != "" && installedVer != latestVer {
+				rows = append(rows, outdatedRow{
+					Name:      name,
+					Installed: installedVer,
+					Wanted:    "any",
+					Latest:    latestVer,
+				})
+			}
+		}
+	}
+
+	if len(rows) == 0 {
+		fmt.Println("All packages are up to date.")
+		return 0
+	}
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+	fmt.Fprintln(w, "PACKAGE\tCURRENT\tWANTED\tLATEST")
+	for _, r := range rows {
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Name, r.Installed, r.Wanted, r.Latest)
+	}
+	w.Flush()
+	return 0
+}
+
+func cmdTree(args []string) int {
+	opts, err := parseOptions(args, false)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+
+	reg, err := apm.NewRegistry(opts.home)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	idx, err := reg.LoadIndex()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+
+	m, _ := apm.ReadManifest(wd)
+	if m != nil {
+		fmt.Printf("%s v%s (%s)\n", m.Package.Name, m.Package.Version, filepath.Join(wd, "alca.toml"))
+		printDepsTree(idx, m.Dependencies, "", map[string]bool{})
+	} else {
+		fmt.Println("Installed packages:")
+		for name := range idx.Packages {
+			if ve, ok, _ := idx.Installed(name); ok && ve != nil {
+				fmt.Printf("└── %s@%s\n", name, ve.Version)
+				printDepsTree(idx, ve.Dependencies, "    ", map[string]bool{name: true})
+			}
+		}
+	}
+	return 0
+}
+
+func printDepsTree(idx *apm.Index, deps map[string]string, prefix string, visited map[string]bool) {
+	if len(deps) == 0 {
+		return
+	}
+	var names []string
+	for n := range deps {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for i, name := range names {
+		isLast := i == len(names)-1
+		branch := "├── "
+		nextPrefix := prefix + "│   "
+		if isLast {
+			branch = "└── "
+			nextPrefix = prefix + "    "
+		}
+		constraint := deps[name]
+		ver := "not installed"
+		var subDeps map[string]string
+		if ve, ok, _ := idx.Installed(name); ok && ve != nil {
+			ver = ve.Version
+			subDeps = ve.Dependencies
+		}
+		fmt.Printf("%s%s%s@%s (resolved: %s)\n", prefix, branch, name, constraint, ver)
+		if !visited[name] && len(subDeps) > 0 {
+			visited[name] = true
+			printDepsTree(idx, subDeps, nextPrefix, visited)
+		}
+	}
+}
+
+func cmdPack(args []string) int {
+	opts, err := parseOptions(args, false)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+	dir := "."
+	if len(opts.positional) > 0 {
+		dir = opts.positional[0]
+	}
+	m, err := apm.ValidatePackageDir(dir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	archive, err := apm.PackDir(dir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	outName := fmt.Sprintf("%s-%s.tar.gz", m.Package.Name, m.Package.Version)
+	if err := os.WriteFile(outName, archive, 0o644); err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	sizeKB := float64(len(archive)) / 1024.0
+	fmt.Printf("Packaged %s into %s (%.1f KB)\n", m.Package.Name, outName, sizeKB)
+	return 0
+}
+
+func cmdCache(args []string) int {
+	opts, err := parseOptions(args, false)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 2
+	}
+	reg, err := apm.NewRegistry(opts.home)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	action := "list"
+	if len(opts.positional) > 0 {
+		action = opts.positional[0]
+	}
+
+	cacheDir := reg.CacheDir()
+	switch action {
+	case "dir", "path":
+		fmt.Println(cacheDir)
+		return 0
+	case "clean", "clear":
+		entries, err := os.ReadDir(cacheDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		var totalBytes int64
+		count := 0
+		for _, e := range entries {
+			if !e.IsDir() {
+				info, err := e.Info()
+				if err == nil {
+					totalBytes += info.Size()
+				}
+				_ = os.Remove(filepath.Join(cacheDir, e.Name()))
+				count++
+			}
+		}
+		fmt.Printf("Cleared %d cached package(s) (%.1f KB freed)\n", count, float64(totalBytes)/1024.0)
+		return 0
+	case "list", "ls":
+		entries, err := os.ReadDir(cacheDir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			return 1
+		}
+		if len(entries) == 0 {
+			fmt.Println("Cache is empty.")
+			return 0
+		}
+		fmt.Printf("Cached archives in %s:\n", cacheDir)
+		for _, e := range entries {
+			if !e.IsDir() {
+				info, err := e.Info()
+				sizeStr := ""
+				if err == nil {
+					sizeStr = fmt.Sprintf(" (%.1f KB)", float64(info.Size())/1024.0)
+				}
+				fmt.Printf("  %s%s\n", e.Name(), sizeStr)
+			}
+		}
+		return 0
+	default:
+		fmt.Fprintf(os.Stderr, "usage: apm cache [clean|list|dir]\n")
+		return 2
+	}
+}
+
+func cmdRun(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: apm run <script> [-- <args>...]")
+		return 2
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	m, err := apm.ReadManifest(wd)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	scriptName := args[0]
+	cmdLine, ok := m.Scripts[scriptName]
+	if !ok {
+		fmt.Fprintf(os.Stderr, "error: script %q not found in %s\n\nAvailable scripts:\n", scriptName, apm.ManifestName)
+		for s, cmd := range m.Scripts {
+			fmt.Fprintf(os.Stderr, "  %s = %q\n", s, cmd)
+		}
+		return 1
+	}
+	var extraArgs []string
+	if len(args) > 1 {
+		if args[1] == "--" {
+			extraArgs = args[2:]
+		} else {
+			extraArgs = args[1:]
+		}
+	}
+	fullCmd := cmdLine
+	if len(extraArgs) > 0 {
+		fullCmd += " " + strings.Join(extraArgs, " ")
+	}
+	fmt.Printf("> %s\n", fullCmd)
+	var c *exec.Cmd
+	if runtime.GOOS == "windows" {
+		c = exec.Command("cmd", "/c", fullCmd)
+	} else {
+		c = exec.Command("sh", "-c", fullCmd)
+	}
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	if err := c.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return exitErr.ExitCode()
+		}
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	return 0
+}
+
 // ---------------------------------------------------------------------------
 // Accounts
 // ---------------------------------------------------------------------------
@@ -529,7 +950,7 @@ func cmdRegister(args []string) int {
 		return 1
 	}
 	fmt.Printf("Registered %s on %s\n\n", res.Username, displayRegistry(registryURL))
-	printTokenAndSave(opts, registryURL, res)
+	printTokenAndSave(opts, registryURL, res, password)
 	return 0
 }
 
@@ -570,7 +991,7 @@ func cmdLogin(args []string) int {
 		return 1
 	}
 	fmt.Printf("Signed in as %s on %s\n\n", res.Username, displayRegistry(registryURL))
-	printTokenAndSave(opts, registryURL, res)
+	printTokenAndSave(opts, registryURL, res, password)
 	return 0
 }
 
@@ -673,20 +1094,20 @@ func savedCredential(opts *cliOptions, registryURL string) (apm.Credential, erro
 	return cred, nil
 }
 
-// printTokenAndSave prints a one-time token and stores it for later use.
-func printTokenAndSave(opts *cliOptions, registryURL string, res *apm.AuthResponse) {
+// printTokenAndSave prints a one-time token and stores credentials securely using AES-256-GCM.
+func printTokenAndSave(opts *cliOptions, registryURL string, res *apm.AuthResponse, password string) {
 	fmt.Println("Your token (shown only once — save it now):")
 	fmt.Printf("  %s\n\n", res.Token)
 	creds, err := apm.LoadCredentials(opts.home)
 	if err == nil {
-		err = creds.Set(registryURL, res.Username, res.Token)
+		err = creds.SetWithPassword(registryURL, res.Username, password, res.Token)
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: cannot save the token: %v\n", err)
+		fmt.Fprintf(os.Stderr, "warning: cannot save credentials: %v\n", err)
 		fmt.Fprintln(os.Stderr, "store the token above yourself: it will not be shown again")
 		return
 	}
-	fmt.Printf("Saved to %s; publishing uses it automatically.\n", creds.Path())
+	fmt.Printf("Credentials saved securely (AES-256-GCM encrypted) to %s\n", creds.Path())
 }
 
 // promptValue asks for a value that was not supplied on the command line.

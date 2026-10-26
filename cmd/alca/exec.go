@@ -68,11 +68,23 @@ func cmdRun(args []string) int {
 		jitEng.SetEnabled(false)
 	}
 
-	var policyArgs, rest []string
+	var policyArgs, scriptArgs []string
+	var filename string
 	var memFlags memoryFlags
+	foundFilename := false
+	stopFlagParsing := false
+
 	for len(args) > 0 {
 		a := args[0]
+		if stopFlagParsing {
+			scriptArgs = append(scriptArgs, a)
+			args = args[1:]
+			continue
+		}
+
 		switch {
+		case a == "--":
+			stopFlagParsing = true
 		case a == "--vm":
 			eng = engineVM
 		case a == "--jit":
@@ -98,17 +110,17 @@ func cmdRun(args []string) int {
 			continue
 		case a == "--allow-all" || strings.HasPrefix(a, "--allow-"):
 			policyArgs = append(policyArgs, a)
-		case a == "--":
-			args = args[1:]
-			rest = args
-			goto parsed
 		default:
-			rest = args
-			goto parsed
+			if !foundFilename {
+				filename = a
+				foundFilename = true
+			} else {
+				scriptArgs = append(scriptArgs, a)
+			}
 		}
 		args = args[1:]
 	}
-parsed:
+
 	applyMemoryFlags(memFlags)
 	policy, leftover, err := sandbox.ParseArgs(policyArgs)
 	if err != nil {
@@ -117,13 +129,12 @@ parsed:
 		return 1
 	}
 	if len(leftover) > 0 {
-		rest = leftover
+		scriptArgs = append(leftover, scriptArgs...)
 	}
-	if len(rest) == 0 {
+	if filename == "" {
 		fmt.Fprintln(os.Stderr, "Usage: alca run [--vm|--interp] ["+sandbox.FlagHint+"] <file.al> [args...]")
 		return 1
 	}
-	filename, scriptArgs := rest[0], rest[1:]
 	previousPolicy := sandbox.CurrentPolicy()
 	sandbox.SetPolicy(policy)
 	defer sandbox.SetPolicy(previousPolicy)
@@ -577,7 +588,6 @@ func cmdBuild(args []string) int {
 	noConsole := false
 	protect := false
 	forceDLL := false
-	forceAPK := false
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
 		case a == "-o" && i+1 < len(args):
@@ -608,8 +618,6 @@ func cmdBuild(args []string) int {
 			forceBytecode = true
 		case a == "--dll" || a == "--shared":
 			forceDLL = true
-		case a == "--apk" || a == "-apk":
-			forceAPK = true
 		case a == "--noconsole" || a == "--gui" || a == "-noconsole":
 			noConsole = true
 		case strings.HasPrefix(a, "-"):
@@ -620,29 +628,8 @@ func cmdBuild(args []string) int {
 		}
 	}
 
-	if forceAPK || targetStr == "android" {
-		projDir := input
-		if projDir == "" {
-			projDir = "."
-		}
-		var buildArgs []string
-		if output != "" {
-			buildArgs = append(buildArgs, "-o", output)
-		}
-		buildArgs = append(buildArgs, projDir)
-		return cmdAndroidBuild(buildArgs)
-	}
-
 	if input == "" {
-		if _, err := os.Stat("AndroidManifest.xml"); err == nil {
-			var buildArgs []string
-			if output != "" {
-				buildArgs = append(buildArgs, "-o", output)
-			}
-			buildArgs = append(buildArgs, ".")
-			return cmdAndroidBuild(buildArgs)
-		}
-		fmt.Fprintln(os.Stderr, "Usage: alca build <file.al> [-o output] [--embed file-or-directory ...] [--noconsole] [--target os/arch] [--runtime file] [--source] [--apk]")
+		fmt.Fprintln(os.Stderr, "Usage: alca build <file.al> [-o output] [--embed file-or-directory ...] [--noconsole] [--target os/arch] [--runtime file] [--source] [--dll]")
 		return 1
 	}
 

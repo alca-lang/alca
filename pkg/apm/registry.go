@@ -210,6 +210,16 @@ func (idx *Index) Installed(name string) (*VersionEntry, bool, error) {
 	return best, true, nil
 }
 
+// Version returns the specific installed version of name from the index, or false.
+func (idx *Index) Version(name, version string) (*VersionEntry, bool) {
+	entry, ok := idx.Packages[name]
+	if !ok || entry.Versions == nil {
+		return nil, false
+	}
+	ve, ok := entry.Versions[version]
+	return ve, ok
+}
+
 // SetVersion inserts or replaces a version entry in the index.
 func (idx *Index) SetVersion(name string, ve *VersionEntry) {
 	entry, ok := idx.Packages[name]

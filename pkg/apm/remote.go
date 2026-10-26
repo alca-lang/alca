@@ -399,10 +399,23 @@ func (c *Client) DownloadArtifact(name, ver, goos, goarch, expected string) ([]b
 	return c.DownloadArtifactWithProgress(name, ver, goos, goarch, expected, nil)
 }
 
+// ArtifactPayload describes an artifact to bundle during atomic publish.
+type ArtifactPayload struct {
+	GOOS   string       `json:"goos"`
+	GOARCH string       `json:"goarch"`
+	Meta   ArtifactMeta `json:"meta"`
+	Bin    []byte       `json:"-"`
+}
+
 // Publish uploads a package archive. The request is idempotent: re-uploading
 // the same archive after a network failure succeeds if the server already
 // stored it.
 func (c *Client) Publish(archive []byte) (*PublishResponse, error) {
+	return c.PublishBundle(archive, nil)
+}
+
+// PublishBundle uploads a package archive and its compiled artifacts atomically in a single request.
+func (c *Client) PublishBundle(archive []byte, artifacts []ArtifactPayload) (*PublishResponse, error) {
 	resp, err := c.do(http.MethodPost, APIBasePath+"/publish", func() (io.Reader, string, error) {
 		var buf bytes.Buffer
 		mw := multipart.NewWriter(&buf)
@@ -412,6 +425,25 @@ func (c *Client) Publish(archive []byte) (*PublishResponse, error) {
 		}
 		if _, err := part.Write(archive); err != nil {
 			return nil, "", err
+		}
+		if len(artifacts) > 0 {
+			manifestBytes, err := json.Marshal(artifacts)
+			if err != nil {
+				return nil, "", err
+			}
+			if err := mw.WriteField("artifacts_manifest", string(manifestBytes)); err != nil {
+				return nil, "", err
+			}
+			for _, a := range artifacts {
+				fieldName := "artifact_" + a.GOOS + "_" + a.GOARCH
+				part, err := mw.CreateFormFile(fieldName, a.GOOS+"-"+a.GOARCH+".bin")
+				if err != nil {
+					return nil, "", err
+				}
+				if _, err := part.Write(a.Bin); err != nil {
+					return nil, "", err
+				}
+			}
 		}
 		if err := mw.Close(); err != nil {
 			return nil, "", err

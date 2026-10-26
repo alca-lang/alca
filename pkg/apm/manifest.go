@@ -40,10 +40,12 @@ type Build struct {
 
 // Manifest is the parsed alca.toml of a library.
 type Manifest struct {
-	Package      Package
-	Dependencies map[string]string // dependency name -> version constraint
-	DepOrder     []string          // dependency names in file order (deterministic output)
-	Build        Build
+	Package         Package
+	Dependencies    map[string]string // dependency name -> version constraint
+	DevDependencies map[string]string // dev-dependencies for testing / development
+	Scripts         map[string]string // lifecycle scripts for `apm run <script>`
+	DepOrder        []string          // dependency names in file order (deterministic output)
+	Build           Build
 	// Extra preserves unknown sections as raw string keys so future manifest
 	// extensions remain readable by older toolchains instead of failing.
 	Extra map[string]map[string]string
@@ -65,9 +67,11 @@ func ValidImportPath(s string) bool { return importPathRe.MatchString(s) }
 // ParseManifest parses and validates an alca.toml document.
 func ParseManifest(data []byte) (*Manifest, error) {
 	m := &Manifest{
-		Dependencies: map[string]string{},
-		Build:        Build{Compile: true, Optimization: 2},
-		Extra:        map[string]map[string]string{},
+		Dependencies:    map[string]string{},
+		DevDependencies: map[string]string{},
+		Scripts:         map[string]string{},
+		Build:           Build{Compile: true, Optimization: 2},
+		Extra:           map[string]map[string]string{},
 	}
 	section := ""
 	depSeen := map[string]bool{}
@@ -128,6 +132,21 @@ func ParseManifest(data []byte) (*Manifest, error) {
 				depSeen[key] = true
 			}
 			m.Dependencies[key] = s
+		case "dev-dependencies", "devDependencies", "dev_dependencies":
+			s, ok := val.(string)
+			if !ok {
+				return nil, fmt.Errorf("alca.toml:%d: dev-dependency %q must be a version constraint string", i+1, key)
+			}
+			if !ValidName(key) {
+				return nil, fmt.Errorf("alca.toml:%d: invalid dev-dependency name %q", i+1, key)
+			}
+			m.DevDependencies[key] = s
+		case "scripts":
+			s, ok := val.(string)
+			if !ok {
+				return nil, fmt.Errorf("alca.toml:%d: script %q must be a command string", i+1, key)
+			}
+			m.Scripts[key] = s
 		case "build":
 			if err := m.setBuildField(key, val, i+1); err != nil {
 				return nil, err
@@ -260,6 +279,17 @@ func (m *Manifest) Validate() error {
 			return fmt.Errorf("dependency %s: %w", dep, err)
 		}
 	}
+	for devDep, constraint := range m.DevDependencies {
+		if !ValidName(devDep) {
+			return fmt.Errorf("invalid dev-dependency name %q", devDep)
+		}
+		if devDep == m.Package.Name {
+			return fmt.Errorf("package %q cannot depend on itself", devDep)
+		}
+		if _, err := ParseConstraint(constraint); err != nil {
+			return fmt.Errorf("dev-dependency %s: %w", devDep, err)
+		}
+	}
 	return nil
 }
 
@@ -336,6 +366,28 @@ func (m *Manifest) Marshal() []byte {
 	sort.Strings(deps)
 	for _, dep := range deps {
 		writeTomlString(&b, dep, m.Dependencies[dep])
+	}
+	if len(m.DevDependencies) > 0 {
+		b.WriteString("\n[dev-dependencies]\n")
+		var devDeps []string
+		for d := range m.DevDependencies {
+			devDeps = append(devDeps, d)
+		}
+		sort.Strings(devDeps)
+		for _, dep := range devDeps {
+			writeTomlString(&b, dep, m.DevDependencies[dep])
+		}
+	}
+	if len(m.Scripts) > 0 {
+		b.WriteString("\n[scripts]\n")
+		var scriptNames []string
+		for s := range m.Scripts {
+			scriptNames = append(scriptNames, s)
+		}
+		sort.Strings(scriptNames)
+		for _, s := range scriptNames {
+			writeTomlString(&b, s, m.Scripts[s])
+		}
 	}
 	b.WriteString("\n[build]\n")
 	b.WriteString("compile = " + strconv.FormatBool(m.Build.Compile) + "\n")

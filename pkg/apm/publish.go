@@ -4,7 +4,6 @@
 package apm
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -104,6 +103,7 @@ func Publish(opts PublishOptions) (*PublishResult, error) {
 	}
 
 	var artifacts []ArtifactInfo
+	var payloads []ArtifactPayload
 	for _, target := range targets {
 		if !m.Build.Compile {
 			break
@@ -117,6 +117,10 @@ func Publish(opts PublishOptions) (*PublishResult, error) {
 			return nil, err
 		}
 		binRel, _ := ArtifactPaths(meta.GOOS, meta.GOARCH)
+		bin, err := os.ReadFile(filepath.Join(abs, filepath.FromSlash(binRel)))
+		if err != nil {
+			return nil, fmt.Errorf("cannot read compiled build: %w", err)
+		}
 		opts.logf("compiled %s/%s build (%d bytes)", meta.GOOS, meta.GOARCH, meta.Size)
 		artifacts = append(artifacts, ArtifactInfo{
 			GOOS:           meta.GOOS,
@@ -130,11 +134,16 @@ func Publish(opts PublishOptions) (*PublishResult, error) {
 			Exports:        meta.Exports,
 			CreatedAt:      meta.CreatedAt,
 		})
-		_ = binRel
+		payloads = append(payloads, ArtifactPayload{
+			GOOS:   meta.GOOS,
+			GOARCH: meta.GOARCH,
+			Meta:   *meta,
+			Bin:    bin,
+		})
 	}
 
-	opts.logf("uploading %s %s (%d bytes)", m.Package.Name, m.Package.Version, len(archive))
-	resp, err := client.Publish(archive)
+	opts.logf("uploading %s %s (%d bytes, %d bundled artifacts atomically)", m.Package.Name, m.Package.Version, len(archive), len(payloads))
+	resp, err := client.PublishBundle(archive, payloads)
 	if err != nil {
 		return nil, fmt.Errorf("publish failed: %w", err)
 	}
@@ -143,26 +152,7 @@ func Publish(opts PublishOptions) (*PublishResult, error) {
 		result.AlreadyStored = true
 		return result, nil
 	}
-
-	for _, info := range artifacts {
-		binRel, metaRel := ArtifactPaths(info.GOOS, info.GOARCH)
-		bin, err := os.ReadFile(filepath.Join(abs, filepath.FromSlash(binRel)))
-		if err != nil {
-			return nil, fmt.Errorf("cannot read compiled build: %w", err)
-		}
-		metaData, err := os.ReadFile(filepath.Join(abs, filepath.FromSlash(metaRel)))
-		if err != nil {
-			return nil, fmt.Errorf("cannot read build metadata: %w", err)
-		}
-		var meta ArtifactMeta
-		if err := json.Unmarshal(metaData, &meta); err != nil {
-			return nil, fmt.Errorf("cannot parse build metadata: %w", err)
-		}
-		opts.logf("uploading %s/%s build", info.GOOS, info.GOARCH)
-		if err := client.UploadArtifact(m.Package.Name, m.Package.Version, info.GOOS, info.GOARCH, meta, bin); err != nil {
-			return nil, fmt.Errorf("uploading %s/%s build: %w", info.GOOS, info.GOARCH, err)
-		}
-	}
+	return result, nil
 	return result, nil
 }
 

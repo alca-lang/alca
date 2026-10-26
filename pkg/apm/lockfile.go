@@ -32,16 +32,18 @@ func NewLockfile() *Lockfile {
 	}
 }
 
-// FindLockfilePath searches for an existing apm.lock or alca.toml in startDir or its parent directories.
+// FindLockfilePath searches for an existing alca.lock, apm.lock, or alca.toml in startDir or its parent directories.
 func FindLockfilePath(startDir string) (lockPath string, inProject bool) {
 	dir, err := filepath.Abs(startDir)
 	if err != nil {
 		return "", false
 	}
 	for {
-		candidate := filepath.Join(dir, "apm.lock")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, true
+		for _, name := range []string{"alca.lock", "apm.lock"} {
+			candidate := filepath.Join(dir, name)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate, true
+			}
 		}
 		tomlCandidate := filepath.Join(dir, "alca.toml")
 		if _, err := os.Stat(tomlCandidate); err == nil {

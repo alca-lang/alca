@@ -46,9 +46,22 @@ func ResolveInstalledModule(modulePath, fromFile string) (mod.Resolved, bool, er
 	if err != nil {
 		return mod.Resolved{}, false, err
 	}
-	ve, ok, err := idx.Installed(name)
-	if err != nil {
-		return mod.Resolved{}, false, err
+	var ve *VersionEntry
+	var ok bool
+	if fromFile != "" {
+		if lockPath, inProj := FindLockfilePath(filepath.Dir(fromFile)); inProj {
+			if lock, err := ReadLockfile(lockPath); err == nil && lock != nil {
+				if lp, locked := lock.Packages[name]; locked && lp.Version != "" {
+					ve, ok = idx.Version(name, lp.Version)
+				}
+			}
+		}
+	}
+	if !ok {
+		ve, ok, err = idx.Installed(name)
+		if err != nil {
+			return mod.Resolved{}, false, err
+		}
 	}
 	if !ok {
 		return mod.Resolved{}, false, nil

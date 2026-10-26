@@ -356,3 +356,87 @@ func TestOversizedPublishRejected(t *testing.T) {
 		t.Errorf("publishing an oversized package should fail")
 	}
 }
+
+func TestWebUIAndYankDeleteAtomic(t *testing.T) {
+	t.Setenv(apm.EnvHome, t.TempDir())
+	ts, _ := startNode(t, publisher(t), nil)
+
+	// 1. Verify Web UI
+	resp, err := http.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET / status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "Alca") || !strings.Contains(string(body), "Package Index") {
+		t.Errorf("GET / body missing title")
+	}
+
+	// 2. Verify Logo
+	logoResp, err := http.Get(ts.URL + "/assets/logo.svg")
+	if err != nil {
+		t.Fatalf("GET /assets/logo.svg: %v", err)
+	}
+	defer logoResp.Body.Close()
+	if logoResp.StatusCode != http.StatusOK {
+		t.Errorf("logo status = %d, want 200", logoResp.StatusCode)
+	}
+
+	// 3. Publish a library atomically with artifacts
+	lib := writeLib(t, "atomicweb", "1.0.0", "func compute() -> int:\n    return 42;\n", "")
+	res, err := apm.Publish(apm.PublishOptions{
+		Dir:         lib,
+		RegistryURL: ts.URL,
+		Token:       testToken,
+		Out:         io.Discard,
+	})
+	if err != nil {
+		t.Fatalf("atomic publish failed: %v", err)
+	}
+	if res.Name != "atomicweb" || res.Version != "1.0.0" {
+		t.Errorf("unexpected publish result: %+v", res)
+	}
+
+	// 4. Test Yank
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/packages/atomicweb/1.0.0/yank", strings.NewReader(`{"yanked": true}`))
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	req.Header.Set("Content-Type", "application/json")
+	yankResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("yank request failed: %v", err)
+	}
+	defer yankResp.Body.Close()
+	if yankResp.StatusCode != http.StatusOK {
+		t.Errorf("yank status = %d, want 200", yankResp.StatusCode)
+	}
+
+	// Verify it is marked yanked
+	client := apm.NewClient(ts.URL, apm.ClientOptions{})
+	verInfo, err := client.Version("atomicweb", "1.0.0")
+	if err != nil {
+		t.Fatalf("Version failed: %v", err)
+	}
+	if !verInfo.Yanked {
+		t.Errorf("expected version to be yanked")
+	}
+
+	// 5. Test Delete Version
+	delReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/v1/packages/atomicweb/1.0.0", nil)
+	delReq.Header.Set("Authorization", "Bearer "+testToken)
+	delResp, err := http.DefaultClient.Do(delReq)
+	if err != nil {
+		t.Fatalf("delete version failed: %v", err)
+	}
+	defer delResp.Body.Close()
+	if delResp.StatusCode != http.StatusOK {
+		t.Errorf("delete version status = %d, want 200", delResp.StatusCode)
+	}
+
+	// Verify version is gone
+	if _, err := client.Version("atomicweb", "1.0.0"); err == nil {
+		t.Errorf("expected version to be deleted")
+	}
+}

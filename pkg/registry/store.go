@@ -164,6 +164,8 @@ func (s *Store) List(query string, limit, offset int) ([]apm.PackageSummary, int
 			Description: latest.Description,
 			Latest:      latest.Version,
 			Versions:    len(versions),
+			Publisher:   latest.Publisher,
+			Yanked:      latest.Yanked,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -205,10 +207,22 @@ func (s *Store) Version(name, version string) (*apm.VersionInfo, error) {
 	return nil, ErrNotFound
 }
 
-// SavePackage stores a validated package archive. Re-publishing identical
-// content is idempotent and reports alreadyStored=true; publishing different
-// content for an existing version is refused.
+// ArtifactUpload holds binary and metadata for one artifact during atomic publish.
+type ArtifactUpload struct {
+	GOOS   string           `json:"goos"`
+	GOARCH string           `json:"goarch"`
+	Meta   apm.ArtifactMeta `json:"meta"`
+	Bin    []byte           `json:"-"`
+}
+
+// SavePackage stores a validated package archive and updates the index atomically.
 func (s *Store) SavePackage(info apm.VersionInfo, archive []byte) (alreadyStored bool, err error) {
+	return s.SavePackageWithArtifacts(info, archive, nil)
+}
+
+// SavePackageWithArtifacts stores a package archive AND all its compiled build artifacts
+// in a single atomic transaction.
+func (s *Store) SavePackageWithArtifacts(info apm.VersionInfo, archive []byte, artifacts []ArtifactUpload) (alreadyStored bool, err error) {
 	if !apm.ValidName(info.Name) {
 		return false, fmt.Errorf("invalid package name %q", info.Name)
 	}
@@ -233,6 +247,37 @@ func (s *Store) SavePackage(info apm.VersionInfo, archive []byte) (alreadyStored
 	if err := atomicWrite(s.archivePath(info.Name, info.Version), archive, 0o644); err != nil {
 		return false, err
 	}
+
+	for _, a := range artifacts {
+		binSum := sha256HexBytes(a.Bin)
+		artDir := filepath.Dir(s.artifactPath(info.Name, info.Version, a.GOOS, a.GOARCH, true))
+		if err := os.MkdirAll(artDir, 0o755); err != nil {
+			return false, err
+		}
+		if err := atomicWrite(s.artifactPath(info.Name, info.Version, a.GOOS, a.GOARCH, true), a.Bin, 0o644); err != nil {
+			return false, err
+		}
+		metaData, err := json.MarshalIndent(a.Meta, "", "  ")
+		if err != nil {
+			return false, err
+		}
+		if err := atomicWrite(s.artifactPath(info.Name, info.Version, a.GOOS, a.GOARCH, false), metaData, 0o644); err != nil {
+			return false, err
+		}
+		info.Artifacts = append(info.Artifacts, apm.ArtifactInfo{
+			GOOS:           a.GOOS,
+			GOARCH:         a.GOARCH,
+			AlcaVersion:    a.Meta.AlcaVersion,
+			PayloadVersion: a.Meta.PayloadVersion,
+			SHA256:         binSum,
+			Size:           int64(len(a.Bin)),
+			Entry:          a.Meta.Entry,
+			SourceHash:     a.Meta.SourceHash,
+			Exports:        a.Meta.Exports,
+			CreatedAt:      a.Meta.CreatedAt,
+		})
+	}
+
 	meta, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
 		return false, err
@@ -259,6 +304,78 @@ func (s *Store) SavePackage(info apm.VersionInfo, archive []byte) (alreadyStored
 	s.idx[info.Name] = versions
 	s.mu.Unlock()
 	return false, nil
+}
+
+// YankVersion toggles the Yanked status of a specific package version.
+func (s *Store) YankVersion(name, version string, yanked bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	versions, ok := s.idx[name]
+	if !ok {
+		return ErrNotFound
+	}
+	found := false
+	for i := range versions {
+		if versions[i].Version == version {
+			versions[i].Yanked = yanked
+			updated := versions[i]
+			metaData, err := json.MarshalIndent(updated, "", "  ")
+			if err != nil {
+				return err
+			}
+			if err := atomicWrite(s.metaPath(name, version), metaData, 0o644); err != nil {
+				return err
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteVersion deletes a specific version from storage and from the index.
+func (s *Store) DeleteVersion(name, version string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	versions, ok := s.idx[name]
+	if !ok {
+		return ErrNotFound
+	}
+	var remaining []apm.VersionInfo
+	found := false
+	for _, v := range versions {
+		if v.Version == version {
+			found = true
+			_ = os.RemoveAll(s.versionDir(name, version))
+		} else {
+			remaining = append(remaining, v)
+		}
+	}
+	if !found {
+		return ErrNotFound
+	}
+	if len(remaining) == 0 {
+		delete(s.idx, name)
+		_ = os.RemoveAll(filepath.Join(s.packagesDir(), name))
+	} else {
+		s.idx[name] = remaining
+	}
+	return nil
+}
+
+// DeletePackage completely deletes a package and all its versions from storage.
+func (s *Store) DeletePackage(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.idx[name]; !ok {
+		return ErrNotFound
+	}
+	_ = os.RemoveAll(filepath.Join(s.packagesDir(), name))
+	delete(s.idx, name)
+	return nil
 }
 
 // SaveArtifact stores a compiled build for a published version. Uploading the

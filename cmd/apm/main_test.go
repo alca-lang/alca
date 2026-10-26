@@ -424,3 +424,80 @@ func TestCLIInit(t *testing.T) {
 		t.Errorf("expected 'already exists' in stderr: %q", errOut)
 	}
 }
+
+func TestCLINewCommands(t *testing.T) {
+	home := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(origDir)
+
+	// 1. apm init
+	_, _, code := runAPM(t, "init", "tool-pkg", "--home", home)
+	if code != 0 {
+		t.Fatalf("init failed: %d", code)
+	}
+
+	// Add a script to alca.toml
+	manifestPath := filepath.Join(tmpDir, "alca.toml")
+	data, _ := os.ReadFile(manifestPath)
+	data = append(data, []byte("\n[scripts]\nhello = \"echo Hello from APM\"\n")...)
+	_ = os.WriteFile(manifestPath, data, 0644)
+
+	// 2. apm run
+	out, _, code := runAPM(t, "run", "hello")
+	if code != 0 {
+		t.Fatalf("run failed: %d, out: %s", code, out)
+	}
+	if !strings.Contains(out, "Hello from APM") {
+		t.Errorf("expected 'Hello from APM' in output: %s", out)
+	}
+
+	// 3. apm pack
+	out, _, code = runAPM(t, "pack")
+	if code != 0 {
+		t.Fatalf("pack failed: %d, out: %s", code, out)
+	}
+	if !strings.Contains(out, "Packaged tool-pkg into tool-pkg-0.1.0.tar.gz") {
+		t.Errorf("unexpected pack output: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "tool-pkg-0.1.0.tar.gz")); err != nil {
+		t.Fatalf("pack file does not exist: %v", err)
+	}
+
+	// 4. apm cache
+	out, _, code = runAPM(t, "cache", "list", "--home", home)
+	if code != 0 {
+		t.Fatalf("cache list failed: %d, out: %s", code, out)
+	}
+	out, _, code = runAPM(t, "cache", "clean", "--home", home)
+	if code != 0 {
+		t.Fatalf("cache clean failed: %d, out: %s", code, out)
+	}
+
+	// 5. apm tree
+	out, _, code = runAPM(t, "tree", "--home", home)
+	if code != 0 {
+		t.Fatalf("tree failed: %d, out: %s", code, out)
+	}
+	if !strings.Contains(out, "tool-pkg") {
+		t.Errorf("expected 'tool-pkg' in tree output: %s", out)
+	}
+
+	// 6. apm search
+	out, _, code = runAPM(t, "search", "tool", "--home", home)
+	if code != 0 {
+		t.Fatalf("search failed: %d, out: %s", code, out)
+	}
+
+	// 7. apm outdated
+	out, _, code = runAPM(t, "outdated", "--home", home)
+	if code != 0 {
+		t.Fatalf("outdated failed: %d, out: %s", code, out)
+	}
+}

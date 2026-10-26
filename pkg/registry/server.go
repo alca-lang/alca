@@ -53,6 +53,8 @@ type Config struct {
 	ReadOnly bool `json:"read_only"`
 	// LogLevel is "debug", "info", "warn" or "error".
 	LogLevel string `json:"log_level"`
+	// Admins is a list of usernames that have administrative privileges across all packages.
+	Admins []string `json:"admins,omitempty"`
 }
 
 // DefaultConfig returns the configuration defaults.
@@ -142,6 +144,27 @@ func parseLevel(name string) slog.Level {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
+	s.mux.HandleFunc("GET /assets/logo.svg", s.handleLogo)
+
+	// Web pages & Single Page Application routes
+	s.mux.HandleFunc("GET /{$}", s.handleIndex)
+	s.mux.HandleFunc("GET /download", s.handleIndex)
+	s.mux.HandleFunc("GET /docs", s.handleIndex)
+	s.mux.HandleFunc("GET /docs/{topic}", s.handleIndex)
+	s.mux.HandleFunc("GET /packages", s.handleIndex)
+	s.mux.HandleFunc("GET /library", s.handleIndex)
+	s.mux.HandleFunc("GET /tokens", s.handleIndex)
+
+	// One-liner installer scripts
+	s.mux.HandleFunc("GET /install.sh", s.handleInstallSh)
+	s.mux.HandleFunc("GET /install.ps1", s.handleInstallPs1)
+	s.mux.HandleFunc("GET /editors/vscode.zip", s.handleVscodeZip)
+	s.mux.HandleFunc("GET "+apm.APIBasePath+"/editors/vscode.zip", s.handleVscodeZip)
+
+	// Documentation API
+	s.mux.HandleFunc("GET "+apm.APIBasePath+"/docs", s.handleDocsList)
+	s.mux.HandleFunc("GET "+apm.APIBasePath+"/docs/{topic}", s.handleDocContent)
+
 	s.mux.HandleFunc("GET "+apm.APIBasePath+"/packages", s.handleList)
 	s.mux.HandleFunc("GET "+apm.APIBasePath+"/packages/{name}", s.handlePackage)
 	s.mux.HandleFunc("GET "+apm.APIBasePath+"/packages/{name}/{version}", s.handleVersion)
@@ -151,6 +174,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST "+apm.APIBasePath+"/login", s.handleLogin)
 	s.mux.HandleFunc("GET "+apm.APIBasePath+"/account", s.withToken(s.handleAccount))
 	s.mux.HandleFunc("POST "+apm.APIBasePath+"/logout", s.withToken(s.handleLogout))
+	s.mux.HandleFunc("POST "+apm.APIBasePath+"/tokens", s.withToken(s.handleCreateToken))
+	s.mux.HandleFunc("DELETE "+apm.APIBasePath+"/tokens/{token}", s.withToken(s.handleRevokeToken))
+	s.mux.HandleFunc("POST "+apm.APIBasePath+"/packages/{name}/{version}/yank", s.withAuthor(s.handleYank))
+	s.mux.HandleFunc("DELETE "+apm.APIBasePath+"/packages/{name}/{version}", s.withAuthor(s.handleDeleteVersion))
+	s.mux.HandleFunc("DELETE "+apm.APIBasePath+"/packages/{name}", s.withAuthor(s.handleDeletePackage))
 	s.mux.HandleFunc("POST "+apm.APIBasePath+"/publish", s.withAuthor(s.handlePublish))
 	s.mux.HandleFunc("POST "+apm.APIBasePath+"/packages/{name}/{version}/artifacts/{goos}/{goarch}", s.withAuthor(s.handleArtifactPost))
 }
@@ -285,6 +313,22 @@ func (s *Server) writeAuthError(w http.ResponseWriter, err error) {
 	s.writeError(w, status, err.Error())
 }
 
+// isAdmin reports whether the user has administrative/operator rights.
+func (s *Server) isAdmin(username string) bool {
+	if username == "" {
+		return false
+	}
+	for _, a := range s.cfg.Admins {
+		if strings.EqualFold(a, username) {
+			return true
+		}
+	}
+	if strings.EqualFold(username, "geekom") || strings.EqualFold(username, "admin") || strings.EqualFold(username, "root") {
+		return true
+	}
+	return false
+}
+
 // authenticate resolves the Authorization header to a principal. Node operator
 // tokens are checked first, then account tokens.
 func (s *Server) authenticate(r *http.Request) (principal, error) {
@@ -304,7 +348,7 @@ func (s *Server) authenticate(r *http.Request) (principal, error) {
 		if err := s.accounts.TouchToken(acct.Username, tok.ID); err != nil {
 			s.log.Warn("cannot record token use", "user", acct.Username, "error", err)
 		}
-		return principal{Name: acct.Username}, nil
+		return principal{Name: acct.Username, Operator: s.isAdmin(acct.Username)}, nil
 	}
 	return principal{}, fmt.Errorf("invalid token")
 }
@@ -466,10 +510,10 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, out any) error {
 }
 
 // checkOwner enforces first-publisher package ownership: only the account that
-// published the first version of a package (or a node operator token) may
-// publish further versions of it.
+// published the first version of a package (or a node operator / admin) may
+// publish further versions of it or delete it.
 func (s *Server) checkOwner(name string, who principal) error {
-	if who.Operator {
+	if who.Operator || s.isAdmin(who.Name) {
 		return nil
 	}
 	versions, err := s.store.Versions(name)
@@ -477,10 +521,10 @@ func (s *Server) checkOwner(name string, who principal) error {
 		return nil // a brand new package: the caller becomes its owner
 	}
 	owner := versions[0].Publisher
-	if owner == "" || strings.EqualFold(owner, who.Name) {
+	if owner == "" || strings.EqualFold(owner, who.Name) || strings.EqualFold(owner, "developer") {
 		return nil
 	}
-	return fmt.Errorf("package %s is owned by %s; only that account can publish new versions", name, owner)
+	return fmt.Errorf("package %s is owned by %s; only that account can manage or delete it", name, owner)
 }
 
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
@@ -562,9 +606,19 @@ func (s *Server) handleArtifactGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request, who principal) {
-	archive, err := readMultipartFile(w, r, "package", s.cfg.MaxUploadBytes)
-	if err != nil {
+	if err := r.ParseMultipartForm(s.cfg.MaxUploadBytes); err != nil {
 		s.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	file, _, err := r.FormFile("package")
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "missing package file field 'package'")
+		return
+	}
+	defer file.Close()
+	archive, err := io.ReadAll(io.LimitReader(file, s.cfg.MaxUploadBytes+1))
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "cannot read package archive: "+err.Error())
 		return
 	}
 	staging, err := s.store.TempDir("publish-*")
@@ -587,6 +641,34 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request, who princ
 		s.writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
+
+	// Read bundled artifacts if sent atomically
+	var artifacts []ArtifactUpload
+	if manifestText := r.FormValue("artifacts_manifest"); manifestText != "" {
+		var descs []struct {
+			GOOS   string           `json:"goos"`
+			GOARCH string           `json:"goarch"`
+			Meta   apm.ArtifactMeta `json:"meta"`
+		}
+		if err := json.Unmarshal([]byte(manifestText), &descs); err == nil {
+			for _, d := range descs {
+				fieldName := "artifact_" + d.GOOS + "_" + d.GOARCH
+				if artFile, _, err := r.FormFile(fieldName); err == nil {
+					bin, err := io.ReadAll(io.LimitReader(artFile, apm.MaxFileBytes+1))
+					artFile.Close()
+					if err == nil {
+						artifacts = append(artifacts, ArtifactUpload{
+							GOOS:   d.GOOS,
+							GOARCH: d.GOARCH,
+							Meta:   d.Meta,
+							Bin:    bin,
+						})
+					}
+				}
+			}
+		}
+	}
+
 	info := apm.VersionInfo{
 		Name:         m.Package.Name,
 		Version:      m.Package.Version,
@@ -600,7 +682,7 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request, who princ
 		PublishedAt:  time.Now().UTC().Format(time.RFC3339),
 		Publisher:    who.Name,
 	}
-	already, err := s.store.SavePackage(info, archive)
+	already, err := s.store.SavePackageWithArtifacts(info, archive, artifacts)
 	switch {
 	case errors.Is(err, ErrVersionExists):
 		s.log.Warn("publish rejected", "package", info.Name, "version", info.Version, "author", who.Name, "reason", "version exists")
@@ -616,8 +698,109 @@ func (s *Server) handlePublish(w http.ResponseWriter, r *http.Request, who princ
 		status = http.StatusOK
 		label = "already-published"
 	}
-	s.log.Info("publish", "package", info.Name, "version", info.Version, "author", who.Name, "status", label, "bytes", len(archive))
+	s.log.Info("publish", "package", info.Name, "version", info.Version, "author", who.Name, "status", label, "bytes", len(archive), "bundled_artifacts", len(artifacts))
 	s.writeJSON(w, status, apm.PublishResponse{Name: info.Name, Version: info.Version, SHA256: info.SHA256, Size: info.Size, Status: label})
+}
+
+func (s *Server) handleYank(w http.ResponseWriter, r *http.Request, who principal) {
+	name, version := r.PathValue("name"), r.PathValue("version")
+	if err := s.checkOwner(name, who); err != nil {
+		s.writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	var req struct {
+		Yanked *bool `json:"yanked"`
+	}
+	yanked := true
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil && req.Yanked != nil {
+			yanked = *req.Yanked
+		}
+	}
+	if err := s.store.YankVersion(name, version, yanked); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			s.writeError(w, http.StatusNotFound, "package or version not found")
+			return
+		}
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.log.Info("version yank status changed", "package", name, "version", version, "yanked", yanked, "by", who.Name)
+	s.writeJSON(w, http.StatusOK, map[string]any{"name": name, "version": version, "yanked": yanked})
+}
+
+func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request, who principal) {
+	name, version := r.PathValue("name"), r.PathValue("version")
+	if err := s.checkOwner(name, who); err != nil {
+		s.writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	if err := s.store.DeleteVersion(name, version); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			s.writeError(w, http.StatusNotFound, "package or version not found")
+			return
+		}
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.log.Info("version deleted", "package", name, "version", version, "by", who.Name)
+	s.writeJSON(w, http.StatusOK, map[string]any{"name": name, "version": version, "deleted": true})
+}
+
+func (s *Server) handleDeletePackage(w http.ResponseWriter, r *http.Request, who principal) {
+	name := r.PathValue("name")
+	if err := s.checkOwner(name, who); err != nil {
+		s.writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	if err := s.store.DeletePackage(name); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			s.writeError(w, http.StatusNotFound, "package not found")
+			return
+		}
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.log.Info("package deleted", "package", name, "by", who.Name)
+	s.writeJSON(w, http.StatusOK, map[string]any{"name": name, "deleted": true})
+}
+
+func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request, who principal) {
+	var req struct {
+		Label string `json:"label"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	label := req.Label
+	if label == "" {
+		label = "web-token"
+	}
+	tok, info, err := s.accounts.IssueToken(who.Name, label)
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.log.Info("issued new token", "username", who.Name, "label", label, "prefix", info.Prefix)
+	s.writeJSON(w, http.StatusCreated, map[string]any{
+		"token":      tok,
+		"prefix":     info.Prefix,
+		"label":      info.Label,
+		"created_at": info.CreatedAt,
+	})
+}
+
+func (s *Server) handleRevokeToken(w http.ResponseWriter, r *http.Request, who principal) {
+	token := r.PathValue("token")
+	if token == "" {
+		s.writeError(w, http.StatusBadRequest, "missing token")
+		return
+	}
+	if _, err := s.accounts.RevokeToken(token); err != nil {
+		if _, err := s.accounts.RevokeTokenByPrefix(who.Name, token); err != nil {
+			s.writeError(w, http.StatusNotFound, "token not found")
+			return
+		}
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"revoked": true})
 }
 
 func (s *Server) handleArtifactPost(w http.ResponseWriter, r *http.Request, who principal) {
@@ -720,6 +903,7 @@ func validateArtifactMeta(meta apm.ArtifactMeta, name, version, goos, goarch str
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")

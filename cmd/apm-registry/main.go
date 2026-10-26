@@ -41,10 +41,11 @@ func run(args []string) int {
 	tlsCert := fs.String("tls-cert", "", "TLS certificate file (enables HTTPS)")
 	tlsKey := fs.String("tls-key", "", "TLS private key file")
 	readOnly := fs.Bool("read-only", false, "serve downloads but refuse writes")
+	allowReg := fs.Bool("allow-registration", true, "allow self-service user registration")
 	initConfig := fs.String("init-config", "", "write an example configuration file and exit")
 	showVersion := fs.Bool("version", false, "print the version and exit")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: apm-registry [--config file.json] [--listen addr] [-p port] [--data dir] [--tls-cert file --tls-key file] [--read-only]")
+		fmt.Fprintln(os.Stderr, "Usage: apm-registry [--config file.json] [--listen addr] [-p port] [--data dir] [--tls-cert file --tls-key file] [--read-only] [--allow-registration]")
 		fmt.Fprintln(os.Stderr, "       apm-registry --init-config file.json")
 		fmt.Fprintln(os.Stderr, "\nAn Alca registry node stores published libraries and serves the APM API.")
 		fs.PrintDefaults()
@@ -82,7 +83,14 @@ func run(args []string) int {
 			return 1
 		}
 		cfg = loaded
+	} else {
+		cfg.AllowRegistration = *allowReg
 	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "allow-registration" {
+			cfg.AllowRegistration = *allowReg
+		}
+	})
 	// Handle -p flag: if port is specified, override the listen address
 	if *port > 0 {
 		cfg.Listen = "0.0.0.0:" + fmt.Sprintf("%d", *port)
