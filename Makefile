@@ -1,3 +1,6 @@
+# Copyright 2026 Alca Programming Language
+# SPDX-License-Identifier: Apache-2.0
+
 .PHONY: build test runtimes releases
 build:
 	GOOS=linux GOARCH=amd64 go build -o alca-linux ./cmd/alca

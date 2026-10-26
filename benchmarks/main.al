@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Alca interpreter and VM workload: run with `alca run benchmarks/main.al`.
 // For elapsed time, measure the process externally, e.g. PowerShell
 // `Measure-Command { alca run benchmarks/main.al }`.

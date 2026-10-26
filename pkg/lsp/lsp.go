@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package lsp implements the Language Server Protocol (LSP) for Alca IDE tooling.
 package lsp
 

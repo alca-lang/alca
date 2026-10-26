@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package registry implements the server side of an Alca package registry
 // node: durable on-disk storage, metadata indexing, and the helpers the HTTP
 // API builds on. Storage is plain files, so a node is easy to back up, inspect

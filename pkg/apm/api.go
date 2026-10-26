@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package apm
 
 // This file defines the JSON wire format shared by the APM client and Alca

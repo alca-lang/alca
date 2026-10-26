@@ -1,3 +1,6 @@
+# Copyright 2026 Alca Programming Language
+# SPDX-License-Identifier: Apache-2.0
+
 # Builds the releases/ bundle: static binaries for Windows and Linux hosts,
 # cross-compilation runtimes, documentation and examples.
 #

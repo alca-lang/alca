@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Command apm is the Alca package manager.
 //
 // It installs libraries from local sources (-u), from Alca registry nodes, or

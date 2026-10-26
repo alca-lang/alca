@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // ==========================================
 // Interactive Native Desktop Window in Alca
 // Interactive example: opens a native window and blocks until it is closed.

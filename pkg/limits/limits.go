@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package limits implements the process-wide memory accounting used by the
 // Alca runtime.
 //

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mtproto implements the MTProto 2.0 protocol used by Telegram.
 //
 // The package covers the protocol itself: the AES-IGE cipher, the

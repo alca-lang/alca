@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the Time standard library module for the Alca programming language.
 // It supports timestamp queries, formatting, parsing, measurements, intervals, and conversions.
 package stdlib

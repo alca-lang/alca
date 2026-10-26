@@ -1,0 +1,118 @@
+Alca Programming Language
+Copyright 2026 Alca Programming Language
+
+This product includes software developed as part of the Alca Programming
+Language project (https://github.com/alca-lang/alca).
+
+================================================================================
+Alca Programming Language
+================================================================================
+
+Alca Programming Language
+Copyright 2026 Alca Programming Language
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+The full text of the Apache License, Version 2.0 is provided in the LICENSE
+file distributed with this project.
+
+================================================================================
+Third-party software included in Alca distributions
+================================================================================
+
+Alca binaries (compiler, bytecode VM, JIT, standard library and CLI tools)
+statically link the following third-party Go modules. Each component remains
+under the copyright of its respective authors and is used under the license
+listed below.
+
+Apache License 2.0
+------------------
+  github.com/hajimehoshi/go-mp3
+    Copyright the go-mp3 authors.
+    https://github.com/hajimehoshi/go-mp3
+
+BSD 3-Clause License
+--------------------
+  github.com/remyoudompheng/bigfft
+    Copyright (c) 2012 The Go Authors. All rights reserved.
+    https://github.com/remyoudompheng/bigfft
+
+  golang.org/x/image
+    Copyright 2009 The Go Authors. All rights reserved.
+    https://golang.org/x/image
+
+  golang.org/x/sys
+    Copyright 2009 The Go Authors. All rights reserved.
+    https://golang.org/x/sys
+
+  golang.org/x/term
+    Copyright 2009 The Go Authors. All rights reserved.
+    https://golang.org/x/term
+
+  golang.org/x/text
+    Copyright 2009 The Go Authors. All rights reserved.
+    https://golang.org/x/text
+
+  modernc.org/libc
+    Copyright (c) 2017 The Libc Authors. All rights reserved.
+    https://gitlab.com/cznic/libc
+
+  modernc.org/mathutil
+    Copyright (c) 2014 The mathutil Authors. All rights reserved.
+    https://gitlab.com/cznic/mathutil
+
+  modernc.org/memory
+    Copyright (c) 2017 The Memory Authors. All rights reserved.
+    https://gitlab.com/cznic/memory
+
+  modernc.org/sqlite
+    Copyright (c) 2017 The Sqlite Authors. All rights reserved.
+    https://gitlab.com/cznic/sqlite
+
+    modernc.org/sqlite embeds SQLite, which is in the public domain:
+    https://www.sqlite.org/copyright.html
+
+ISC License
+-----------
+  github.com/jchv/go-winloader
+    Copyright (c) 2021, John Chadwick <john@jchw.io>
+    https://github.com/jchv/go-winloader
+
+MIT License
+-----------
+  github.com/dustin/go-humanize
+    Copyright (c) 2005-2008 Dustin Sallings <dustin@spy.net>
+    https://github.com/dustin/go-humanize
+
+  github.com/jchv/go-webview2
+    Copyright (c) 2020 John Chadwick
+    https://github.com/jchv/go-webview2
+
+  github.com/lib/pq
+    Copyright (c) 2011-2013, 'pq' Contributors
+    Portions Copyright (c) 2011 Blake Mizerany
+    https://github.com/lib/pq
+
+  github.com/mattn/go-isatty
+    Copyright (c) Yasuhiro MATSUMOTO <mattn.jp@gmail.com>
+    https://github.com/mattn/go-isatty
+
+  github.com/ncruces/go-strftime
+    Copyright (c) 2022 Nuno Cruces
+    https://github.com/ncruces/go-strftime
+
+================================================================================
+
+The complete license text of each third-party component is available in the
+corresponding module in the Go module cache (`go mod download`) and in the
+upstream repositories listed above.

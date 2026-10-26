@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Command apm-registry runs an Alca package registry node: it stores published
 // libraries and their compiled builds, serves the APM HTTP API, and
 // authenticates publishers with bearer tokens.

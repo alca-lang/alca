@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package diag provides rich, human-friendly compiler diagnostic formatting
 // with source code previews, line numbers, caret pointers, and actionable hints.
 package diag

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the Log standard library module for the Alca programming language.
 // It supports structured logging with level filtering (DEBUG, INFO, WARN, ERROR, FATAL),
 // text and JSON outputs, and automated file rotation.

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Interactive example: queries the screen size and saves a screenshot.
 use std.gui;
 

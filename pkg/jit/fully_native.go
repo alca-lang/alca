@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 package jit
 
 import "github.com/alca-lang/alca/pkg/vm"

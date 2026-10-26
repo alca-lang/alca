@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the Path standard library module for the Alca programming language.
 // It supports cross-platform path manipulation, joins, splits, normalization, extensions, and resolution.
 package stdlib

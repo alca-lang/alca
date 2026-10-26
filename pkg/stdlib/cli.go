@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides the CLI standard library module for the Alca programming language.
 // It supports command-line argument parsing, ANSI terminal colors, interactive prompts, secure password entry, and progress bars.
 package stdlib

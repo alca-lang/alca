@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package mod resolves Alca `use` module paths to loadable files.
 //
 // The package is deliberately small and dependency-light: both the tree-walking

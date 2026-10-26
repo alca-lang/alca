@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package-level API for editor tooling: the LSP server and the CLI need read
 // access to the standard module tables without duplicating them.
 package typecheck

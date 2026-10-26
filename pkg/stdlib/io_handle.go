@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides advanced stream-based file handles, seeking, locking,
 // permissions management, and permission error handling for Alca.
 package stdlib

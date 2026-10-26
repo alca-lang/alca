@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Desktop WebView Application
 // Interactive example: opens a WebView window and blocks until it is closed.
 use std.gui;

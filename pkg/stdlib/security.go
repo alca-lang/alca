@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides security auditing, access control validation,
 // and permission error tracking for the Alca programming language.
 package stdlib

@@ -1,3 +1,6 @@
+// Copyright 2026 Alca Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
 // Package stdlib provides production-grade database connectivity for SQLite and PostgreSQL.
 package stdlib
 
