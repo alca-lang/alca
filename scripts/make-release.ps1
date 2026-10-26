@@ -18,12 +18,6 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 $ldflags = "-s -w"
-if ($Registry) {
-    $ldflags = "-s -w -X github.com/alca-lang/alca/pkg/apm.DefaultRegistry=$Registry"
-    Write-Host "Default registry node baked into apm: $Registry"
-} else {
-    Write-Host "No default registry node baked in"
-}
 
 $rel = Join-Path $root "releases"
 $bin = Join-Path $rel "bin"
@@ -35,7 +29,7 @@ $allPlatforms = @(
     @{ os = "windows"; arch = "amd64"; suffix = ".exe" },
     @{ os = "windows"; arch = "arm64"; suffix = ".exe" }
 )
-$commands = @("alca", "apm", "apm-registry")
+$commands = @("alca")
 
 Write-Host "Building releases/ binaries for all 6 platforms..."
 $env:CGO_ENABLED = "0"
@@ -69,9 +63,6 @@ Remove-Item Env:GOOS, Env:GOARCH -ErrorAction SilentlyContinue
 
 # Also update workspace root binaries
 Copy-Item (Join-Path $rel "alca-windows-amd64.exe") (Join-Path $root "alca.exe") -Force
-Copy-Item (Join-Path $rel "apm-windows-amd64.exe") (Join-Path $root "apm.exe") -Force
-Copy-Item (Join-Path $rel "apm-registry-windows-amd64.exe") (Join-Path $root "apm-registry.exe") -Force
-Copy-Item (Join-Path $rel "apm-linux-amd64") (Join-Path $root "apm-linux-amd64") -Force
 
 Write-Host "Copying cross-compilation runtimes..."
 foreach ($h in $bundleHosts) {
@@ -93,10 +84,7 @@ foreach ($h in $bundleHosts) {
 Write-Host "Copying documentation and examples..."
 $docs = Join-Path $rel "docs"
 New-Item -ItemType Directory -Force -Path $docs | Out-Null
-foreach ($doc in @("language.md", "cli.md", "stdlib.md", "cross-compilation.md",
-                   "architecture.md", "apm.md", "apm-registry.md")) {
-    Copy-Item (Join-Path $root "docs\$doc") (Join-Path $docs $doc) -Force
-}
+Get-ChildItem (Join-Path $root "docs\*.md") | Copy-Item -Destination $docs -Force
 $examples = Join-Path $rel "examples"
 New-Item -ItemType Directory -Force -Path $examples | Out-Null
 Get-ChildItem (Join-Path $root "examples\*.al") | Copy-Item -Destination $examples -Force

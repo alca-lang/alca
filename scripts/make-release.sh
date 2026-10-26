@@ -3,17 +3,9 @@
 # Copyright 2026 Alca Programming Language
 # SPDX-License-Identifier: Apache-2.0
 
-# Copyright 2026 Alca Programming Language
-# SPDX-License-Identifier: Apache-2.0
-
 # Builds the releases/ bundle on Linux/macOS hosts.
 #
-# Usage: scripts/make-release.sh [registry-url]
-#
-# The optional registry URL is stamped into the apm binaries as their default
-# registry node (falls back to $ALCA_REGISTRY when the argument is omitted),
-# so released clients contact that node without --registry or environment
-# setup.
+# Usage: scripts/make-release.sh
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,24 +13,13 @@ cd "$root"
 rel="$root/releases"
 bin="$rel/bin"
 
-registry="${1:-${ALCA_REGISTRY:-}}"
 ldflags="-s -w"
-if [ -n "$registry" ]; then
-  ldflags="$ldflags -X github.com/alca-lang/alca/pkg/apm.DefaultRegistry=$registry"
-  echo "Default registry node baked into apm: $registry"
-  case "$registry" in
-    https://*) ;;
-    *) echo "warning: registry URL is not https; clients refuse non-loopback plain http" >&2 ;;
-  esac
-else
-  echo "No default registry node baked in (pass a registry URL to stamp one)"
-fi
 
 build_host() { # os arch suffix
   local os="$1" arch="$2" suffix="$3"
   local dir="$bin/$os-$arch"
   mkdir -p "$dir"
-  for c in alca apm apm-registry; do
+  for c in alca; do
     CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
       go build -trimpath -ldflags "$ldflags" -o "$dir/$c$suffix" "./cmd/$c"
     echo "  $dir/$c$suffix"
@@ -68,9 +49,7 @@ done
 
 echo "Copying documentation and examples..."
 mkdir -p "$rel/docs" "$rel/examples"
-for doc in language.md cli.md stdlib.md cross-compilation.md architecture.md apm.md apm-registry.md; do
-  cp -f "docs/$doc" "$rel/docs/$doc"
-done
-cp -f examples/*.al "$rel/examples/"
+cp -f docs/*.md "$rel/docs/" 2>/dev/null || true
+cp -f examples/*.al "$rel/examples/" 2>/dev/null || true
 
 echo "Release bundle is in $rel"

@@ -41,7 +41,7 @@ The Bytecode VM is the primary execution engine. Programs compile directly to st
 - 📘 [**Comprehensive Handbook**](docs/handbook_EN.md) ([Русский](docs/handbook_RU.md)) — in-depth handbook covering syntax, types, pipelines, error streams, builtins, sandbox, and the entire `std.*` library.
 - 📖 [**Language Specification & Reference**](docs/language_EN.md) ([Русский](docs/language_RU.md)) — formal specification of grammar, types, OOP, pattern matching, and operators.
 - 📚 [**Standard Library Catalog**](docs/stdlib_EN.md) ([Русский](docs/stdlib_RU.md)) — detailed signatures and capability requirements for all 40+ stdlib modules.
-- 📦 [**Package Manager (APM)**](docs/apm_EN.md) ([Русский](docs/apm_RU.md)) — dependency management, `alca.toml` manifests, lockfiles, registry, and security.
+- 📦 [**Package Manager (APM)**](https://github.com/alca-lang/apm) — standalone package manager for Alca (`alca.toml`, `alca.lock`, registry, CLI).
 - 💻 [**Editor Tooling & LSP**](docs/editors_EN.md) ([Русский](docs/editors_RU.md)) — VS Code, Cursor, and Zed editor extensions, Language Server Protocol (`alca lsp`).
 - 🛠️ [**CLI & Sandboxing Guide**](docs/cli_EN.md) ([Русский](docs/cli_RU.md)) — commands (`run`, `build`, `dll`, `fmt`, `lsp`) and security flags.
 - 🏗️ [**Architecture & Execution Tiers**](docs/architecture_EN.md) ([Русский](docs/architecture_RU.md)) — Bytecode VM internals, JIT compiler, PE/DLL assembler, and security model.
@@ -107,15 +107,17 @@ alca targets                       # show supported targets and installed runtim
 
 ## Package Manager (APM)
 
+APM is hosted in its own repository: [**github.com/alca-lang/apm**](https://github.com/alca-lang/apm).
+
 `apm` installs libraries so programs can `use` them without manual path setup:
 
-```text
-go build -o apm ./cmd/apm
+```bash
+# Clone & install APM
+git clone https://github.com/alca-lang/apm.git
+cd apm && go build -o apm ./cmd/apm
 
-apm install -u ./my-library     # from local sources
-apm install "json@^1.2.0"       # from a registry (built-in node, $ALCA_REGISTRY or --registry)
+apm install "json@^1.2.0"       # from package registry
 apm show                        # list installed libraries
-apm remove json
 ```
 
 Installed libraries live in a local system registry under `$ALCA_HOME` (default `~/.alca`), including a compiled VM build per package that the VM loads automatically.

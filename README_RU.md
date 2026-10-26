@@ -41,7 +41,7 @@ go build -o alca ./cmd/alca
 - 📘 [**Полное методическое руководство (Handbook)**](docs/handbook_RU.md) ([English](docs/handbook_EN.md)) — исчерпывающая методичка по синтаксису, типам, логике языка, песочнице, встроенным функциям и всем библиотекам `std.*`.
 - 📖 [**Спецификация языка (Language Reference)**](docs/language_RU.md) ([English](docs/language_EN.md)) — полный формальный справочник грамматики, типов, классов и операторов.
 - 📚 [**Каталог стандартной библиотеки (Stdlib)**](docs/stdlib_RU.md) ([English](docs/stdlib_EN.md)) — детальный справочник функций и сигнатур более 40 модулей `stdlib`.
-- 📦 [**Пакетный менеджер (APM)**](docs/apm_RU.md) ([English](docs/apm_EN.md)) — управление зависимостями, манифесты `alca.toml`, `alca.lock`, реестр пакетов и безопасность.
+- 📦 [**Пакетный менеджер (APM)**](https://github.com/alca-lang/apm) — отдельный репозиторий пакетного менеджера Alca (`alca.toml`, `alca.lock`, реестр, CLI).
 - 💻 [**Поддержка редакторов и LSP**](docs/editors_RU.md) ([English](docs/editors_EN.md)) — расширения для VS Code, Cursor и Zed, Language Server Protocol (`alca lsp`).
 - 🛠️ [**Руководство по CLI и песочнице**](docs/cli_RU.md) ([English](docs/cli_EN.md)) — команды `alca run`, `build`, `dll`, `fmt`, `lsp`, флаги безопасности и песочницы.
 - 🏗️ [**Архитектура и уровни исполнения**](docs/architecture_RU.md) ([English](docs/architecture_EN.md)) — устройство Bytecode VM, JIT компилятора, PE/DLL генератора и модели безопасности.
@@ -105,15 +105,17 @@ alca targets                       # список поддерживаемых �
 
 ## Пакетный менеджер (APM)
 
+APM вынесен в отдельный репозиторий: [**github.com/alca-lang/apm**](https://github.com/alca-lang/apm).
+
 `apm` устанавливает библиотеки для использования через `use` без ручной настройки путей:
 
-```text
-go build -o apm ./cmd/apm
+```bash
+# Сборка и запуск APM
+git clone https://github.com/alca-lang/apm.git
+cd apm && go build -o apm ./cmd/apm
 
-apm install -u ./my-library     # из локального каталога
 apm install "json@^1.2.0"       # из реестра пакетов
 apm show                        # список установленных библиотек
-apm remove json
 ```
 
 ---
