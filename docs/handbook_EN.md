@@ -2,7 +2,7 @@
 
 [English](handbook_EN.md) | [Русский](handbook_RU.md)
 
-> **Language Version:** Alca v2.0.0  
+> **Language Version:** Alca v1.7.9  
 > **Document Status:** Canonical Handbook  
 > **Target Audience:** Systems automation developers, cross-platform tool creators, and backend service developers.
 

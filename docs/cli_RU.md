@@ -10,7 +10,7 @@ go build -o alca ./cmd/alca
 ## Обзор команд
 
 ```text
-Alca Programming Language CLI v2.0.0
+Alca Programming Language CLI v1.7.9
 
 Использование:
   alca <команда> [аргументы]

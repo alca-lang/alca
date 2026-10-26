@@ -8,7 +8,7 @@ go build -o alca ./cmd/alca
 ## Commands Overview
 
 ```text
-Alca Programming Language CLI v2.0.0
+Alca Programming Language CLI v1.7.9
 
 Usage:
   alca <command> [arguments]

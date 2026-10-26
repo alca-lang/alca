@@ -2,19 +2,21 @@
 # Copyright 2026 Alca Programming Language
 # SPDX-License-Identifier: Apache-2.0
 # Complete installer for Alca toolchain on Linux & macOS:
-# - Binaries (alca, apm)
+# - Binaries (alca, apm) v1.7.9
 # - System & User PATH registration
 # - VS Code & Cursor extensions (syntax, file icons, snippets)
 # - FreeDesktop MIME types & file associations (*.al)
 
 set -e
 
+VERSION="1.7.9"
 REPO="alca-lang/alca"
+APM_REPO="alca-lang/apm"
 REGISTRY_HOST="http://91.92.34.94:9977"
 INSTALL_DIR="${ALCA_HOME:-$HOME/.alca}/bin"
 
 echo "=============================================="
-echo "    Installing Alca Programming Language      "
+echo "    Installing Alca Lang & APM v${VERSION}    "
 echo "=============================================="
 
 # 1. Detect OS
@@ -43,17 +45,15 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 # 3. Download & extract binaries
-echo "[2/4] Downloading Alca binaries..."
+echo "[2/4] Downloading Alca & APM binaries..."
 if curl -fsSL "${GITHUB_URL}" -o "${TMP_DIR}/alca.tar.gz" 2>/dev/null; then
     echo "  -> Downloaded from GitHub Releases"
 elif curl -fsSL "${REGISTRY_URL}" -o "${TMP_DIR}/alca.tar.gz" 2>/dev/null; then
     echo "  -> Downloaded from Alca Registry Mirror"
 else
     echo "  -> Downloading direct binaries..."
-    curl -fsSL "https://github.com/${REPO}/releases/latest/download/alca-${PLATFORM}-${ARCH}" -o "${INSTALL_DIR}/alca" 2>/dev/null || \
-    curl -fsSL "${REGISTRY_HOST}/api/v1/download/alca" -o "${INSTALL_DIR}/alca" 2>/dev/null || true
-    curl -fsSL "https://github.com/${REPO}/releases/latest/download/apm-${PLATFORM}-${ARCH}" -o "${INSTALL_DIR}/apm" 2>/dev/null || \
-    curl -fsSL "${REGISTRY_HOST}/api/v1/download/apm" -o "${INSTALL_DIR}/apm" 2>/dev/null || true
+    curl -fsSL "https://github.com/${REPO}/releases/latest/download/alca-${PLATFORM}-${ARCH}" -o "${INSTALL_DIR}/alca" 2>/dev/null ||     curl -fsSL "${REGISTRY_HOST}/api/v1/download/alca" -o "${INSTALL_DIR}/alca" 2>/dev/null || true
+    curl -fsSL "https://github.com/${APM_REPO}/releases/latest/download/apm-${PLATFORM}-${ARCH}" -o "${INSTALL_DIR}/apm" 2>/dev/null ||     curl -fsSL "https://github.com/${REPO}/releases/latest/download/apm-${PLATFORM}-${ARCH}" -o "${INSTALL_DIR}/apm" 2>/dev/null ||     curl -fsSL "${REGISTRY_HOST}/api/v1/download/apm" -o "${INSTALL_DIR}/apm" 2>/dev/null || true
 fi
 
 if [ -f "${TMP_DIR}/alca.tar.gz" ]; then
@@ -65,9 +65,12 @@ fi
 chmod +x "${INSTALL_DIR}/alca" 2>/dev/null || true
 chmod +x "${INSTALL_DIR}/apm" 2>/dev/null || true
 
-# 4. PATH Configuration
-echo "[3/4] Configuring shell PATH..."
-PATH_EXPORT="export PATH=\"${INSTALL_DIR}:\$PATH\""
+# Download file icon
+curl -fsSL "${REGISTRY_HOST}/assets/alca-file.png" -o "${INSTALL_DIR}/alca-file.png" 2>/dev/null || true
+
+# 4. PATH registration
+echo "[3/4] Configuring PATH..."
+PATH_EXPORT="export PATH="${INSTALL_DIR}:\$PATH""
 
 for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
     if [ -f "$RC" ]; then
@@ -102,7 +105,7 @@ if [ -f "${EXT_ZIP}" ]; then
     done
 fi
 
-# 6. Linux FreeDesktop MIME type for *.al
+# 6. Linux FreeDesktop MIME type and icon for *.al
 if [ "${PLATFORM}" = "linux" ]; then
     MIME_DIR="$HOME/.local/share/mime/packages"
     mkdir -p "${MIME_DIR}"
@@ -118,17 +121,28 @@ if [ "${PLATFORM}" = "linux" ]; then
 EOF
     if command -v update-mime-database >/dev/null 2>&1; then
         update-mime-database "$HOME/.local/share/mime" >/dev/null 2>&1 || true
-        echo "  -> Registered FreeDesktop MIME type text/x-alca"
     fi
+
+    # Install icon to hicolor theme
+    ICON_DIR="$HOME/.local/share/icons/hicolor/512x512/mimetypes"
+    mkdir -p "${ICON_DIR}"
+    if [ -f "${INSTALL_DIR}/alca-file.png" ]; then
+        cp "${INSTALL_DIR}/alca-file.png" "${ICON_DIR}/text-x-alca.png"
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" >/dev/null 2>&1 || true
+        fi
+    fi
+    echo "  -> Registered FreeDesktop MIME type text/x-alca with document icon"
 fi
 
 echo ""
 echo "=============================================="
-echo "    Alca is ready to use!                     "
+echo "    Alca Lang v${VERSION} is ready to use!    "
 echo "=============================================="
 echo "  * Binaries:       ${INSTALL_DIR}/alca, apm"
+echo "  * File Icon:      ${INSTALL_DIR}/alca-file.png"
 echo "  * Extension:      .al (Alca Source File)"
 echo "  * Documentation:  ${REGISTRY_HOST}/#docs"
 echo "  * GitHub:         https://github.com/${REPO}"
 echo ""
-echo "Run 'alca version' to verify."
+echo "Run 'alca version' or 'apm --version' to verify."

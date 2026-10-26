@@ -1195,7 +1195,7 @@ The following immutable built-in variables are always available globally:
 | `__dirname__` | `string` | Alias for `__dir__`. |
 | `__name__` | `string` | `"__main__"` when executing the top-level script, or the module path when imported. |
 | `__line__` | `int` | Current 1-based source code line number where the identifier appears. |
-| `__version__` | `string` | Alca runtime and toolchain version (e.g. `"2.0.0"`). |
+| `__version__` | `string` | Alca runtime and toolchain version (e.g. `"1.7.9"`). |
 
 ### Global functions
 

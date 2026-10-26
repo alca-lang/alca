@@ -893,7 +893,7 @@ println(type(__file__));
 println(type(__dir__));
 println(type(__dirname__));
 println(__line__);
-`, "__main__\n2.0.0\nSTRING\nSTRING\nSTRING\n7\n"},
+`, "__main__\n1.7.9\nSTRING\nSTRING\nSTRING\n7\n"},
 }
 
 func TestEnginesAgree(t *testing.T) {
