@@ -1710,6 +1710,9 @@ func (i *Interpreter) InvokeFunction(fnVal Value, args []Value) (Value, error) {
 
 func (i *Interpreter) invokeFunction(fnVal Value, args []Value, kwArgs map[string]ast.Expression) (Value, error) {
 	switch fn := fnVal.(type) {
+	case HostCallable:
+		return fn.Call(args)
+
 	case *BuiltinFunction:
 		return fn.Fn(args...), nil
 
