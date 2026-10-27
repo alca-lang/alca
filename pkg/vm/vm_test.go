@@ -387,3 +387,19 @@ println(x);
 		t.Fatalf("expected 10 on both engines, got interp=%q, vm=%q", interpOut, vmOut)
 	}
 }
+
+func TestBlobConcatenationOnBothEngines(t *testing.T) {
+	src := `
+func test_blob():
+    b1 := blob("hello ");
+    b2 := blob("world");
+    b3 := b1 + b2;
+    println(string(b3));
+
+test_blob();
+`
+	interpOut, vmOut := runOnBothEngines(t, src)
+	if interpOut != "hello world" || vmOut != "hello world" {
+		t.Fatalf("expected 'hello world' on both engines, got interp=%q, vm=%q", interpOut, vmOut)
+	}
+}

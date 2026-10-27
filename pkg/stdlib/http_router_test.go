@@ -313,3 +313,44 @@ registered := router.post("/echo", handler, options);
 		t.Fatalf("injected dependencies = %#v, want alca-user", dependencies)
 	}
 }
+
+type mockHostCallable struct {
+	called bool
+}
+
+func (m *mockHostCallable) Type() interpreter.ValueType { return interpreter.FUNC_VAL }
+func (m *mockHostCallable) Inspect() string             { return "<host_func>" }
+func (m *mockHostCallable) Clone() interpreter.Value    { return m }
+func (m *mockHostCallable) Call(args []interpreter.Value) (interpreter.Value, error) {
+	m.called = true
+	req := args[0].(*interpreter.MapValue)
+	params, _ := req.Get("params")
+	pMap := params.(*interpreter.MapValue)
+	tokenVal, _ := pMap.Get("token")
+	res := interpreter.NewMap()
+	res.Set("token", tokenVal)
+	return httpJSONResponseBuiltin(res), nil
+}
+
+func TestHTTPRouterBotTokenSegmentAndHostCallable(t *testing.T) {
+	router := newHTTPRouter()
+	handler := &mockHostCallable{}
+	res := router.addRoute("POST", &interpreter.StringValue{Val: "/bot{token}/webhook"}, handler)
+	if errVal, ok := res.(*interpreter.ErrorValue); ok {
+		t.Fatalf("failed to add /bot{token}/webhook route: %s", errVal.Message)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/bot123456:ABC/webhook", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if !handler.called {
+		t.Fatalf("host callable handler was not called")
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "123456:ABC") {
+		t.Fatalf("expected body to contain token, got: %s", w.Body.String())
+	}
+}

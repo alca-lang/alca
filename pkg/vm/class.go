@@ -56,6 +56,7 @@ func (m *ClassMethod) Bind(receiver interpreter.Value) interpreter.Value {
 		Instructions:  m.Fn.Instructions,
 		NumLocals:     m.Fn.NumLocals,
 		NumParameters: m.Fn.NumParameters,
+		Defaults:      m.Fn.Defaults,
 		Name:          m.Fn.Name,
 		NumFree:       2,
 		Upvalues: []*Upvalue{

@@ -88,6 +88,7 @@ type CompiledFunction struct {
 	Instructions  Instructions
 	NumLocals     int
 	NumParameters int
+	Defaults      []interpreter.Value
 	Name          string
 	NumFree       int
 	UpvalueDescs  []UpvalueDesc

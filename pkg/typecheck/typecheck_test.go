@@ -756,3 +756,22 @@ l: int = __line__;
 		t.Fatal("expected assigning to __file__ to be rejected")
 	}
 }
+
+func TestHeterogeneousMapJsonAndBlobPlusAndQualifiedType(t *testing.T) {
+	src := `
+func get_json() -> json:
+    return {"a": 1, "b": "hello", "c": true};
+
+func concat_blobs(b1: blob, b2: blob) -> blob:
+    return b1 + b2;
+
+struct Box:
+    val: int;
+
+x: helper.Box | null = null;
+`
+	errs := check(t, src)
+	if len(errs) > 0 {
+		t.Fatalf("expected clean typecheck, got:\n%s", strings.Join(errs, "\n"))
+	}
+}

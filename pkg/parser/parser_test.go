@@ -503,3 +503,17 @@ func TestNoCascadingSemicolonOnBadExpression(t *testing.T) {
 		t.Fatalf("expected parser to recover and parse subsequent statement, got %d statements", len(prog.Statements))
 	}
 }
+
+func TestBracedIfAndNestedMapAndQualifiedTypes(t *testing.T) {
+	// 1. If with braces
+	srcIf := "if x > 0 {\n    y = 1;\n} elif x == 0 {\n    y = 0;\n} else {\n    y = -1;\n}\n"
+	mustParse(t, srcIf)
+
+	// 2. Nested map literal as last element
+	srcMap := "m := {\"a\": {\"b\": 1}};\n"
+	mustParse(t, srcMap)
+
+	// 3. Qualified type annotation
+	srcType := "b: helper.Box = x;\n"
+	mustParse(t, srcType)
+}

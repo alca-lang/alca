@@ -176,9 +176,9 @@ var BuiltinFunctionMap = map[string]*BuiltinFunction{
 		Name: "typeof",
 		Fn: func(args ...Value) Value {
 			if len(args) == 0 || args[0] == nil {
-				return &StringValue{Val: string(NULL_VAL)}
+				return &StringValue{Val: "null"}
 			}
-			return &StringValue{Val: string(args[0].Type())}
+			return &StringValue{Val: TypeNameOf(args[0])}
 		},
 	},
 	"int": {
@@ -244,6 +244,31 @@ var BuiltinFunctionMap = map[string]*BuiltinFunction{
 				return &StringValue{Val: "null"}
 			}
 			return &StringValue{Val: CoerceToString(args[0])}
+		},
+	},
+	"blob": {
+		Name: "blob",
+		Fn: func(args ...Value) Value {
+			if len(args) == 0 || args[0] == nil {
+				return &BlobValue{Data: []byte{}}
+			}
+			switch val := args[0].(type) {
+			case *BlobValue:
+				return val
+			case *StringValue:
+				return &BlobValue{Data: []byte(val.Val)}
+			case *ListValue:
+				elems := val.ElementsSlice()
+				bytesData := make([]byte, len(elems))
+				for idx, el := range elems {
+					if iv, ok := el.(*IntegerValue); ok {
+						bytesData[idx] = byte(iv.Val)
+					}
+				}
+				return &BlobValue{Data: bytesData}
+			default:
+				return NewError(400, fmt.Sprintf("cannot convert %s to blob", args[0].Type()))
+			}
 		},
 	},
 	"bool": {

@@ -30,6 +30,16 @@ func (vm *VM) invokeFromJIT(fn *CompiledFunction, sp, argc int) (interpreter.Val
 	if fn == nil {
 		return nil, fmt.Errorf("callback is nil")
 	}
+	if argc < fn.NumParameters && len(fn.Defaults) > 0 {
+		minArgs := fn.NumParameters - len(fn.Defaults)
+		if argc >= minArgs {
+			for i := argc; i < fn.NumParameters; i++ {
+				vm.stack[sp] = FromValue(fn.Defaults[i-minArgs])
+				sp++
+			}
+			argc = fn.NumParameters
+		}
+	}
 	if argc != fn.NumParameters {
 		return nil, fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, argc)
 	}
@@ -97,6 +107,7 @@ func (vm *VM) newClosure(template *CompiledFunction, frame *Frame) *CompiledFunc
 		Instructions:  template.Instructions,
 		NumLocals:     template.NumLocals,
 		NumParameters: template.NumParameters,
+		Defaults:      template.Defaults,
 		Name:          template.Name,
 		NumFree:       template.NumFree,
 		UpvalueDescs:  template.UpvalueDescs,

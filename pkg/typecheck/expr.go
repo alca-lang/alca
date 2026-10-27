@@ -329,7 +329,9 @@ func (c *Checker) listLiteral(n *ast.ListLiteral, sc *scope, expected Type) Type
 
 func (c *Checker) mapLiteral(n *ast.MapLiteral, sc *scope, expected Type) Type {
 	var wk, wv Type
-	if mt, ok := expected.(*MapType); ok {
+	if expected == JSON || expected == Any {
+		wk, wv = String, JSON
+	} else if mt, ok := expected.(*MapType); ok {
 		wk, wv = mt.Key, mt.Val
 	} else if u, ok := expected.(*UnionType); ok {
 		for _, m := range u.Types {
@@ -461,6 +463,8 @@ func (c *Checker) infix(n *ast.InfixExpression, sc *scope) Type {
 			return Float
 		case op == "+" && lt == String && rt == String:
 			return String
+		case op == "+" && lt == Blob && rt == Blob:
+			return Blob
 		case op == "+":
 			ll, lok := lt.(*ListType)
 			rl, rok := rt.(*ListType)

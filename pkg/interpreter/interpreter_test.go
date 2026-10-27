@@ -142,6 +142,33 @@ func TestBuiltins(t *testing.T) {
 		t.Errorf("type(1) expected INTEGER, got %s", s)
 	}
 
+	// typeof returns lowercase canonical type name
+	typeofFn := BuiltinFunctionMap["typeof"].Fn
+	if s := typeofFn(&IntegerValue{Val: 1}).(*StringValue).Val; s != "int" {
+		t.Errorf("typeof(1) expected int, got %s", s)
+	}
+	if s := typeofFn(&StringValue{Val: "hi"}).(*StringValue).Val; s != "string" {
+		t.Errorf("typeof(string) expected string, got %s", s)
+	}
+	if s := typeofFn(NewList(&IntegerValue{Val: 1})).(*StringValue).Val; s != "list" {
+		t.Errorf("typeof(list) expected list, got %s", s)
+	}
+	if s := typeofFn(NewMap()).(*StringValue).Val; s != "map" {
+		t.Errorf("typeof(map) expected map, got %s", s)
+	}
+	if s := typeofFn(&BoolValue{Val: true}).(*StringValue).Val; s != "bool" {
+		t.Errorf("typeof(bool) expected bool, got %s", s)
+	}
+	if s := typeofFn(NULL).(*StringValue).Val; s != "null" {
+		t.Errorf("typeof(null) expected null, got %s", s)
+	}
+	if s := typeofFn(&FloatValue{Val: 1.5}).(*StringValue).Val; s != "float" {
+		t.Errorf("typeof(float) expected float, got %s", s)
+	}
+	if s := typeofFn(&BlobValue{Data: []byte("xyz")}).(*StringValue).Val; s != "blob" {
+		t.Errorf("typeof(blob) expected blob, got %s", s)
+	}
+
 	// range
 	rangeFn := BuiltinFunctionMap["range"].Fn
 	rList := rangeFn(&IntegerValue{Val: 1}, &IntegerValue{Val: 5}).(*ListValue)

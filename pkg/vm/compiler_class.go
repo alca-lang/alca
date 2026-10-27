@@ -5,6 +5,7 @@ package vm
 
 import (
 	"github.com/alca-lang/alca/pkg/ast"
+	"github.com/alca-lang/alca/pkg/interpreter"
 )
 
 // compileTx compiles a transaction block. The block runs in the frame of the
@@ -150,10 +151,17 @@ func (c *Compiler) compileMethod(className string, m *ast.MethodDeclaration) (*C
 	numLocals := c.symbolTable.numDefinitions
 	free := c.symbolTable.FreeSymbols
 	instructions := c.leaveScope()
+	var defaults []interpreter.Value
+	for _, p := range m.Func.Params {
+		if p.DefaultValue != nil {
+			defaults = append(defaults, interpreter.New().Eval(p.DefaultValue))
+		}
+	}
 	return &CompiledFunction{
 		Instructions:  instructions,
 		NumLocals:     numLocals,
 		NumParameters: len(m.Func.Params),
+		Defaults:      defaults,
 		Name:          className + "." + m.Func.Name,
 		NumFree:       len(free),
 	}, nil

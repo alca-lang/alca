@@ -932,7 +932,31 @@ func (i *Interpreter) evalUseStatement(node *ast.UseStatement) Value {
 		return errVal
 	}
 
-	modEnv := NewEnvironment()
+	// Imported modules must see the same standard library surface as the
+	// importing program. The registered std modules live in the importing
+	// environment, so expose them through a shared outer scope. Keeping them
+	// out of modEnv itself also keeps them out of the module's exports.
+	stdEnv := NewEnvironment()
+	if stdVal, ok := i.env.Get("std"); ok {
+		if stdMap, isMap := stdVal.(*MapValue); isMap {
+			stdEnv.Set("std", stdMap)
+			for _, name := range stdMap.Keys() {
+				val, ok := stdMap.Get(name)
+				if !ok {
+					continue
+				}
+				stdEnv.Set(name, val)
+				stdEnv.Set("std."+name, val)
+			}
+		}
+	}
+	for name, val := range i.env.All() {
+		if strings.HasPrefix(name, "std.") {
+			stdEnv.Set(name, val)
+		}
+	}
+
+	modEnv := NewEnclosedEnvironment(stdEnv)
 	for name, fn := range BuiltinFunctionMap {
 		modEnv.Set(name, fn)
 	}
@@ -1401,6 +1425,15 @@ func (i *Interpreter) evalInfixExpression(node *ast.InfixExpression) Value {
 		return FALSE
 
 	case "+":
+		// Blob concatenation
+		if left.Type() == BLOB_VAL && right.Type() == BLOB_VAL {
+			b1 := left.(*BlobValue).Data
+			b2 := right.(*BlobValue).Data
+			res := make([]byte, len(b1)+len(b2))
+			copy(res, b1)
+			copy(res[len(b1):], b2)
+			return &BlobValue{Data: res}
+		}
 		// String concatenation
 		if left.Type() == STRING_VAL || right.Type() == STRING_VAL {
 			return &StringValue{Val: Concat(CoerceToString(left), CoerceToString(right))}

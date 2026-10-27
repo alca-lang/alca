@@ -798,6 +798,7 @@ var globalSigs = map[string]string{
 	"exit":            "(int?)->void",
 	"float":           "(any)->float",
 	"input":           "(string?)->string",
+	"blob":            "(any)->blob",
 	"int":             "(any)->int",
 	"json_decode":     "(string)->json",
 	"json_encode":     "(any)->string",

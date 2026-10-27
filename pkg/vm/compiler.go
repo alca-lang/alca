@@ -445,10 +445,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 		free := c.symbolTable.FreeSymbols
 		instructions := c.leaveScope()
 
+		var defaults []interpreter.Value
+		for _, p := range n.Params {
+			if p.DefaultValue != nil {
+				defaults = append(defaults, interpreter.New().Eval(p.DefaultValue))
+			}
+		}
+
 		compiledFn := &CompiledFunction{
 			Instructions:  instructions,
 			NumLocals:     numLocals,
 			NumParameters: len(n.Params),
+			Defaults:      defaults,
 			Name:          n.Name,
 			NumFree:       len(free),
 			UpvalueDescs:  captureDescriptors(free),

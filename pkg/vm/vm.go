@@ -1995,6 +1995,16 @@ func (vm *VM) executeBinaryOp(op Opcode, left, right interpreter.Value) error {
 		return vm.push(res)
 	}
 
+	// Blob concatenation
+	if op == OpAdd && left.Type() == interpreter.BLOB_VAL && right.Type() == interpreter.BLOB_VAL {
+		b1 := left.(*interpreter.BlobValue).Data
+		b2 := right.(*interpreter.BlobValue).Data
+		res := make([]byte, len(b1)+len(b2))
+		copy(res, b1)
+		copy(res[len(b1):], b2)
+		return vm.push(&interpreter.BlobValue{Data: res})
+	}
+
 	// String concatenation
 	if left.Type() == interpreter.STRING_VAL || right.Type() == interpreter.STRING_VAL {
 		if op == OpAdd {
@@ -2395,6 +2405,17 @@ func GetFieldValue(target interpreter.Value, field string) (interpreter.Value, e
 func (vm *VM) executeCall(fn interpreter.Value, numArgs int) error {
 	switch callee := fn.(type) {
 	case *CompiledFunction:
+		if numArgs < callee.NumParameters && len(callee.Defaults) > 0 {
+			minArgs := callee.NumParameters - len(callee.Defaults)
+			if numArgs >= minArgs {
+				for i := numArgs; i < callee.NumParameters; i++ {
+					defVal := callee.Defaults[i-minArgs]
+					vm.stack[vm.sp] = FromValue(defVal)
+					vm.sp++
+				}
+				numArgs = callee.NumParameters
+			}
+		}
 		if numArgs != callee.NumParameters {
 			return fmt.Errorf("wrong number of arguments: want=%d, got=%d", callee.NumParameters, numArgs)
 		}

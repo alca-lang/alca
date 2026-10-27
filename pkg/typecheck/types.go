@@ -504,7 +504,7 @@ func (p *typeParser) union() Type {
 func (p *typeParser) single() Type {
 	p.ws()
 	start := p.i
-	for p.i < len(p.s) && (isIdent(p.s[p.i])) {
+	for p.i < len(p.s) && (isIdent(p.s[p.i]) || p.s[p.i] == '.') {
 		p.i++
 	}
 	name := p.s[start:p.i]
@@ -578,6 +578,25 @@ func (p *typeParser) single() Type {
 	}
 	if st, ok := p.structs[name]; ok {
 		return st
+	}
+	if strings.Contains(name, ".") {
+		parts := strings.Split(name, ".")
+		if p.userTypes != nil {
+			if mod, ok := p.userTypes[parts[0]].(*ModuleType); ok {
+				if t, ok := mod.Members[parts[1]]; ok {
+					return t
+				}
+			}
+			short := parts[len(parts)-1]
+			if ut, ok := p.userTypes[short]; ok {
+				return ut
+			}
+		}
+		short := parts[len(parts)-1]
+		if st, ok := p.structs[short]; ok {
+			return st
+		}
+		return &StructType{Name: name}
 	}
 	return nil
 }

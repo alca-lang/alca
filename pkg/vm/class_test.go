@@ -134,6 +134,18 @@ println(c.reveal());
 `,
 			want: "5",
 		},
+		{
+			name: "class method with default parameters",
+			src: `class Greeter:
+    public func greet(name: string, greeting: string = "Hello") -> string:
+        return greeting + " " + name;
+
+g := Greeter();
+println(g.greet("Alice"));
+println(g.greet("Bob", "Hi"));
+`,
+			want: "Hello AliceHi Bob",
+		},
 	}
 
 	for _, tc := range cases {

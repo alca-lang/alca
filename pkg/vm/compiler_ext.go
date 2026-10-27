@@ -723,10 +723,17 @@ func (c *Compiler) compileLambda(n *ast.LambdaExpression) error {
 	numLocals := c.symbolTable.numDefinitions
 	free := c.symbolTable.FreeSymbols
 	ins := c.leaveScope()
+	var defaults []interpreter.Value
+	for _, p := range n.Params {
+		if p.DefaultValue != nil {
+			defaults = append(defaults, interpreter.New().Eval(p.DefaultValue))
+		}
+	}
 	fn := &CompiledFunction{
 		Instructions:  ins,
 		NumLocals:     numLocals,
 		NumParameters: len(n.Params),
+		Defaults:      defaults,
 		Name:          "<lambda>",
 		NumFree:       len(free),
 		UpvalueDescs:  captureDescriptors(free),

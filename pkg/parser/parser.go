@@ -321,6 +321,9 @@ func (p *Parser) expectBlockColon(contextName string) bool {
 	if p.curTokenIs(token.COLON) {
 		return true
 	}
+	if p.peekTokenIs(token.LBRACE) || p.curTokenIs(token.LBRACE) {
+		return true
+	}
 
 	col := p.curToken.Column + len(p.curToken.Literal)
 	p.errors = append(p.errors, fmt.Sprintf("line %d, col %d: expected ':' after %s", p.curToken.Line, col, contextName))
@@ -2353,6 +2356,15 @@ func (p *Parser) parseTypeAnnotationWithUnion(allowUnion bool) *ast.TypeAnnotati
 	for {
 		typeStr := p.curToken.Literal
 
+		for p.peekTokenIs(token.DOT) {
+			p.nextToken() // '.'
+			typeStr += "."
+			if p.peekTokenIs(token.IDENT) || token.IsTypeKeyword(p.peekToken.Type) {
+				p.nextToken()
+				typeStr += p.curToken.Literal
+			}
+		}
+
 		if p.peekTokenIs(token.LBRACKET) {
 			p.nextToken() // '['
 			typeStr += "["
@@ -2662,9 +2674,15 @@ func (p *Parser) parseMapLiteral() ast.Expression {
 	p.nextToken() // past '{'
 	p.skipNewlines()
 
+	closed := false
+	if p.curTokenIs(token.RBRACE) {
+		closed = true
+	}
+
 	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
 		p.skipNewlines()
 		if p.curTokenIs(token.RBRACE) {
+			closed = true
 			break
 		}
 
@@ -2696,14 +2714,19 @@ func (p *Parser) parseMapLiteral() ast.Expression {
 		if p.peekTokenIs(token.COMMA) {
 			p.nextToken() // ','
 			p.skipPeekNewlines()
-			p.nextToken() // next key or '}'
+			if p.peekTokenIs(token.RBRACE) {
+				p.nextToken() // '}'
+				closed = true
+				break
+			}
+			p.nextToken() // next key
 		} else {
 			break
 		}
 	}
 
 	p.skipPeekNewlines()
-	if !p.curTokenIs(token.RBRACE) {
+	if !closed {
 		if !p.expectPeek(token.RBRACE) {
 			if len(p.syntaxErrors) > 0 {
 				p.syntaxErrors[len(p.syntaxErrors)-1].Suggestion = fmt.Sprintf("unclosed '{' from line %d, col %d; add a closing '}'", mapLit.Token.Line, mapLit.Token.Column)

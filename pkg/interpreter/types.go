@@ -1151,9 +1151,47 @@ func CoerceToString(v Value) string {
 	switch val := v.(type) {
 	case *StringValue:
 		return val.Val
+	case *BlobValue:
+		return string(val.Data)
 	case *ReturnValue:
 		return CoerceToString(val.Val)
 	default:
 		return val.Inspect()
+	}
+}
+
+// TypeNameOf returns the canonical lowercase type name of an Alca value,
+// matching the documentation ("int", "float", "string", "bool", "list", "map", "func", "null", "blob").
+func TypeNameOf(v Value) string {
+	if v == nil {
+		return "null"
+	}
+	switch v.Type() {
+	case INTEGER_VAL:
+		return "int"
+	case FLOAT_VAL:
+		return "float"
+	case STRING_VAL:
+		return "string"
+	case BOOL_VAL:
+		return "bool"
+	case NULL_VAL:
+		return "null"
+	case LIST_VAL:
+		return "list"
+	case MAP_VAL:
+		return "map"
+	case FUNC_VAL, SHFUNC_VAL:
+		return "func"
+	case BLOB_VAL:
+		return "blob"
+	case STRUCT_DEF:
+		return "struct_def"
+	case STRUCT_INST:
+		return "struct"
+	case ERROR_VAL:
+		return "error"
+	default:
+		return strings.ToLower(string(v.Type()))
 	}
 }

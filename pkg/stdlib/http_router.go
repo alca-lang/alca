@@ -147,10 +147,8 @@ func (router *httpRouter) addRoute(method string, args ...interpreter.Value) int
 	if path.Val == "" || path.Val[0] != '/' {
 		return interpreter.NewError(400, "route path must start with '/'")
 	}
-	if _, ok := args[1].(*interpreter.FuncValue); !ok {
-		if _, builtin := args[1].(*interpreter.BuiltinFunction); !builtin {
-			return interpreter.NewError(400, "route handler must be a function")
-		}
+	if !isHTTPCallable(args[1]) {
+		return interpreter.NewError(400, "route handler must be a function")
 	}
 
 	options := interpreter.NewMap()
@@ -339,24 +337,31 @@ func parseHTTPRoutePattern(pattern string) ([]string, int, error) {
 	score := 0
 	seen := make(map[string]bool)
 	for i, segment := range segments {
-		if strings.HasPrefix(segment, "{") && strings.HasSuffix(segment, "}") {
-			name := strings.TrimSuffix(strings.TrimPrefix(segment, "{"), "}")
+		start := strings.Index(segment, "{")
+		end := strings.LastIndex(segment, "}")
+		if start != -1 && end > start && strings.Count(segment, "{") == 1 && strings.Count(segment, "}") == 1 {
+			name := segment[start+1 : end]
+			prefix := segment[:start]
+			suffix := segment[end+1:]
 			if strings.HasSuffix(name, ":path") {
 				name = strings.TrimSuffix(name, ":path")
-				if i != len(segments)-1 {
-					return nil, 0, fmt.Errorf("path wildcard must be the last route segment")
+				if i != len(segments)-1 || prefix != "" || suffix != "" {
+					return nil, 0, fmt.Errorf("path wildcard must be the last route segment and cannot have prefix/suffix")
 				}
 			}
 			if name == "" || strings.ContainsAny(name, "{}:/") || seen[name] {
 				return nil, 0, fmt.Errorf("invalid or duplicate path parameter %q", name)
 			}
 			seen[name] = true
+			if prefix != "" || suffix != "" {
+				score++
+			}
 			continue
 		}
 		if strings.ContainsAny(segment, "{}") {
 			return nil, 0, fmt.Errorf("invalid route segment %q", segment)
 		}
-		score++
+		score += 2
 	}
 	return segments, score, nil
 }
@@ -368,8 +373,12 @@ func matchHTTPRoute(route *httpRoute, requestPath string) (map[string]string, bo
 	}
 	params := make(map[string]string)
 	for i, pattern := range route.segments {
-		if strings.HasPrefix(pattern, "{") && strings.HasSuffix(pattern, "}") {
-			name := strings.TrimSuffix(strings.TrimPrefix(pattern, "{"), "}")
+		start := strings.Index(pattern, "{")
+		end := strings.LastIndex(pattern, "}")
+		if start != -1 && end > start && strings.Count(pattern, "{") == 1 && strings.Count(pattern, "}") == 1 {
+			name := pattern[start+1 : end]
+			prefix := pattern[:start]
+			suffix := pattern[end+1:]
 			if strings.HasSuffix(name, ":path") {
 				name = strings.TrimSuffix(name, ":path")
 				if i >= len(pathSegments) {
@@ -381,7 +390,12 @@ func matchHTTPRoute(route *httpRoute, requestPath string) (map[string]string, bo
 			if i >= len(pathSegments) || pathSegments[i] == "" {
 				return nil, false
 			}
-			decoded, err := url.PathUnescape(pathSegments[i])
+			curr := pathSegments[i]
+			if !strings.HasPrefix(curr, prefix) || !strings.HasSuffix(curr, suffix) || len(curr) < len(prefix)+len(suffix) {
+				return nil, false
+			}
+			raw := curr[len(prefix) : len(curr)-len(suffix)]
+			decoded, err := url.PathUnescape(raw)
 			if err != nil {
 				return nil, false
 			}
@@ -397,7 +411,7 @@ func matchHTTPRoute(route *httpRoute, requestPath string) (map[string]string, bo
 
 func isHTTPCallable(value interpreter.Value) bool {
 	switch value.(type) {
-	case *interpreter.BuiltinFunction, *interpreter.FuncValue:
+	case *interpreter.BuiltinFunction, *interpreter.FuncValue, interpreter.HostCallable:
 		return true
 	default:
 		return false

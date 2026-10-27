@@ -293,6 +293,15 @@ func invokeHTTPFunction(fn interpreter.Value, args ...interpreter.Value) (interp
 			return nil, fmt.Errorf("%s", errorValue.Message)
 		}
 		return value, nil
+	case interpreter.HostCallable:
+		value, err := callable.Call(args)
+		if err != nil {
+			return nil, err
+		}
+		if errorValue, ok := value.(*interpreter.ErrorValue); ok {
+			return nil, fmt.Errorf("%s", errorValue.Message)
+		}
+		return value, nil
 	default:
 		return nil, fmt.Errorf("handler must be a function")
 	}

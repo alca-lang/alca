@@ -24,6 +24,14 @@ func InvokeFunction(fn *CompiledFunction, args []interpreter.Value, env *interpr
 	if fn == nil {
 		return nil, fmt.Errorf("callback is nil")
 	}
+	if len(args) < fn.NumParameters && len(fn.Defaults) > 0 {
+		minArgs := fn.NumParameters - len(fn.Defaults)
+		if len(args) >= minArgs {
+			for i := len(args); i < fn.NumParameters; i++ {
+				args = append(args, fn.Defaults[i-minArgs])
+			}
+		}
+	}
 	if len(args) != fn.NumParameters {
 		return nil, fmt.Errorf("wrong number of arguments: want=%d, got=%d", fn.NumParameters, len(args))
 	}
