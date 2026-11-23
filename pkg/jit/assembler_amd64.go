@@ -85,6 +85,31 @@ func (a *AssemblerAMD64) BindLabel(l Label) {
 	a.labels[l] = len(a.code)
 }
 
+// CodeLen returns the current byte length of generated code.
+func (a *AssemblerAMD64) CodeLen() int {
+	return len(a.code)
+}
+
+// Nop emits a single 0x90 nop byte.
+func (a *AssemblerAMD64) Nop() {
+	a.emitByte(0x90)
+}
+
+// EmitByte emits a single byte into the code stream.
+func (a *AssemblerAMD64) EmitByte(b byte) {
+	a.emitByte(b)
+}
+
+// EmitBytes emits multiple bytes into the code stream.
+func (a *AssemblerAMD64) EmitBytes(b ...byte) {
+	a.emitBytes(b...)
+}
+
+// EmitUint32 emits a 32-bit unsigned integer into the code stream.
+func (a *AssemblerAMD64) EmitUint32(val uint32) {
+	a.emitUint32(val)
+}
+
 func (a *AssemblerAMD64) emitByte(b byte) {
 	a.code = append(a.code, b)
 }

@@ -1,7 +1,7 @@
 // Copyright 2026 Pawl Programming Language
 // SPDX-License-Identifier: Apache-2.0
 
-package compiler_test
+package link_test
 
 import (
 	"bytes"
@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/pawl-lang/pawl/pkg/compiler"
+	"github.com/pawl-lang/pawl/pkg/link"
 )
 
 func TestPEBuilder(t *testing.T) {
-	pe := compiler.NewPEBuilder()
+	pe := link.NewPEBuilder()
 
 	msg := "Hello from pure PEBuilder!\r\n"
 	pe.SetConstants([]byte(msg))

@@ -11,7 +11,10 @@ import (
 	"strings"
 
 	"github.com/pawl-lang/pawl/pkg/ast"
+	"github.com/pawl-lang/pawl/pkg/codegen/amd64"
+	"github.com/pawl-lang/pawl/pkg/ir"
 	"github.com/pawl-lang/pawl/pkg/lexer"
+	"github.com/pawl-lang/pawl/pkg/link"
 	"github.com/pawl-lang/pawl/pkg/parser"
 	"github.com/pawl-lang/pawl/pkg/typecheck"
 )
@@ -164,7 +167,6 @@ func Build(entry string, o Options) error {
 }
 
 // compileProgramToNative coordinates lowering and linking.
-// Stubs for unsupported features return structured compile errors.
 func compileProgramToNative(prog *ast.Program, typeInfo *typecheck.Result, entry string, o Options) error {
 	for _, stmt := range prog.Statements {
 		if err := validateSupportedStatement(stmt, entry); err != nil {
@@ -172,9 +174,39 @@ func compileProgramToNative(prog *ast.Program, typeInfo *typecheck.Result, entry
 		}
 	}
 
-	// In Stage 1, we set up the pipeline contract. Stage 2 will introduce pkg/ir and pkg/codegen.
-	// For now, return a clear diagnostic for programs awaiting Stage 2 code generation.
-	return fmt.Errorf("native backend code generator is being connected in stage 2 (entry: %s)", entry)
+	// 1. Lower to IR
+	irProg, err := ir.Lower(prog, typeInfo)
+	if err != nil {
+		return fmt.Errorf("IR lowering failed: %w", err)
+	}
+
+	// 2. AMD64 Codegen
+	abi := amd64.ABISysV
+	if o.Target.OS == "windows" {
+		abi = amd64.ABIWin64
+	}
+
+	cg := amd64.NewCodeGenerator(abi)
+	art, err := cg.Generate(irProg)
+	if err != nil {
+		return fmt.Errorf("codegen failed: %w", err)
+	}
+
+	// Ensure output directory exists
+	outDir := filepath.Dir(o.Output)
+	if outDir != "" && outDir != "." {
+		_ = os.MkdirAll(outDir, 0755)
+	}
+
+	// 3. Link executable
+	switch o.Target.OS {
+	case "windows":
+		return link.LinkPE(art, o.Output, o.NoConsole)
+	case "linux":
+		return link.LinkELF(art, o.Output)
+	default:
+		return fmt.Errorf("unsupported linker target OS %q", o.Target.OS)
+	}
 }
 
 func validateSupportedStatement(stmt ast.Statement, file string) error {
