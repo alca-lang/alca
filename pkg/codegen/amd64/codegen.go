@@ -358,6 +358,46 @@ func (g *CodeGenerator) emitInstruction(ctx *funcContext, inst *ir.Instruction) 
 	case ir.OpCall:
 		return g.emitCall(ctx, inst)
 
+	case ir.OpAlloc:
+		// Alloc size in bytes is in inst.Src1
+		return g.emitRuntimeCall1Ret(ctx, "pawl_alloc", inst.Dst, inst.Src1)
+
+	case ir.OpLoad:
+		// Dst = *(Src1 + IntVal)
+		baseDisp := -ctx.slotOffsets[inst.Src1.ID]
+		dstDisp := -ctx.slotOffsets[inst.Dst.ID]
+		g.asm.MovRegMem(jit.RAX, jit.RBP, baseDisp)
+		switch inst.Dst.Type {
+		case ir.TypeI8:
+			g.asm.EmitBytes(0x0F, 0xB6, 0x80) // movzx eax, byte ptr [rax + disp32]
+			g.asm.EmitUint32(uint32(inst.IntVal))
+		default:
+			// 64-bit load: mov rax, [rax + disp32]
+			g.asm.EmitBytes(0x48, 0x8B, 0x80)
+			g.asm.EmitUint32(uint32(inst.IntVal))
+		}
+		g.asm.MovMemReg(jit.RBP, dstDisp, jit.RAX)
+
+	case ir.OpStore:
+		// *(Src1 + IntVal) = Src2
+		baseDisp := -ctx.slotOffsets[inst.Src1.ID]
+		valDisp := -ctx.slotOffsets[inst.Src2.ID]
+		g.asm.MovRegMem(jit.RAX, jit.RBP, baseDisp)
+		g.asm.MovRegMem(jit.RCX, jit.RBP, valDisp)
+		switch inst.Src2.Type {
+		case ir.TypeI8:
+			// mov [rax + disp32], cl
+			g.asm.EmitBytes(0x88, 0x88)
+			g.asm.EmitUint32(uint32(inst.IntVal))
+		default:
+			// mov [rax + disp32], rcx
+			g.asm.EmitBytes(0x48, 0x89, 0x88)
+			g.asm.EmitUint32(uint32(inst.IntVal))
+		}
+
+	case ir.OpCallPtr:
+		return g.emitCallPtr(ctx, inst)
+
 	case ir.OpRet:
 		if inst.Src1.Type != ir.TypeVoid && inst.Src1.ID >= 0 {
 			srcDisp := -ctx.slotOffsets[inst.Src1.ID]
@@ -484,6 +524,39 @@ func (g *CodeGenerator) emitCall(ctx *funcContext, inst *ir.Instruction) error {
 		patchOffset: patch,
 		insEnd:      patch + 4,
 	})
+
+	if inst.Dst.Type != ir.TypeVoid && inst.Dst.ID >= 0 {
+		dstDisp := -ctx.slotOffsets[inst.Dst.ID]
+		g.asm.MovMemReg(jit.RBP, dstDisp, jit.RAX)
+	}
+
+	return nil
+}
+
+func (g *CodeGenerator) emitCallPtr(ctx *funcContext, inst *ir.Instruction) error {
+	var paramRegs []jit.Register
+	if g.abi == ABIWin64 {
+		paramRegs = []jit.Register{jit.RCX, jit.RDX, jit.R8, jit.R9}
+	} else {
+		paramRegs = []jit.Register{jit.RDI, jit.RSI, jit.RDX, jit.RCX, jit.R8, jit.R9}
+	}
+
+	for i, arg := range inst.Args {
+		argDisp := -ctx.slotOffsets[arg.ID]
+		if i < len(paramRegs) {
+			reg := paramRegs[i]
+			g.asm.MovRegMem(reg, jit.RBP, argDisp)
+		} else {
+			g.asm.MovRegMem(jit.RAX, jit.RBP, argDisp)
+			g.asm.Push(jit.RAX)
+		}
+	}
+
+	// Function pointer is in Src1
+	fnPtrDisp := -ctx.slotOffsets[inst.Src1.ID]
+	g.asm.MovRegMem(jit.RAX, jit.RBP, fnPtrDisp)
+	// call rax: ff d0
+	g.asm.EmitBytes(0xFF, 0xD0)
 
 	if inst.Dst.Type != ir.TypeVoid && inst.Dst.ID >= 0 {
 		dstDisp := -ctx.slotOffsets[inst.Dst.ID]

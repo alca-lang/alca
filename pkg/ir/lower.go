@@ -13,17 +13,28 @@ import (
 // Lower converts a checked Pawl AST into an IR Program.
 func Lower(prog *ast.Program, typeInfo *typecheck.Result) (*Program, error) {
 	builder := &loweringContext{
-		typeInfo:  typeInfo,
-		irProg:    &Program{},
-		functions: make(map[string]*Function),
+		typeInfo:      typeInfo,
+		irProg:        &Program{},
+		functions:     make(map[string]*Function),
+		structLayouts: make(map[string]*structLayout),
 	}
 	return builder.lowerProgram(prog)
 }
 
+type structLayout struct {
+	name        string
+	isClass     bool
+	fields      map[string]int64 // field name -> byte offset
+	fieldTypes  map[string]Type  // field name -> IR type
+	totalSize   int64
+	methodVCols map[string]int   // method name -> vtable index (0-based)
+}
+
 type loweringContext struct {
-	typeInfo  *typecheck.Result
-	irProg    *Program
-	functions map[string]*Function
+	typeInfo      *typecheck.Result
+	irProg        *Program
+	functions     map[string]*Function
+	structLayouts map[string]*structLayout
 
 	currentFn    *Function
 	currentBlock *Block
@@ -42,39 +53,48 @@ func (l *loweringContext) emit(inst *Instruction) {
 }
 
 func (l *loweringContext) lowerProgram(prog *ast.Program) (*Program, error) {
-	// 1. Declare functions
+	// 1. Build struct and class layouts
+	if err := l.buildLayouts(prog); err != nil {
+		return nil, err
+	}
+
+	// 2. Declare top-level functions and class methods
 	for _, stmt := range prog.Statements {
-		if fnDecl, ok := stmt.(*ast.FuncDeclaration); ok {
-			retType := l.lookupReturnType(fnDecl)
-			irFn := &Function{
-				Name:       fnDecl.Name,
-				ReturnType: retType,
-			}
-			for i, p := range fnDecl.Params {
-				pType := TypeI64
-				if p.TypeAnnotation != nil && len(p.TypeAnnotation.Types) > 0 {
-					pType = l.annotationToIR(p.TypeAnnotation.Types[0])
+		switch s := stmt.(type) {
+		case *ast.FuncDeclaration:
+			l.declareFunc(s.Name, s.Params, s.ReturnType)
+		case *ast.ClassDeclaration:
+			for _, m := range s.Methods {
+				if m != nil && m.Func != nil {
+					mName := s.Name + "." + m.Func.Name
+					l.declareMethod(mName, s.Name, m.Func.Params, m.Func.ReturnType)
 				}
-				v := VReg{ID: i, Type: pType}
-				irFn.Params = append(irFn.Params, v)
 			}
-			irFn.NextVRegID = len(irFn.Params)
-			l.functions[fnDecl.Name] = irFn
-			l.irProg.Functions = append(l.irProg.Functions, irFn)
 		}
 	}
 
-	// 2. Lower user functions
+	// 3. Lower top-level functions and class methods
 	for _, stmt := range prog.Statements {
-		if fnDecl, ok := stmt.(*ast.FuncDeclaration); ok {
-			irFn := l.functions[fnDecl.Name]
-			if err := l.lowerFunction(irFn, fnDecl); err != nil {
+		switch s := stmt.(type) {
+		case *ast.FuncDeclaration:
+			irFn := l.functions[s.Name]
+			if err := l.lowerFunction(irFn, s.Params, s.Body.Statements, nil); err != nil {
 				return nil, err
 			}
+		case *ast.ClassDeclaration:
+			for _, m := range s.Methods {
+				if m != nil && m.Func != nil {
+					mName := s.Name + "." + m.Func.Name
+					irFn := l.functions[mName]
+					if err := l.lowerFunction(irFn, m.Func.Params, m.Func.Body.Statements, s); err != nil {
+						return nil, err
+					}
+				}
+			}
 		}
 	}
 
-	// 3. Entry point (main)
+	// 4. Entry point (main)
 	entryFn := &Function{
 		Name:       "main",
 		ReturnType: TypeI64,
@@ -86,6 +106,12 @@ func (l *loweringContext) lowerProgram(prog *ast.Program) (*Program, error) {
 
 	for _, stmt := range prog.Statements {
 		if _, ok := stmt.(*ast.FuncDeclaration); ok {
+			continue
+		}
+		if _, ok := stmt.(*ast.ClassDeclaration); ok {
+			continue
+		}
+		if _, ok := stmt.(*ast.StructDeclaration); ok {
 			continue
 		}
 		if err := l.lowerStatement(stmt); err != nil {
@@ -105,19 +131,171 @@ func (l *loweringContext) lowerProgram(prog *ast.Program) (*Program, error) {
 	return l.irProg, nil
 }
 
+func (l *loweringContext) buildLayouts(prog *ast.Program) error {
+	for _, stmt := range prog.Statements {
+		switch s := stmt.(type) {
+		case *ast.StructDeclaration:
+			layout := &structLayout{
+				name:       s.Name,
+				isClass:    false,
+				fields:     make(map[string]int64),
+				fieldTypes: make(map[string]Type),
+			}
+			var offset int64 = 0
+			for _, f := range s.Fields {
+				fType := TypeI64
+				if f.TypeAnnotation != nil && len(f.TypeAnnotation.Types) > 0 {
+					fType = l.annotationToIR(f.TypeAnnotation.Types[0])
+				}
+				layout.fields[f.Name] = offset
+				layout.fieldTypes[f.Name] = fType
+				offset += 8
+			}
+			layout.totalSize = offset
+			l.structLayouts[s.Name] = layout
+
+		case *ast.ClassDeclaration:
+			layout := &structLayout{
+				name:        s.Name,
+				isClass:     true,
+				fields:      make(map[string]int64),
+				fieldTypes:  make(map[string]Type),
+				methodVCols: make(map[string]int),
+			}
+			// Header: vtable pointer at offset 0
+			var offset int64 = 8
+
+			// Inherited fields from parent if any
+			if s.Parent != "" {
+				if parentLayout, ok := l.structLayouts[s.Parent]; ok {
+					for fName, fOff := range parentLayout.fields {
+						layout.fields[fName] = fOff
+						layout.fieldTypes[fName] = parentLayout.fieldTypes[fName]
+						if fOff+8 > offset {
+							offset = fOff + 8
+						}
+					}
+					for mName, vIdx := range parentLayout.methodVCols {
+						layout.methodVCols[mName] = vIdx
+					}
+				}
+			}
+
+			// Subclass fields
+			for _, f := range s.Fields {
+				fType := TypeI64
+				if f.TypeAnnotation != nil && len(f.TypeAnnotation.Types) > 0 {
+					fType = l.annotationToIR(f.TypeAnnotation.Types[0])
+				}
+				layout.fields[f.Name] = offset
+				layout.fieldTypes[f.Name] = fType
+				offset += 8
+			}
+			layout.totalSize = offset
+
+			// Methods
+			for _, m := range s.Methods {
+				if m != nil && m.Func != nil {
+					mName := m.Func.Name
+					if _, exists := layout.methodVCols[mName]; !exists {
+						layout.methodVCols[mName] = len(layout.methodVCols)
+					}
+				}
+			}
+
+			l.structLayouts[s.Name] = layout
+		}
+	}
+	return nil
+}
+
+func (l *loweringContext) declareFunc(name string, params []*ast.FuncParam, retAnn *ast.TypeAnnotation) {
+	retType := TypeVoid
+	if retAnn != nil && len(retAnn.Types) > 0 {
+		retType = l.annotationToIR(retAnn.Types[0])
+	}
+	irFn := &Function{
+		Name:       name,
+		ReturnType: retType,
+	}
+	for i, p := range params {
+		pType := TypeI64
+		if p.TypeAnnotation != nil && len(p.TypeAnnotation.Types) > 0 {
+			pType = l.annotationToIR(p.TypeAnnotation.Types[0])
+		}
+		irFn.Params = append(irFn.Params, VReg{ID: i, Type: pType})
+	}
+	irFn.NextVRegID = len(irFn.Params)
+	l.functions[name] = irFn
+	l.irProg.Functions = append(l.irProg.Functions, irFn)
+}
+
+func (l *loweringContext) declareMethod(mName, className string, params []*ast.FuncParam, retAnn *ast.TypeAnnotation) {
+	retType := TypeVoid
+	if retAnn != nil && len(retAnn.Types) > 0 {
+		retType = l.annotationToIR(retAnn.Types[0])
+	}
+	irFn := &Function{
+		Name:       mName,
+		ReturnType: retType,
+	}
+	// Param 0 is self
+	irFn.Params = append(irFn.Params, VReg{ID: 0, Type: TypePtr})
+	for i, p := range params {
+		pType := TypeI64
+		if p.TypeAnnotation != nil && len(p.TypeAnnotation.Types) > 0 {
+			pType = l.annotationToIR(p.TypeAnnotation.Types[0])
+		}
+		irFn.Params = append(irFn.Params, VReg{ID: i + 1, Type: pType})
+	}
+	irFn.NextVRegID = len(irFn.Params)
+	l.functions[mName] = irFn
+	l.irProg.Functions = append(l.irProg.Functions, irFn)
+}
+
+func (l *loweringContext) lowerFunction(irFn *Function, params []*ast.FuncParam, body []ast.Statement, cls *ast.ClassDeclaration) error {
+	l.currentFn = irFn
+	l.locals = make(map[string]VReg)
+
+	entry := irFn.NewBlock("entry")
+	l.currentBlock = entry
+
+	if cls != nil {
+		// self is param 0
+		l.locals["self"] = irFn.Params[0]
+		for i, p := range params {
+			l.locals[p.Name] = irFn.Params[i+1]
+		}
+	} else {
+		for i, p := range params {
+			l.locals[p.Name] = irFn.Params[i]
+		}
+	}
+
+	for _, stmt := range body {
+		if err := l.lowerStatement(stmt); err != nil {
+			return err
+		}
+	}
+
+	if l.currentBlock != nil && !l.isTerminated(l.currentBlock) {
+		if irFn.ReturnType == TypeVoid {
+			l.emit(&Instruction{Op: OpRet, Src1: VReg{ID: -1, Type: TypeVoid}})
+		} else {
+			zero := irFn.NewVReg(irFn.ReturnType)
+			l.emit(&Instruction{Op: OpConstInt, Dst: zero, IntVal: 0})
+			l.emit(&Instruction{Op: OpRet, Src1: zero})
+		}
+	}
+	return nil
+}
+
 func (l *loweringContext) isTerminated(b *Block) bool {
 	if len(b.Instructions) == 0 {
 		return false
 	}
 	last := b.Instructions[len(b.Instructions)-1].Op
 	return last == OpRet || last == OpJmp || last == OpBranch
-}
-
-func (l *loweringContext) lookupReturnType(fnDecl *ast.FuncDeclaration) Type {
-	if fnDecl.ReturnType != nil && len(fnDecl.ReturnType.Types) > 0 {
-		return l.annotationToIR(fnDecl.ReturnType.Types[0])
-	}
-	return TypeVoid
 }
 
 func (l *loweringContext) annotationToIR(typeName string) Type {
@@ -135,34 +313,19 @@ func (l *loweringContext) annotationToIR(typeName string) Type {
 	}
 }
 
-func (l *loweringContext) lowerFunction(irFn *Function, decl *ast.FuncDeclaration) error {
-	l.currentFn = irFn
-	l.locals = make(map[string]VReg)
-
-	entry := irFn.NewBlock("entry")
-	l.currentBlock = entry
-
-	for i, p := range decl.Params {
-		paramVReg := irFn.Params[i]
-		l.locals[p.Name] = paramVReg
+func (l *loweringContext) typeToIR(t typecheck.Type) Type {
+	switch t {
+	case typecheck.Int:
+		return TypeI64
+	case typecheck.Float:
+		return TypeF64
+	case typecheck.Bool:
+		return TypeI8
+	case typecheck.Void:
+		return TypeVoid
+	default:
+		return TypePtr
 	}
-
-	for _, stmt := range decl.Body.Statements {
-		if err := l.lowerStatement(stmt); err != nil {
-			return err
-		}
-	}
-
-	if l.currentBlock != nil && !l.isTerminated(l.currentBlock) {
-		if irFn.ReturnType == TypeVoid {
-			l.emit(&Instruction{Op: OpRet, Src1: VReg{ID: -1, Type: TypeVoid}})
-		} else {
-			zero := irFn.NewVReg(irFn.ReturnType)
-			l.emit(&Instruction{Op: OpConstInt, Dst: zero, IntVal: 0})
-			l.emit(&Instruction{Op: OpRet, Src1: zero})
-		}
-	}
-	return nil
 }
 
 func (l *loweringContext) lowerStatement(stmt ast.Statement) error {
@@ -192,6 +355,23 @@ func (l *loweringContext) lowerStatement(stmt ast.Statement) error {
 	case *ast.ExpressionStatement:
 		_, err := l.lowerExpression(s.Expression)
 		return err
+
+	case *ast.AssertStatement:
+		condReg, err := l.lowerExpression(s.Expression)
+		if err != nil {
+			return err
+		}
+		okBlock := l.currentFn.NewBlock("assert_ok")
+		failBlock := l.currentFn.NewBlock("assert_fail")
+		l.emit(&Instruction{Op: OpBranch, Src1: condReg, Target: okBlock, ElseTgt: failBlock})
+
+		l.currentBlock = failBlock
+		errCode := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: errCode, IntVal: 1})
+		l.emit(&Instruction{Op: OpRet, Src1: errCode})
+
+		l.currentBlock = okBlock
+		return nil
 
 	case *ast.BlockStatement:
 		for _, inner := range s.Statements {
@@ -229,7 +409,7 @@ func (l *loweringContext) lowerStatement(stmt ast.Statement) error {
 		return nil
 
 	default:
-		return fmt.Errorf("statement %T not supported yet in stage 2", stmt)
+		return fmt.Errorf("statement %T not supported yet in native backend", stmt)
 	}
 }
 
@@ -310,44 +490,116 @@ func (l *loweringContext) lowerWhileStatement(s *ast.WhileStatement) error {
 }
 
 func (l *loweringContext) lowerForStatement(s *ast.ForStatement) error {
-	rangeLit, ok := s.Iterable.(*ast.RangeLiteral)
-	if !ok {
-		return fmt.Errorf("for loop only supports integer range literals in stage 2")
+	if rangeLit, ok := s.Iterable.(*ast.RangeLiteral); ok {
+		startReg, err := l.lowerExpression(rangeLit.Start)
+		if err != nil {
+			return err
+		}
+		endReg, err := l.lowerExpression(rangeLit.End)
+		if err != nil {
+			return err
+		}
+
+		iReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpCopy, Dst: iReg, Src1: startReg})
+		l.locals[s.Variable] = iReg
+
+		condBlock := l.currentFn.NewBlock("for_cond")
+		bodyBlock := l.currentFn.NewBlock("for_body")
+		stepBlock := l.currentFn.NewBlock("for_step")
+		afterBlock := l.currentFn.NewBlock("for_after")
+
+		l.emit(&Instruction{Op: OpJmp, Target: condBlock})
+
+		l.currentBlock = condBlock
+		cmpReg := l.currentFn.NewVReg(TypeI8)
+		cmpOp := OpLt
+		if rangeLit.Inclusive {
+			cmpOp = OpLe
+		}
+		l.emit(&Instruction{Op: cmpOp, Dst: cmpReg, Src1: iReg, Src2: endReg})
+		l.emit(&Instruction{Op: OpBranch, Src1: cmpReg, Target: bodyBlock, ElseTgt: afterBlock})
+
+		l.loopContinue = append(l.loopContinue, stepBlock)
+		l.loopBreak = append(l.loopBreak, afterBlock)
+
+		l.currentBlock = bodyBlock
+		if err := l.lowerStatement(s.Body); err != nil {
+			return err
+		}
+		if !l.isTerminated(l.currentBlock) {
+			l.emit(&Instruction{Op: OpJmp, Target: stepBlock})
+		}
+
+		l.currentBlock = stepBlock
+		oneReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: oneReg, IntVal: 1})
+		nextIReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpAdd, Dst: nextIReg, Src1: iReg, Src2: oneReg})
+		l.emit(&Instruction{Op: OpCopy, Dst: iReg, Src1: nextIReg})
+		l.emit(&Instruction{Op: OpJmp, Target: condBlock})
+
+		l.loopContinue = l.loopContinue[:len(l.loopContinue)-1]
+		l.loopBreak = l.loopBreak[:len(l.loopBreak)-1]
+
+		l.currentBlock = afterBlock
+		return nil
 	}
 
-	startReg, err := l.lowerExpression(rangeLit.Start)
+	// For loop over a list expression: for x in list_expr
+	listReg, err := l.lowerExpression(s.Iterable)
 	if err != nil {
 		return err
 	}
-	endReg, err := l.lowerExpression(rangeLit.End)
-	if err != nil {
-		return err
+
+	elemIRType := TypeI64
+	if l.typeInfo != nil && l.typeInfo.Types != nil {
+		if t, ok := l.typeInfo.Types[s.Iterable]; ok {
+			if lt, ok := t.(*typecheck.ListType); ok {
+				elemIRType = l.typeToIR(lt.Elem)
+			}
+		}
 	}
 
-	iReg := l.currentFn.NewVReg(TypeI64)
-	l.emit(&Instruction{Op: OpCopy, Dst: iReg, Src1: startReg})
-	l.locals[s.Variable] = iReg
+	// Read len: load listReg[8]
+	lenReg := l.currentFn.NewVReg(TypeI64)
+	l.emit(&Instruction{Op: OpLoad, Dst: lenReg, Src1: listReg, IntVal: 8})
 
-	condBlock := l.currentFn.NewBlock("for_cond")
-	bodyBlock := l.currentFn.NewBlock("for_body")
-	stepBlock := l.currentFn.NewBlock("for_step")
-	afterBlock := l.currentFn.NewBlock("for_after")
+	// Read dataPtr: load listReg[0]
+	dataPtrReg := l.currentFn.NewVReg(TypePtr)
+	l.emit(&Instruction{Op: OpLoad, Dst: dataPtrReg, Src1: listReg, IntVal: 0})
+
+	idxReg := l.currentFn.NewVReg(TypeI64)
+	l.emit(&Instruction{Op: OpConstInt, Dst: idxReg, IntVal: 0})
+
+	elemReg := l.currentFn.NewVReg(elemIRType)
+	l.locals[s.Variable] = elemReg
+
+	condBlock := l.currentFn.NewBlock("for_list_cond")
+	bodyBlock := l.currentFn.NewBlock("for_list_body")
+	stepBlock := l.currentFn.NewBlock("for_list_step")
+	afterBlock := l.currentFn.NewBlock("for_list_after")
 
 	l.emit(&Instruction{Op: OpJmp, Target: condBlock})
 
 	l.currentBlock = condBlock
 	cmpReg := l.currentFn.NewVReg(TypeI8)
-	cmpOp := OpLt
-	if rangeLit.Inclusive {
-		cmpOp = OpLe
-	}
-	l.emit(&Instruction{Op: cmpOp, Dst: cmpReg, Src1: iReg, Src2: endReg})
+	l.emit(&Instruction{Op: OpLt, Dst: cmpReg, Src1: idxReg, Src2: lenReg})
 	l.emit(&Instruction{Op: OpBranch, Src1: cmpReg, Target: bodyBlock, ElseTgt: afterBlock})
 
 	l.loopContinue = append(l.loopContinue, stepBlock)
 	l.loopBreak = append(l.loopBreak, afterBlock)
 
 	l.currentBlock = bodyBlock
+	// offset = idx * 8
+	scaleReg := l.currentFn.NewVReg(TypeI64)
+	l.emit(&Instruction{Op: OpConstInt, Dst: scaleReg, IntVal: 8})
+	byteOffReg := l.currentFn.NewVReg(TypeI64)
+	l.emit(&Instruction{Op: OpMul, Dst: byteOffReg, Src1: idxReg, Src2: scaleReg})
+	itemAddrReg := l.currentFn.NewVReg(TypePtr)
+	l.emit(&Instruction{Op: OpAdd, Dst: itemAddrReg, Src1: dataPtrReg, Src2: byteOffReg})
+	l.emit(&Instruction{Op: OpLoad, Dst: elemReg, Src1: itemAddrReg, IntVal: 0})
+
 	if err := l.lowerStatement(s.Body); err != nil {
 		return err
 	}
@@ -358,9 +610,9 @@ func (l *loweringContext) lowerForStatement(s *ast.ForStatement) error {
 	l.currentBlock = stepBlock
 	oneReg := l.currentFn.NewVReg(TypeI64)
 	l.emit(&Instruction{Op: OpConstInt, Dst: oneReg, IntVal: 1})
-	nextIReg := l.currentFn.NewVReg(TypeI64)
-	l.emit(&Instruction{Op: OpAdd, Dst: nextIReg, Src1: iReg, Src2: oneReg})
-	l.emit(&Instruction{Op: OpCopy, Dst: iReg, Src1: nextIReg})
+	nextIdxReg := l.currentFn.NewVReg(TypeI64)
+	l.emit(&Instruction{Op: OpAdd, Dst: nextIdxReg, Src1: idxReg, Src2: oneReg})
+	l.emit(&Instruction{Op: OpCopy, Dst: idxReg, Src1: nextIdxReg})
 	l.emit(&Instruction{Op: OpJmp, Target: condBlock})
 
 	l.loopContinue = l.loopContinue[:len(l.loopContinue)-1]
@@ -403,21 +655,189 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 		}
 		return v, nil
 
+	case *ast.ListLiteral:
+		n := int64(len(expr.Elements))
+		capVal := n
+		if capVal < 4 {
+			capVal = 4
+		}
+		// 1. Allocate backing array of capVal * 8 bytes
+		capBytes := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: capBytes, IntVal: capVal * 8})
+		dataPtr := l.currentFn.NewVReg(TypePtr)
+		l.emit(&Instruction{Op: OpAlloc, Dst: dataPtr, Src1: capBytes})
+
+		// 2. Store elements
+		for i, el := range expr.Elements {
+			elReg, err := l.lowerExpression(el)
+			if err != nil {
+				return VReg{}, err
+			}
+			l.emit(&Instruction{Op: OpStore, Src1: dataPtr, IntVal: int64(i * 8), Src2: elReg})
+		}
+
+		// 3. Allocate List header (24 bytes: data_ptr, len, cap)
+		hdrSize := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: hdrSize, IntVal: 24})
+		listHdr := l.currentFn.NewVReg(TypePtr)
+		l.emit(&Instruction{Op: OpAlloc, Dst: listHdr, Src1: hdrSize})
+
+		lenReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: lenReg, IntVal: n})
+		capReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: capReg, IntVal: capVal})
+
+		l.emit(&Instruction{Op: OpStore, Src1: listHdr, IntVal: 0, Src2: dataPtr})
+		l.emit(&Instruction{Op: OpStore, Src1: listHdr, IntVal: 8, Src2: lenReg})
+		l.emit(&Instruction{Op: OpStore, Src1: listHdr, IntVal: 16, Src2: capReg})
+		return listHdr, nil
+
+	case *ast.IndexExpression:
+		leftReg, err := l.lowerExpression(expr.Left)
+		if err != nil {
+			return VReg{}, err
+		}
+		idxReg, err := l.lowerExpression(expr.Index)
+		if err != nil {
+			return VReg{}, err
+		}
+
+		elemIRType := TypeI64
+		if l.typeInfo != nil && l.typeInfo.Types != nil {
+			if t, ok := l.typeInfo.Types[expr]; ok {
+				elemIRType = l.typeToIR(t)
+			}
+		}
+
+		// Read dataPtr = load leftReg[0]
+		dataPtr := l.currentFn.NewVReg(TypePtr)
+		l.emit(&Instruction{Op: OpLoad, Dst: dataPtr, Src1: leftReg, IntVal: 0})
+
+		scaleReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: scaleReg, IntVal: 8})
+		byteOff := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpMul, Dst: byteOff, Src1: idxReg, Src2: scaleReg})
+		addrReg := l.currentFn.NewVReg(TypePtr)
+		l.emit(&Instruction{Op: OpAdd, Dst: addrReg, Src1: dataPtr, Src2: byteOff})
+
+		resReg := l.currentFn.NewVReg(elemIRType)
+		l.emit(&Instruction{Op: OpLoad, Dst: resReg, Src1: addrReg, IntVal: 0})
+		return resReg, nil
+
+	case *ast.DotExpression:
+		leftReg, err := l.lowerExpression(expr.Left)
+		if err != nil {
+			return VReg{}, err
+		}
+		var typeName string
+		if l.typeInfo != nil && l.typeInfo.Types != nil {
+			if t, ok := l.typeInfo.Types[expr.Left]; ok {
+				if st, ok := t.(*typecheck.StructType); ok {
+					typeName = st.Name
+				}
+			}
+		}
+		layout := l.structLayouts[typeName]
+		if layout == nil {
+			return VReg{}, fmt.Errorf("unknown struct/class for dot access %s.%s", typeName, expr.Field)
+		}
+		offset, ok := layout.fields[expr.Field]
+		if !ok {
+			return VReg{}, fmt.Errorf("field %s not found in %s", expr.Field, typeName)
+		}
+		fType := layout.fieldTypes[expr.Field]
+		resReg := l.currentFn.NewVReg(fType)
+		l.emit(&Instruction{Op: OpLoad, Dst: resReg, Src1: leftReg, IntVal: offset})
+		return resReg, nil
+
+	case *ast.StructInstantiation:
+		layout := l.structLayouts[expr.Name]
+		if layout == nil {
+			return VReg{}, fmt.Errorf("unknown struct/class %s", expr.Name)
+		}
+		sizeReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: sizeReg, IntVal: layout.totalSize})
+		objReg := l.currentFn.NewVReg(TypePtr)
+		l.emit(&Instruction{Op: OpAlloc, Dst: objReg, Src1: sizeReg})
+
+		// Fill fields in order
+		offset := int64(0)
+		if layout.isClass {
+			offset = 8 // skip vtable
+		}
+		for _, arg := range expr.Args {
+			ar, err := l.lowerExpression(arg)
+			if err != nil {
+				return VReg{}, err
+			}
+			l.emit(&Instruction{Op: OpStore, Src1: objReg, IntVal: offset, Src2: ar})
+			offset += 8
+		}
+		return objReg, nil
+
 	case *ast.AssignExpression:
 		valReg, err := l.lowerExpression(expr.Value)
 		if err != nil {
 			return VReg{}, err
 		}
-		if ident, ok := expr.Target.(*ast.Identifier); ok {
-			localReg, exists := l.locals[ident.Value]
+
+		switch tgt := expr.Target.(type) {
+		case *ast.Identifier:
+			localReg, exists := l.locals[tgt.Value]
 			if !exists {
 				localReg = l.currentFn.NewVReg(valReg.Type)
-				l.locals[ident.Value] = localReg
+				l.locals[tgt.Value] = localReg
 			}
 			l.emit(&Instruction{Op: OpCopy, Dst: localReg, Src1: valReg})
 			return localReg, nil
+
+		case *ast.DotExpression:
+			objReg, err := l.lowerExpression(tgt.Left)
+			if err != nil {
+				return VReg{}, err
+			}
+			var typeName string
+			if l.typeInfo != nil && l.typeInfo.Types != nil {
+				if t, ok := l.typeInfo.Types[tgt.Left]; ok {
+					if st, ok := t.(*typecheck.StructType); ok {
+						typeName = st.Name
+					}
+				}
+			}
+			layout := l.structLayouts[typeName]
+			if layout == nil {
+				return VReg{}, fmt.Errorf("unknown struct/class for dot assignment %s.%s", typeName, tgt.Field)
+			}
+			offset, ok := layout.fields[tgt.Field]
+			if !ok {
+				return VReg{}, fmt.Errorf("field %s not found in %s", tgt.Field, typeName)
+			}
+			l.emit(&Instruction{Op: OpStore, Src1: objReg, IntVal: offset, Src2: valReg})
+			return valReg, nil
+
+		case *ast.IndexExpression:
+			collReg, err := l.lowerExpression(tgt.Left)
+			if err != nil {
+				return VReg{}, err
+			}
+			idxReg, err := l.lowerExpression(tgt.Index)
+			if err != nil {
+				return VReg{}, err
+			}
+			dataPtr := l.currentFn.NewVReg(TypePtr)
+			l.emit(&Instruction{Op: OpLoad, Dst: dataPtr, Src1: collReg, IntVal: 0})
+			scaleReg := l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpConstInt, Dst: scaleReg, IntVal: 8})
+			byteOff := l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpMul, Dst: byteOff, Src1: idxReg, Src2: scaleReg})
+			addrReg := l.currentFn.NewVReg(TypePtr)
+			l.emit(&Instruction{Op: OpAdd, Dst: addrReg, Src1: dataPtr, Src2: byteOff})
+			l.emit(&Instruction{Op: OpStore, Src1: addrReg, IntVal: 0, Src2: valReg})
+			return valReg, nil
+
+		default:
+			return VReg{}, fmt.Errorf("assignment to target %T not supported", expr.Target)
 		}
-		return VReg{}, fmt.Errorf("assignment to non-identifier not supported in stage 2")
 
 	case *ast.PrefixExpression:
 		r, err := l.lowerExpression(expr.Right)
@@ -491,9 +911,76 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 		return dst, nil
 
 	case *ast.CallExpression:
+		// 1. Method call: receiver.method(...)
+		if dot, ok := expr.Function.(*ast.DotExpression); ok {
+			rcvReg, err := l.lowerExpression(dot.Left)
+			if err != nil {
+				return VReg{}, err
+			}
+			var typeName string
+			if l.typeInfo != nil && l.typeInfo.Types != nil {
+				if t, ok := l.typeInfo.Types[dot.Left]; ok {
+					if st, ok := t.(*typecheck.StructType); ok {
+						typeName = st.Name
+					}
+				}
+			}
+			mFullName := typeName + "." + dot.Field
+			targetFn, exists := l.functions[mFullName]
+			if !exists {
+				// Check parent class methods
+				if layout := l.structLayouts[typeName]; layout != nil {
+					for cur := layout.name; cur != ""; {
+						if curFn, has := l.functions[cur+"."+dot.Field]; has {
+							targetFn = curFn
+							mFullName = cur + "." + dot.Field
+							exists = true
+							break
+						}
+						break
+					}
+				}
+			}
+			if !exists {
+				return VReg{}, fmt.Errorf("method %s not found on %s", dot.Field, typeName)
+			}
+
+			var callArgs []VReg
+			callArgs = append(callArgs, rcvReg) // self
+			for _, a := range expr.Arguments {
+				ar, err := l.lowerExpression(a)
+				if err != nil {
+					return VReg{}, err
+				}
+				callArgs = append(callArgs, ar)
+			}
+
+			dst := l.currentFn.NewVReg(targetFn.ReturnType)
+			l.emit(&Instruction{
+				Op:       OpCall,
+				Dst:      dst,
+				CallName: mFullName,
+				Args:     callArgs,
+			})
+			return dst, nil
+		}
+
+		// 2. Direct function call: name(...)
 		fnIdent, ok := expr.Function.(*ast.Identifier)
 		if !ok {
-			return VReg{}, fmt.Errorf("indirect calls not supported yet in stage 2")
+			return VReg{}, fmt.Errorf("indirect calls not supported yet")
+		}
+
+		fnName := fnIdent.Value
+
+		// Struct/Class instantiation via CallExpression
+		if _, exists := l.structLayouts[fnName]; exists {
+			si := &ast.StructInstantiation{
+				Token: expr.Token,
+				Name:  fnName,
+				Args:  expr.Arguments,
+			}
+			return l.lowerExpression(si)
 		}
 
 		var args []VReg
@@ -505,9 +992,7 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 			args = append(args, ar)
 		}
 
-		fnName := fnIdent.Value
-
-		// Special handling for exit(code)
+		// Built-in: exit(code)
 		if fnName == "exit" && len(args) == 1 {
 			l.emit(&Instruction{
 				Op:   OpRet,
@@ -516,16 +1001,30 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 			return VReg{ID: -1, Type: TypeVoid}, nil
 		}
 
+		// Built-in: print(...)
 		if fnName == "print" {
 			for _, a := range args {
-				l.emit(&Instruction{Op: OpPrint, Src1: a})
+				argToPrint := a
+				if a.Type == TypeI64 {
+					strReg := l.currentFn.NewVReg(TypePtr)
+					l.emit(&Instruction{Op: OpIntToStr, Dst: strReg, Src1: a})
+					argToPrint = strReg
+				}
+				l.emit(&Instruction{Op: OpPrint, Src1: argToPrint})
 			}
 			return VReg{ID: -1, Type: TypeVoid}, nil
 		}
 
+		// Built-in: println(...)
 		if fnName == "println" {
 			for _, a := range args {
-				l.emit(&Instruction{Op: OpPrintln, Src1: a})
+				argToPrint := a
+				if a.Type == TypeI64 {
+					strReg := l.currentFn.NewVReg(TypePtr)
+					l.emit(&Instruction{Op: OpIntToStr, Dst: strReg, Src1: a})
+					argToPrint = strReg
+				}
+				l.emit(&Instruction{Op: OpPrintln, Src1: argToPrint})
 			}
 			if len(args) == 0 {
 				emptyStr := l.currentFn.NewVReg(TypePtr)
@@ -535,6 +1034,30 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 			return VReg{ID: -1, Type: TypeVoid}, nil
 		}
 
+		// Built-in: len(x)
+		if fnName == "len" && len(args) == 1 {
+			// Length is at offset 0 for string, offset 8 for list
+			argExpr := expr.Arguments[0]
+			offset := int64(0) // default string len
+			if l.typeInfo != nil && l.typeInfo.Types != nil {
+				if t, ok := l.typeInfo.Types[argExpr]; ok {
+					if _, isList := t.(*typecheck.ListType); isList {
+						offset = 8
+					}
+				}
+			}
+			lenDst := l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpLoad, Dst: lenDst, Src1: args[0], IntVal: offset})
+			return lenDst, nil
+		}
+
+		// Casts
+		if fnName == "int" && len(args) == 1 {
+			return args[0], nil
+		}
+		if fnName == "float" && len(args) == 1 {
+			return args[0], nil
+		}
 		if fnName == "string" && len(args) == 1 {
 			if args[0].Type == TypePtr {
 				return args[0], nil
@@ -559,6 +1082,6 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 		return dst, nil
 
 	default:
-		return VReg{}, fmt.Errorf("expression %T not supported in stage 2 IR", e)
+		return VReg{}, fmt.Errorf("expression %T not supported in native backend yet", e)
 	}
 }

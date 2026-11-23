@@ -106,6 +106,51 @@ fn count_to(n: int) {
 count_to(3)
 `,
 		},
+		{
+			name: "list_creation_indexing_iteration",
+			src: `
+xs := [10, 20, 30]
+println(len(xs))
+println(xs[0])
+println(xs[1])
+println(xs[2])
+for item in xs {
+    println(item)
+}
+`,
+		},
+		{
+			name: "struct_and_field_mutation",
+			src: `
+struct Point {
+    x: int
+    y: int
+}
+pt := Point(5, 12)
+println(pt.x)
+println(pt.y)
+pt.x = 42
+println(pt.x)
+`,
+		},
+		{
+			name: "class_and_methods",
+			src: `
+class Counter {
+    count: int
+
+    func bump() -> int {
+        self.count = self.count + 1
+        return self.count
+    }
+}
+c := Counter(10)
+println(c.count)
+println(c.bump())
+println(c.bump())
+println(c.count)
+`,
+		},
 	}
 
 	for _, tt := range tests {

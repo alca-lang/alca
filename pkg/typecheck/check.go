@@ -156,6 +156,7 @@ func (c *Checker) Types() map[ast.Expression]Type {
 type Result struct {
 	Checker *Checker
 	Types   map[ast.Expression]Type
+	Structs map[string]*StructType
 	Errors  []*diag.SyntaxError
 }
 
@@ -166,6 +167,7 @@ func CheckProgram(prog *ast.Program, filename, source string) (*Result, []*diag.
 	res := &Result{
 		Checker: checker,
 		Types:   checker.types,
+		Structs: checker.structs,
 		Errors:  errs,
 	}
 	return res, errs

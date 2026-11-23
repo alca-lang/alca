@@ -83,6 +83,11 @@ const (
 	OpPrintln
 	OpConcatStr
 	OpIntToStr
+	// Memory & Objects (Stage 4)
+	OpAlloc
+	OpLoad
+	OpStore
+	OpCallPtr
 )
 
 func (o Op) String() string {
@@ -105,6 +110,14 @@ func (o Op) String() string {
 		return "concat_str"
 	case OpIntToStr:
 		return "int_to_str"
+	case OpAlloc:
+		return "alloc"
+	case OpLoad:
+		return "load"
+	case OpStore:
+		return "store"
+	case OpCallPtr:
+		return "call_ptr"
 	case OpCopy:
 		return "copy"
 	case OpAdd:
@@ -202,6 +215,21 @@ func (inst *Instruction) String() string {
 			return fmt.Sprintf("  %s = call @%s(%s)", inst.Dst, inst.CallName, strings.Join(args, ", "))
 		}
 		return fmt.Sprintf("  call @%s(%s)", inst.CallName, strings.Join(args, ", "))
+	case OpAlloc:
+		return fmt.Sprintf("  %s = alloc %s bytes", inst.Dst, inst.Src1)
+	case OpLoad:
+		return fmt.Sprintf("  %s = load %s[%d]", inst.Dst, inst.Src1, inst.IntVal)
+	case OpStore:
+		return fmt.Sprintf("  store %s[%d] = %s", inst.Src1, inst.IntVal, inst.Src2)
+	case OpCallPtr:
+		var args []string
+		for _, a := range inst.Args {
+			args = append(args, a.String())
+		}
+		if inst.Dst.Type != TypeVoid {
+			return fmt.Sprintf("  %s = call_ptr %s(%s)", inst.Dst, inst.Src1, strings.Join(args, ", "))
+		}
+		return fmt.Sprintf("  call_ptr %s(%s)", inst.Src1, strings.Join(args, ", "))
 	case OpRet:
 		if inst.Src1.Type != TypeVoid {
 			return fmt.Sprintf("  ret %s", inst.Src1)
