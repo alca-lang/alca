@@ -4,6 +4,7 @@
 package amd64
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -20,11 +21,20 @@ const (
 	ABISysV
 )
 
-// CompiledArtifact holds the machine code and metadata.
+// CallFixup records a call site to be resolved by the linker.
+type CallFixup struct {
+	FuncName    string
+	PatchOffset int
+	InsEnd      int
+}
+
+// CompiledArtifact holds the machine code, rodata, call fixups and metadata.
 type CompiledArtifact struct {
 	Code         []byte
+	ReadOnlyData []byte
 	FunctionRVAs map[string]uint32
 	EntryOffset  uint32
+	CallFixups   []CallFixup
 }
 
 // CodeGenerator translates an IR Program into AMD64 machine code.
@@ -35,6 +45,16 @@ type CodeGenerator struct {
 	funcCalls    []funcCallFixup
 	funcRVAs     map[string]uint32
 	entryOffset  uint32
+
+	rodata       *bytes.Buffer
+	stringPool   map[string]int32 // string content -> offset in rodata
+	strFixups    []strFixup
+}
+
+type strFixup struct {
+	rodataOffset int32
+	patchOffset  int
+	insEnd       int
 }
 
 type funcCallFixup struct {
@@ -50,7 +70,31 @@ func NewCodeGenerator(abi ABI) *CodeGenerator {
 		asm:         jit.NewAssemblerAMD64(),
 		funcOffsets: make(map[string]int),
 		funcRVAs:    make(map[string]uint32),
+		rodata:      new(bytes.Buffer),
+		stringPool:  make(map[string]int32),
 	}
+}
+
+// internString places (len: int64, data: bytes, null: byte) in rodata.
+func (g *CodeGenerator) internString(s string) int32 {
+	if off, ok := g.stringPool[s]; ok {
+		return off
+	}
+	// 8-byte align rodata entry
+	for g.rodata.Len()%8 != 0 {
+		g.rodata.WriteByte(0)
+	}
+	off := int32(g.rodata.Len())
+	g.stringPool[s] = off
+
+	// String object layout:
+	// offset 0: len (int64)
+	// offset 8: data bytes + null terminator
+	_ = binary.Write(g.rodata, binary.LittleEndian, int64(len(s)))
+	g.rodata.WriteString(s)
+	g.rodata.WriteByte(0) // null-terminated for safety
+
+	return off
 }
 
 // Generate translates the whole IR Program.
@@ -79,13 +123,20 @@ func (g *CodeGenerator) Generate(prog *ir.Program) (*CompiledArtifact, error) {
 		return nil, err
 	}
 
+	var unpatchedFixups []CallFixup
 	for _, fix := range g.funcCalls {
 		targetOff, exists := g.funcOffsets[fix.funcName]
-		if !exists {
-			return nil, fmt.Errorf("undefined function %q called in native codegen", fix.funcName)
+		if exists {
+			rel32 := int32(targetOff - fix.insEnd)
+			binary.LittleEndian.PutUint32(code[fix.patchOffset:], uint32(rel32))
+		} else {
+			// Leave for linker (runtime helpers: pawl_print, pawl_println, etc.)
+			unpatchedFixups = append(unpatchedFixups, CallFixup{
+				FuncName:    fix.funcName,
+				PatchOffset: fix.patchOffset,
+				InsEnd:      fix.insEnd,
+			})
 		}
-		rel32 := int32(targetOff - fix.insEnd)
-		binary.LittleEndian.PutUint32(code[fix.patchOffset:], uint32(rel32))
 	}
 
 	for name, off := range g.funcOffsets {
@@ -94,8 +145,10 @@ func (g *CodeGenerator) Generate(prog *ir.Program) (*CompiledArtifact, error) {
 
 	return &CompiledArtifact{
 		Code:         code,
+		ReadOnlyData: g.rodata.Bytes(),
 		FunctionRVAs: g.funcRVAs,
 		EntryOffset:  g.entryOffset,
+		CallFixups:   unpatchedFixups,
 	}, nil
 }
 
@@ -107,7 +160,6 @@ type funcContext struct {
 }
 
 func (g *CodeGenerator) compileFunction(fn *ir.Function) error {
-	// 16-byte align function start
 	for g.asm.CodeLen()%16 != 0 {
 		g.asm.Nop()
 	}
@@ -120,28 +172,23 @@ func (g *CodeGenerator) compileFunction(fn *ir.Function) error {
 		slotOffsets: make(map[int]int32),
 	}
 
-	// Pre-create labels for all blocks
 	for _, b := range fn.Blocks {
 		ctx.blockLabels[b] = g.asm.CreateLabel()
 	}
 
-	// Stack slot layout: assign an 8-byte stack slot for every VReg
 	totalVRegs := fn.NextVRegID
 	if totalVRegs < len(fn.Params) {
 		totalVRegs = len(fn.Params)
 	}
 
-	// Slot offset from RBP: [rbp - 8], [rbp - 16], ...
 	for id := 0; id < totalVRegs; id++ {
 		ctx.slotOffsets[id] = int32((id + 1) * 8)
 	}
 
-	// Total local area = totalVRegs * 8, plus optional 32-byte shadow space for Win64 calls
 	localBytes := int32(totalVRegs * 8)
 	if g.abi == ABIWin64 {
-		localBytes += 32 // shadow space for outgoing calls
+		localBytes += 32
 	}
-	// Align stack frame to 16 bytes: (frameSize + 8 (saved rbp)) % 16 == 0 => frameSize % 16 == 8
 	frameSize := localBytes
 	if (frameSize+8)%16 != 0 {
 		frameSize += 16 - ((frameSize + 8) % 16)
@@ -155,10 +202,8 @@ func (g *CodeGenerator) compileFunction(fn *ir.Function) error {
 		g.asm.SubRegImm32(jit.RSP, ctx.frameSize)
 	}
 
-	// Move parameters from ABI registers into their stack slots
 	g.storeParams(ctx)
 
-	// Emit blocks
 	for _, b := range fn.Blocks {
 		g.asm.BindLabel(ctx.blockLabels[b])
 		for _, inst := range b.Instructions {
@@ -172,9 +217,6 @@ func (g *CodeGenerator) compileFunction(fn *ir.Function) error {
 }
 
 func (g *CodeGenerator) storeParams(ctx *funcContext) {
-	// ABI integer/pointer parameter registers:
-	// Win64: RCX, RDX, R8, R9
-	// SysV:  RDI, RSI, RDX, RCX, R8, R9
 	var paramRegs []jit.Register
 	if g.abi == ABIWin64 {
 		paramRegs = []jit.Register{jit.RCX, jit.RDX, jit.R8, jit.R9}
@@ -188,9 +230,6 @@ func (g *CodeGenerator) storeParams(ctx *funcContext) {
 			r := paramRegs[i]
 			g.asm.MovMemReg(jit.RBP, disp, r)
 		} else {
-			// Stack argument passed by caller:
-			// Win64: [rbp + 16 + 32 + (i-4)*8]
-			// SysV:  [rbp + 16 + (i-6)*8]
 			var callerDisp int32
 			if g.abi == ABIWin64 {
 				callerDisp = int32(48 + (i-4)*8)
@@ -214,6 +253,26 @@ func (g *CodeGenerator) emitInstruction(ctx *funcContext, inst *ir.Instruction) 
 		disp := -ctx.slotOffsets[inst.Dst.ID]
 		g.asm.MovRegImm32(jit.RAX, int32(inst.IntVal))
 		g.asm.MovMemReg(jit.RBP, disp, jit.RAX)
+
+	case ir.OpConstStr:
+		disp := -ctx.slotOffsets[inst.Dst.ID]
+		strOff := g.internString(inst.StrVal)
+		// We emit lea rax, [rip + strOff] or pass relative offset;
+		// For now in single code/rodata space, store the rodata offset
+		g.asm.MovRegImm64(jit.RAX, uint64(strOff))
+		g.asm.MovMemReg(jit.RBP, disp, jit.RAX)
+
+	case ir.OpPrint:
+		return g.emitRuntimeCall(ctx, "pawl_print", inst.Src1)
+
+	case ir.OpPrintln:
+		return g.emitRuntimeCall(ctx, "pawl_println", inst.Src1)
+
+	case ir.OpConcatStr:
+		return g.emitRuntimeCall2(ctx, "pawl_concat_str", inst.Dst, inst.Src1, inst.Src2)
+
+	case ir.OpIntToStr:
+		return g.emitRuntimeCall1Ret(ctx, "pawl_int_to_str", inst.Dst, inst.Src1)
 
 	case ir.OpConstFloat:
 		disp := -ctx.slotOffsets[inst.Dst.ID]
@@ -250,7 +309,7 @@ func (g *CodeGenerator) emitInstruction(ctx *funcContext, inst *ir.Instruction) 
 		g.asm.MovRegMem(jit.RCX, jit.RBP, s2)
 		g.asm.Cqo()
 		g.asm.IdivReg(jit.RCX)
-		g.asm.MovMemReg(jit.RBP, dst, jit.RDX) // modulo in RDX
+		g.asm.MovMemReg(jit.RBP, dst, jit.RDX)
 
 	case ir.OpNeg:
 		s1 := -ctx.slotOffsets[inst.Src1.ID]
@@ -264,7 +323,7 @@ func (g *CodeGenerator) emitInstruction(ctx *funcContext, inst *ir.Instruction) 
 		dst := -ctx.slotOffsets[inst.Dst.ID]
 		g.asm.MovRegMem(jit.RAX, jit.RBP, s1)
 		g.asm.TestRegReg(jit.RAX, jit.RAX)
-		g.asm.Setcc(jit.CondE, jit.RAX) // if 0 -> 1, else 0
+		g.asm.Setcc(jit.CondE, jit.RAX)
 		g.asm.MovzxByte(jit.RAX, jit.RAX)
 		g.asm.MovMemReg(jit.RBP, dst, jit.RAX)
 
@@ -304,7 +363,6 @@ func (g *CodeGenerator) emitInstruction(ctx *funcContext, inst *ir.Instruction) 
 			srcDisp := -ctx.slotOffsets[inst.Src1.ID]
 			g.asm.MovRegMem(jit.RAX, jit.RBP, srcDisp)
 		}
-		// Epilogue
 		g.asm.MovRegReg(jit.RSP, jit.RBP)
 		g.asm.Pop(jit.RBP)
 		g.asm.Ret()
@@ -312,6 +370,67 @@ func (g *CodeGenerator) emitInstruction(ctx *funcContext, inst *ir.Instruction) 
 	default:
 		return fmt.Errorf("codegen: unsupported opcode %s", inst.Op)
 	}
+	return nil
+}
+
+func (g *CodeGenerator) emitRuntimeCall(ctx *funcContext, runtimeFn string, arg ir.VReg) error {
+	argDisp := -ctx.slotOffsets[arg.ID]
+	if g.abi == ABIWin64 {
+		g.asm.MovRegMem(jit.RCX, jit.RBP, argDisp)
+	} else {
+		g.asm.MovRegMem(jit.RDI, jit.RBP, argDisp)
+	}
+	g.asm.EmitByte(0xE8)
+	patch := g.asm.CodeLen()
+	g.asm.EmitUint32(0)
+	g.funcCalls = append(g.funcCalls, funcCallFixup{
+		funcName:    runtimeFn,
+		patchOffset: patch,
+		insEnd:      patch + 4,
+	})
+	return nil
+}
+
+func (g *CodeGenerator) emitRuntimeCall1Ret(ctx *funcContext, runtimeFn string, dst, arg ir.VReg) error {
+	argDisp := -ctx.slotOffsets[arg.ID]
+	if g.abi == ABIWin64 {
+		g.asm.MovRegMem(jit.RCX, jit.RBP, argDisp)
+	} else {
+		g.asm.MovRegMem(jit.RDI, jit.RBP, argDisp)
+	}
+	g.asm.EmitByte(0xE8)
+	patch := g.asm.CodeLen()
+	g.asm.EmitUint32(0)
+	g.funcCalls = append(g.funcCalls, funcCallFixup{
+		funcName:    runtimeFn,
+		patchOffset: patch,
+		insEnd:      patch + 4,
+	})
+	dstDisp := -ctx.slotOffsets[dst.ID]
+	g.asm.MovMemReg(jit.RBP, dstDisp, jit.RAX)
+	return nil
+}
+
+func (g *CodeGenerator) emitRuntimeCall2(ctx *funcContext, runtimeFn string, dst, arg1, arg2 ir.VReg) error {
+	s1 := -ctx.slotOffsets[arg1.ID]
+	s2 := -ctx.slotOffsets[arg2.ID]
+	if g.abi == ABIWin64 {
+		g.asm.MovRegMem(jit.RCX, jit.RBP, s1)
+		g.asm.MovRegMem(jit.RDX, jit.RBP, s2)
+	} else {
+		g.asm.MovRegMem(jit.RDI, jit.RBP, s1)
+		g.asm.MovRegMem(jit.RSI, jit.RBP, s2)
+	}
+	g.asm.EmitByte(0xE8)
+	patch := g.asm.CodeLen()
+	g.asm.EmitUint32(0)
+	g.funcCalls = append(g.funcCalls, funcCallFixup{
+		funcName:    runtimeFn,
+		patchOffset: patch,
+		insEnd:      patch + 4,
+	})
+	dstDisp := -ctx.slotOffsets[dst.ID]
+	g.asm.MovMemReg(jit.RBP, dstDisp, jit.RAX)
 	return nil
 }
 
@@ -346,30 +465,26 @@ func (g *CodeGenerator) emitCall(ctx *funcContext, inst *ir.Instruction) error {
 		paramRegs = []jit.Register{jit.RDI, jit.RSI, jit.RDX, jit.RCX, jit.R8, jit.R9}
 	}
 
-	// Evaluate / pass register arguments
 	for i, arg := range inst.Args {
 		argDisp := -ctx.slotOffsets[arg.ID]
 		if i < len(paramRegs) {
 			reg := paramRegs[i]
 			g.asm.MovRegMem(reg, jit.RBP, argDisp)
 		} else {
-			// Push stack argument
 			g.asm.MovRegMem(jit.RAX, jit.RBP, argDisp)
 			g.asm.Push(jit.RAX)
 		}
 	}
 
-	// Call rel32
 	g.asm.EmitByte(0xE8)
 	patch := g.asm.CodeLen()
-	g.asm.EmitUint32(0) // placeholder
+	g.asm.EmitUint32(0)
 	g.funcCalls = append(g.funcCalls, funcCallFixup{
 		funcName:    inst.CallName,
 		patchOffset: patch,
 		insEnd:      patch + 4,
 	})
 
-	// Store return value if non-void
 	if inst.Dst.Type != ir.TypeVoid && inst.Dst.ID >= 0 {
 		dstDisp := -ctx.slotOffsets[inst.Dst.ID]
 		g.asm.MovMemReg(jit.RBP, dstDisp, jit.RAX)

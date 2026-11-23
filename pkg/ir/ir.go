@@ -77,6 +77,12 @@ const (
 	OpBranch
 	OpCall
 	OpRet
+	// String & I/O
+	OpConstStr
+	OpPrint
+	OpPrintln
+	OpConcatStr
+	OpIntToStr
 )
 
 func (o Op) String() string {
@@ -89,6 +95,16 @@ func (o Op) String() string {
 		return "const_float"
 	case OpConstBool:
 		return "const_bool"
+	case OpConstStr:
+		return "const_str"
+	case OpPrint:
+		return "print"
+	case OpPrintln:
+		return "println"
+	case OpConcatStr:
+		return "concat_str"
+	case OpIntToStr:
+		return "int_to_str"
 	case OpCopy:
 		return "copy"
 	case OpAdd:
@@ -138,6 +154,7 @@ type Instruction struct {
 	Src2     VReg
 	IntVal   int64
 	FloatVal float64
+	StrVal   string
 	Target   *Block
 	ElseTgt  *Block
 	CallName string
@@ -156,6 +173,16 @@ func (inst *Instruction) String() string {
 			b = 1
 		}
 		return fmt.Sprintf("  %s = const_bool %d", inst.Dst, b)
+	case OpConstStr:
+		return fmt.Sprintf("  %s = const_str %q", inst.Dst, inst.StrVal)
+	case OpPrint:
+		return fmt.Sprintf("  print %s", inst.Src1)
+	case OpPrintln:
+		return fmt.Sprintf("  println %s", inst.Src1)
+	case OpConcatStr:
+		return fmt.Sprintf("  %s = concat_str %s, %s", inst.Dst, inst.Src1, inst.Src2)
+	case OpIntToStr:
+		return fmt.Sprintf("  %s = int_to_str %s", inst.Dst, inst.Src1)
 	case OpCopy:
 		return fmt.Sprintf("  %s = copy %s", inst.Dst, inst.Src1)
 	case OpAdd, OpSub, OpMul, OpDiv, OpMod, OpEq, OpNe, OpLt, OpLe, OpGt, OpGe:

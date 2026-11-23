@@ -33,8 +33,11 @@ func TestCmdBuildInvocation(t *testing.T) {
 	out := filepath.Join(dir, "sample_out.exe")
 	// cmdBuild invokes compiler.Build
 	code := cmdBuild([]string{src, "-o", out, "--target", "windows/amd64"})
-	// In stage 1, compiler.Build reaches stage 2 generator hook and reports error
-	if code == 0 {
-		t.Fatal("expected non-zero exit code while codegen is being connected in stage 2")
+	// With Stage 2 and 3 connected, compiler.Build succeeds and produces the binary
+	if code != 0 {
+		t.Fatalf("expected code 0, got %d", code)
+	}
+	if fi, err := os.Stat(out); err != nil || fi.Size() == 0 {
+		t.Fatalf("output file was not created or empty: %v", err)
 	}
 }

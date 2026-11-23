@@ -377,6 +377,11 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 		l.emit(&Instruction{Op: OpConstInt, Dst: dst, IntVal: expr.Value})
 		return dst, nil
 
+	case *ast.StringLiteral:
+		dst := l.currentFn.NewVReg(TypePtr)
+		l.emit(&Instruction{Op: OpConstStr, Dst: dst, StrVal: expr.Value})
+		return dst, nil
+
 	case *ast.FloatLiteral:
 		dst := l.currentFn.NewVReg(TypeF64)
 		l.emit(&Instruction{Op: OpConstFloat, Dst: dst, FloatVal: expr.Value})
@@ -445,7 +450,12 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 
 		switch expr.Operator {
 		case "+":
-			op = OpAdd
+			if leftReg.Type == TypePtr || rightReg.Type == TypePtr {
+				op = OpConcatStr
+				resType = TypePtr
+			} else {
+				op = OpAdd
+			}
 		case "-":
 			op = OpSub
 		case "*":
@@ -504,6 +514,34 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 				Src1: args[0],
 			})
 			return VReg{ID: -1, Type: TypeVoid}, nil
+		}
+
+		if fnName == "print" {
+			for _, a := range args {
+				l.emit(&Instruction{Op: OpPrint, Src1: a})
+			}
+			return VReg{ID: -1, Type: TypeVoid}, nil
+		}
+
+		if fnName == "println" {
+			for _, a := range args {
+				l.emit(&Instruction{Op: OpPrintln, Src1: a})
+			}
+			if len(args) == 0 {
+				emptyStr := l.currentFn.NewVReg(TypePtr)
+				l.emit(&Instruction{Op: OpConstStr, Dst: emptyStr, StrVal: ""})
+				l.emit(&Instruction{Op: OpPrintln, Src1: emptyStr})
+			}
+			return VReg{ID: -1, Type: TypeVoid}, nil
+		}
+
+		if fnName == "string" && len(args) == 1 {
+			if args[0].Type == TypePtr {
+				return args[0], nil
+			}
+			dst := l.currentFn.NewVReg(TypePtr)
+			l.emit(&Instruction{Op: OpIntToStr, Dst: dst, Src1: args[0]})
+			return dst, nil
 		}
 
 		var retType Type = TypeVoid

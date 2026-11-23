@@ -10,77 +10,194 @@ import (
 	"os"
 
 	"github.com/pawl-lang/pawl/pkg/codegen/amd64"
-	"github.com/pawl-lang/pawl/pkg/jit"
 )
 
-// LinkPE builds a 64-bit Windows PE executable using the compiled AMD64 code.
-// The entry point calls main() and then calls ExitProcess(eax).
+// LinkPE builds a 64-bit Windows PE executable with minimal I/O runtime.
 func LinkPE(art *amd64.CompiledArtifact, outputPath string, noConsole bool) error {
 	pe := NewPEBuilder()
 	pe.SetNoConsole(noConsole)
-	pe.Layout() // compute RVAs for imports (ExitProcess etc.)
 
-	// We wrap the compiled code with a _start bootstrap:
-	// _start:
-	//   sub rsp, 40               ; 32 bytes shadow space + 8 bytes alignment
-	//   call main                 ; call pawl main()
-	//   mov ecx, eax              ; exit code in ecx for ExitProcess(UINT uExitCode)
-	//   call [rip + disp(ExitProcess)]
-	//   hlt                       ; should never reach here
+	newlineBytes := []byte("\r\n\x00\x00\x00\x00\x00\x00")
+	var rdataBuf bytes.Buffer
+	rdataBuf.Write(newlineBytes)
+	rdataBuf.Write(art.ReadOnlyData)
 
-	bootstrap := jit.NewAssemblerAMD64()
-	bootstrap.SubRegImm32(jit.RSP, 40)
+	pe.SetConstants(rdataBuf.Bytes())
+	pe.SetBSSSize(0x200000) // 2 MB BSS
 
-	// call main (entryOffset relative to _start after bootstrap call instruction)
-	bootstrap.EmitByte(0xE8)
-	callPatch := bootstrap.CodeLen()
-	bootstrap.EmitUint32(0) // placeholder
+	// Temporarily set a dummy code of 4096 bytes so Layout computes RVAs assuming 0x1000 virtTextLen
+	pe.SetCode(make([]byte, 4096))
+	pe.Layout()
 
-	// mov ecx, eax
-	// 89 C1
-	bootstrap.EmitByte(0x89)
-	bootstrap.EmitByte(0xC1)
+	rdataRVA := pe.ConstantsRVA()
+	bssRVA := pe.BSSRVA()
+	textRVA := uint32(0x1000)
+	hStdoutRVA := bssRVA
 
-	// call [rip + disp(ExitProcess)]
-	// FF 15 disp32
-	bootstrap.EmitByte(0xFF)
-	bootstrap.EmitByte(0x15)
+	text := new(bytes.Buffer)
 
-	bootLen := bootstrap.CodeLen() + 4 // after disp32
-	dispExit := int32(pe.IATOffset("ExitProcess")) - int32(0x1000+bootLen)
-	bootstrap.EmitUint32(uint32(dispExit))
+	// 1. _start at 0x1000:
+	// sub rsp, 56
+	text.Write([]byte{0x48, 0x83, 0xEC, 0x38})
 
-	// hlt
-	bootstrap.EmitByte(0xF4)
+	// mov ecx, -11
+	text.Write([]byte{0xB9, 0xF5, 0xFF, 0xFF, 0xFF})
 
-	// Align bootstrap to 16 bytes before appending user code
-	for bootstrap.CodeLen()%16 != 0 {
-		bootstrap.Nop()
+	// call [rip + disp(GetStdHandle)]
+	curPos := textRVA + uint32(text.Len()) + 6
+	dispGetStd := int32(pe.IATOffset("GetStdHandle")) - int32(curPos)
+	text.Write([]byte{0xFF, 0x15})
+	_ = binary.Write(text, binary.LittleEndian, dispGetStd)
+
+	// mov [rip + disp(hStdoutRVA)], rax
+	curPos = textRVA + uint32(text.Len()) + 7
+	dispH := int32(hStdoutRVA) - int32(curPos)
+	text.Write([]byte{0x48, 0x89, 0x05})
+	_ = binary.Write(text, binary.LittleEndian, dispH)
+
+	// call main (rel32)
+	text.WriteByte(0xE8)
+	callMainPatch := text.Len()
+	_ = binary.Write(text, binary.LittleEndian, uint32(0))
+
+	// ExitProcess(eax) -> mov ecx, eax
+	text.Write([]byte{0x89, 0xC1})
+	curPos = textRVA + uint32(text.Len()) + 6
+	dispExit := int32(pe.IATOffset("ExitProcess")) - int32(curPos)
+	text.Write([]byte{0xFF, 0x15})
+	_ = binary.Write(text, binary.LittleEndian, dispExit)
+	text.WriteByte(0xF4) // hlt
+
+	// Align to 16 bytes
+	for text.Len()%16 != 0 {
+		text.WriteByte(0x90)
 	}
 
-	startCode, err := bootstrap.Finalize()
+	// 2. pawl_print(str_ptr in RCX)
+	// interned string is at (rdataRVA + 8 + rcx)
+	printOff := uint32(text.Len())
+	// sub rsp, 56
+	text.Write([]byte{0x48, 0x83, 0xEC, 0x38})
+
+	// lea rax, [rip + disp(rdataRVA + 8)]
+	curPos = textRVA + uint32(text.Len()) + 7
+	dispStrBase := int32(rdataRVA+8) - int32(curPos)
+	text.Write([]byte{0x48, 0x8D, 0x05})
+	_ = binary.Write(text, binary.LittleEndian, dispStrBase)
+
+	// add rax, rcx
+	text.Write([]byte{0x48, 0x01, 0xC8})
+
+	// mov r8, [rax] (len)
+	text.Write([]byte{0x4C, 0x8B, 0x00})
+
+	// lea rdx, [rax + 8] (data)
+	text.Write([]byte{0x48, 0x8D, 0x50, 0x08})
+
+	// mov rcx, [rip + disp(hStdoutRVA)]
+	curPos = textRVA + uint32(text.Len()) + 7
+	dispOut := int32(hStdoutRVA) - int32(curPos)
+	text.Write([]byte{0x48, 0x8B, 0x0D})
+	_ = binary.Write(text, binary.LittleEndian, dispOut)
+
+	// lea r9, [rsp + 40]
+	text.Write([]byte{0x4C, 0x8D, 0x4C, 0x24, 0x28})
+
+	// mov qword ptr [rsp + 32], 0
+	text.Write([]byte{0x48, 0xC7, 0x44, 0x24, 0x20, 0x00, 0x00, 0x00, 0x00})
+
+	// call [rip + disp(WriteFile)]
+	curPos = textRVA + uint32(text.Len()) + 6
+	dispW := int32(pe.IATOffset("WriteFile")) - int32(curPos)
+	text.Write([]byte{0xFF, 0x15})
+	_ = binary.Write(text, binary.LittleEndian, dispW)
+
+	// add rsp, 56; ret
+	text.Write([]byte{0x48, 0x83, 0xC4, 0x38, 0xC3})
+
+	for text.Len()%16 != 0 {
+		text.WriteByte(0x90)
+	}
+
+	// 3. pawl_println(str_ptr in RCX)
+	printlnOff := uint32(text.Len())
+	// sub rsp, 56
+	text.Write([]byte{0x48, 0x83, 0xEC, 0x38})
+
+	// call pawl_print (rel32)
+	text.WriteByte(0xE8)
+	relPrint := int32(printOff) - int32(uint32(text.Len())+4)
+	_ = binary.Write(text, binary.LittleEndian, relPrint)
+
+	// mov rcx, [rip + disp(hStdoutRVA)]
+	curPos = textRVA + uint32(text.Len()) + 7
+	dispOut2 := int32(hStdoutRVA) - int32(curPos)
+	text.Write([]byte{0x48, 0x8B, 0x0D})
+	_ = binary.Write(text, binary.LittleEndian, dispOut2)
+
+	// lea rdx, [rip + disp(rdataRVA)] (points to "\r\n")
+	curPos = textRVA + uint32(text.Len()) + 7
+	dispNL := int32(rdataRVA) - int32(curPos)
+	text.Write([]byte{0x48, 0x8D, 0x15})
+	_ = binary.Write(text, binary.LittleEndian, dispNL)
+
+	// mov r8d, 2
+	text.WriteByte(0x41)
+	text.WriteByte(0xB8)
+	_ = binary.Write(text, binary.LittleEndian, uint32(2))
+
+	// lea r9, [rsp + 40]
+	text.Write([]byte{0x4C, 0x8D, 0x4C, 0x24, 0x28})
+
+	// mov qword ptr [rsp + 32], 0
+	text.Write([]byte{0x48, 0xC7, 0x44, 0x24, 0x20, 0x00, 0x00, 0x00, 0x00})
+
+	// call [rip + disp(WriteFile)]
+	curPos = textRVA + uint32(text.Len()) + 6
+	dispW2 := int32(pe.IATOffset("WriteFile")) - int32(curPos)
+	text.Write([]byte{0xFF, 0x15})
+	_ = binary.Write(text, binary.LittleEndian, dispW2)
+
+	// add rsp, 56; ret
+	text.Write([]byte{0x48, 0x83, 0xC4, 0x38, 0xC3})
+
+	for text.Len()%16 != 0 {
+		text.WriteByte(0x90)
+	}
+
+	// 4. User code
+	userCodeStart := uint32(text.Len())
+
+	// Patch _start call to main
+	mainTarget := userCodeStart + art.EntryOffset
+	relMain := int32(mainTarget) - int32(callMainPatch+4)
+	binary.LittleEndian.PutUint32(text.Bytes()[callMainPatch:], uint32(relMain))
+
+	userCodeCopy := make([]byte, len(art.Code))
+	copy(userCodeCopy, art.Code)
+
+	for _, fix := range art.CallFixups {
+		var targetHelper uint32
+		switch fix.FuncName {
+		case "pawl_print":
+			targetHelper = printOff
+		case "pawl_println":
+			targetHelper = printlnOff
+		default:
+			return fmt.Errorf("linker: unresolved runtime symbol %q", fix.FuncName)
+		}
+
+		absCallSite := userCodeStart + uint32(fix.InsEnd)
+		rel32 := int32(targetHelper) - int32(absCallSite)
+		binary.LittleEndian.PutUint32(userCodeCopy[fix.PatchOffset:], uint32(rel32))
+	}
+
+	text.Write(userCodeCopy)
+
+	pe.SetCode(text.Bytes())
+	peBytes, err := pe.Build()
 	if err != nil {
 		return err
 	}
-
-	// Calculate rel32 to main function:
-	// main is located at len(startCode) + art.EntryOffset
-	// rel32 = target - (callPatch + 4)
-	targetMain := int32(len(startCode) + int(art.EntryOffset))
-	relMain := targetMain - int32(callPatch+4)
-	binary.LittleEndian.PutUint32(startCode[callPatch:], uint32(relMain))
-
-	// Combine bootstrap + user code
-	fullText := new(bytes.Buffer)
-	fullText.Write(startCode)
-	fullText.Write(art.Code)
-
-	pe.SetCode(fullText.Bytes())
-
-	peBytes, err := pe.Build()
-	if err != nil {
-		return fmt.Errorf("failed to build PE: %w", err)
-	}
-
 	return os.WriteFile(outputPath, peBytes, 0755)
 }
