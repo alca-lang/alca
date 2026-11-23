@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/pawl-lang/pawl/pkg/ast"
-	"github.com/pawl-lang/pawl/pkg/compiler"
 	"github.com/pawl-lang/pawl/pkg/diag"
 	"github.com/pawl-lang/pawl/pkg/format"
 	"github.com/pawl-lang/pawl/pkg/interpreter"
@@ -31,10 +30,6 @@ import (
 // so the package manager and registry node report the same toolchain version.
 const Version = version.Version
 
-func init() {
-	stdlib.NativeDLLBuilder = compiler.BuildNativeDLLFromPawl
-}
-
 func main() {
 	enableUTF8Console()
 
@@ -44,11 +39,6 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-
-	// If this binary has an embedded Pawl application payload, run it natively as a standalone app!
-	if isStandaloneExecutable() {
-		os.Exit(runStandalone())
-	}
 
 	if len(os.Args) < 2 {
 		printUsage()
@@ -67,14 +57,8 @@ func main() {
 	case "init":
 		os.Exit(cmdInit(os.Args[2:]))
 
-	case "dll":
-		os.Exit(cmdBuildDLL(os.Args[2:]))
-
 	case "targets":
 		os.Exit(cmdTargets())
-
-	case "build-runtimes":
-		os.Exit(cmdBuildRuntimes(os.Args[2:]))
 
 	case "repl":
 		startREPL(os.Args[2:])
@@ -123,22 +107,19 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  run <file.al> [args...]     Run a Pawl program (Bytecode VM with JIT acceleration)")
-	fmt.Println("  build <file.al> [-o out]    Compile program into a standalone native executable")
-	fmt.Println("        --protect, -p         protect binary: AES-256-GCM encryption + symbol obfuscation")
-	fmt.Println("        --noconsole, --gui    build a GUI application without opening a console window")
-	fmt.Println("        --target os/arch      cross-compile (e.g. linux/amd64, windows/arm64, darwin/arm64)")
-	fmt.Println("        --runtime <file>      use a specific runtime binary for the target")
-	fmt.Println("        --source              embed source instead of bytecode")
-	fmt.Println("        --embed <path>        embed a project file or directory (repeatable)")
+	fmt.Println("  build <file.al> [-o out]    Compile program into native machine code (AOT)")
+	fmt.Println("        --shared              build dynamic library (.dll / .so / .dylib)")
+	fmt.Println("        --static              build static library (.lib / .a)")
+	fmt.Println("        --target os/arch      cross-compile (e.g. linux/amd64, windows/amd64)")
+	fmt.Println("        --no-console, --gui   build a GUI application without opening a console window")
+	fmt.Println("        -O0, -O1, -O2, -O3    optimization level")
+	fmt.Println("        -g                    generate debug information")
 	fmt.Println("  init [name]                 Initialize a new Pawl project")
-	fmt.Println("  dll <src.c|cpp|al> [-o out] Compile native C/C++ or Pawl source into a shared library (.dll / .so)")
 	fmt.Println("  test <file.al>              Run test blocks and report PASS/FAIL")
 	fmt.Println("  check <file.al>             Syntax + strict type check (CI friendly)")
 	fmt.Println("  fmt [-w] <file.al>          Format the program (-w rewrites the file in place)")
 	fmt.Println("  repl                        Interactive session")
-	fmt.Println("  targets                     List build targets and which runtimes are installed")
-	fmt.Println("  build-runtimes [--targets a,b] [--out dir] [--tags t]")
-	fmt.Println("                              Build runtimes for cross-compilation (needs the Go toolchain)")
+	fmt.Println("  targets                     List supported targets for compilation")
 	fmt.Println("  lsp                         Language Server Protocol daemon for editors")
 	fmt.Println("  version | help")
 	fmt.Println()

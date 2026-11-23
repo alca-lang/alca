@@ -4,91 +4,59 @@
 package compiler
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/pawl-lang/pawl/pkg/ast"
+	"github.com/pawl-lang/pawl/pkg/lexer"
+	"github.com/pawl-lang/pawl/pkg/parser"
+	"github.com/pawl-lang/pawl/pkg/typecheck"
 )
 
-// Binary format constants.
-var (
-	// PayloadMagic is the 16-byte identifier appended to compiled Pawl binaries.
-	PayloadMagic = []byte("PAWL_EXEC_V2\x00\x00\x00\x00")
-	// FooterLen is 8 bytes payload size + 16 bytes magic.
-	FooterLen = len(PayloadMagic) + 8
+// Kind represents the compilation artifact output kind.
+type Kind int
+
+const (
+	Exe Kind = iota
+	Shared
+	Static
 )
 
-// CurrentPayloadVersion is the payload envelope version. Version 3 added module
-// paths; version 4 adds arbitrary embedded resources to standalone applications.
-const CurrentPayloadVersion uint32 = 4
-
-// VerifyMagic reports whether footer ends with the Pawl payload marker.
-func VerifyMagic(footer []byte) bool {
-	if len(footer) < FooterLen {
-		return false
+func (k Kind) String() string {
+	switch k {
+	case Exe:
+		return "exe"
+	case Shared:
+		return "shared"
+	case Static:
+		return "static"
+	default:
+		return "unknown"
 	}
-	return bytes.Equal(footer[8:FooterLen], PayloadMagic)
 }
 
-// StripPayload removes a previously appended payload so a built program can itself act as a stub.
-func StripPayload(exe []byte) []byte {
-	if len(exe) >= FooterLen && VerifyMagic(exe[len(exe)-FooterLen:]) {
-		size := binary.LittleEndian.Uint64(exe[len(exe)-FooterLen:])
-		if int64(size)+int64(FooterLen) <= int64(len(exe)) {
-			return exe[:len(exe)-int(size)-FooterLen]
-		}
-	}
-	return exe
+// Target is an operating system / architecture pair ("linux/amd64", "windows/amd64").
+type Target struct {
+	OS   string
+	Arch string
 }
-
-// ExtractBundle reads the payload from a standalone executable.
-func ExtractBundle(exePath string) (*Bundle, error) {
-	f, err := os.Open(exePath)
-	if err != nil {
-		return nil, fmt.Errorf("cannot open executable %q: %w", exePath, err)
-	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if fi.Size() < int64(FooterLen) {
-		return nil, fmt.Errorf("file is too small to be a compiled Pawl executable")
-	}
-	footer := make([]byte, FooterLen)
-	if _, err := f.ReadAt(footer, fi.Size()-int64(FooterLen)); err != nil {
-		return nil, fmt.Errorf("cannot read executable footer: %w", err)
-	}
-	if !VerifyMagic(footer) {
-		return nil, fmt.Errorf("file is not a compiled Pawl executable (missing magic marker)")
-	}
-	size := binary.LittleEndian.Uint64(footer[:8])
-	if int64(size)+int64(FooterLen) > fi.Size() {
-		return nil, fmt.Errorf("invalid payload size recorded in footer")
-	}
-	data := make([]byte, size)
-	if _, err := f.ReadAt(data, fi.Size()-int64(FooterLen)-int64(size)); err != nil {
-		return nil, fmt.Errorf("cannot read payload bytes: %w", err)
-	}
-	return DecodeBundle(data)
-}
-
-// Target is an operating system / architecture pair ("linux/amd64").
-type Target struct{ OS, Arch string }
 
 func (t Target) String() string { return t.OS + "/" + t.Arch }
 
-// HostTarget is the platform this binary runs on.
+// HostTarget returns the platform this binary runs on.
 func HostTarget() Target { return Target{runtime.GOOS, runtime.GOARCH} }
 
-// SupportedTargets lists the platforms a runtime can be built for.
+// SupportedTargets lists the platforms supported for native compilation.
 var SupportedTargets = []Target{
-	{"linux", "amd64"}, {"linux", "arm64"},
-	{"darwin", "amd64"}, {"darwin", "arm64"},
-	{"windows", "amd64"}, {"windows", "arm64"},
+	{"linux", "amd64"},
+	{"windows", "amd64"},
+	{"darwin", "amd64"},
+	{"linux", "arm64"},
+	{"darwin", "arm64"},
+	{"windows", "arm64"},
 }
 
 // ParseTarget parses "os/arch" (also accepts "os-arch").
@@ -98,7 +66,7 @@ func ParseTarget(s string) (Target, error) {
 	if len(parts) != 2 {
 		return Target{}, fmt.Errorf("invalid target %q: expected os/arch, e.g. linux/amd64", s)
 	}
-	t := Target{parts[0], parts[1]}
+	t := Target{strings.ToLower(parts[0]), strings.ToLower(parts[1])}
 	for _, ok := range SupportedTargets {
 		if ok == t {
 			return t, nil
@@ -115,86 +83,108 @@ func targetList() string {
 	return strings.Join(s, ", ")
 }
 
-// RuntimeName is the file name of the runtime stub for a target.
-func RuntimeName(t Target) string {
-	name := fmt.Sprintf("pawl-%s-%s", t.OS, t.Arch)
-	if t.OS == "windows" {
-		name += ".exe"
+// DefaultOutput returns the default binary filename for a target and kind.
+func DefaultOutput(entry string, t Target, k Kind) string {
+	base := filepath.Base(entry)
+	name := strings.TrimSuffix(base, filepath.Ext(base))
+	switch k {
+	case Exe:
+		if t.OS == "windows" {
+			return name + ".exe"
+		}
+		return name
+	case Shared:
+		switch t.OS {
+		case "windows":
+			return name + ".dll"
+		case "darwin":
+			return "lib" + name + ".dylib"
+		default:
+			return "lib" + name + ".so"
+		}
+	case Static:
+		switch t.OS {
+		case "windows":
+			return name + ".lib"
+		default:
+			return "lib" + name + ".a"
+		}
+	default:
+		return name
 	}
-	return name
 }
 
-// ExeName appends the platform's executable suffix.
-func ExeName(base string, t Target) string {
-	if t.OS == "windows" && !strings.HasSuffix(strings.ToLower(base), ".exe") {
-		return base + ".exe"
-	}
-	return base
+// Options configures the AOT compilation.
+type Options struct {
+	Target    Target
+	Kind      Kind
+	Output    string
+	OptLevel  int
+	Debug     bool
+	NoConsole bool
+	Libs      []string
 }
 
-// FindRuntime locates the runtime stub for target. The host platform needs no extra
-// files (the running pawl is the stub). Other platforms need a runtime built with
-// `make runtimes` / scripts/build-runtimes.sh, searched in $PAWL_RUNTIMES, the
-// "runtimes" folder next to the pawl binary, and ~/.pawl/runtimes.
-func FindRuntime(t Target, explicit string) (string, error) {
-	if explicit != "" {
-		if !fileExists(explicit) {
-			return "", fmt.Errorf("runtime %q does not exist", explicit)
-		}
-		return explicit, nil
+// Build compiles a Pawl source file directly to machine code.
+// No transpilation, no C compiler invocation, no VM stub.
+func Build(entry string, o Options) error {
+	if o.Target.OS == "" || o.Target.Arch == "" {
+		o.Target = HostTarget()
 	}
-	// The running executable is always the best runtime for its own platform:
-	// it is guaranteed to match this CLI's payload format and security policy.
-	// Prefer it over a possibly stale copy in a runtime directory.
-	if t == HostTarget() {
-		if exe, err := os.Executable(); err == nil && fileExists(exe) {
-			return exe, nil
-		}
+	if o.Output == "" {
+		o.Output = DefaultOutput(entry, o.Target, o.Kind)
 	}
-	var dirs []string
-	if d := os.Getenv("PAWL_RUNTIMES"); d != "" {
-		dirs = append(dirs, d)
-	}
-	if exe, err := os.Executable(); err == nil {
-		dirs = append(dirs, filepath.Join(filepath.Dir(exe), "runtimes"), filepath.Dir(exe))
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, ".pawl", "runtimes"))
-	}
-	dirs = append(dirs, "runtimes")
-	for _, d := range dirs {
-		p := filepath.Join(d, RuntimeName(t))
-		if fileExists(p) {
-			return p, nil
-		}
-	}
-	return "", fmt.Errorf("no Pawl runtime for %s found.\n  build runtimes once with:  make runtimes   (or scripts/build-runtimes.sh)\n  then point to them with:   PAWL_RUNTIMES=./runtimes pawl build ... --target %s\n  looked for %q in: %s", t, t, RuntimeName(t), strings.Join(dirs, ", "))
-}
 
-// Build writes stub + payload + footer to outputPath.
-func Build(b *Bundle, stubPath, outputPath string) error {
-	stub, err := os.ReadFile(stubPath)
+	data, err := os.ReadFile(entry)
 	if err != nil {
-		return fmt.Errorf("failed to read runtime %q: %w", stubPath, err)
+		return fmt.Errorf("cannot read entry file %q: %w", entry, err)
 	}
-	stub = StripPayload(stub)
-	payload, err := b.Encode()
-	if err != nil {
-		return fmt.Errorf("failed to encode payload: %w", err)
+	content := string(data)
+
+	p := parser.New(lexer.New(content))
+	prog := p.ParseProgram()
+	if len(p.SyntaxErrors()) > 0 {
+		return fmt.Errorf("syntax error in %s: %s", entry, p.SyntaxErrors()[0].Message)
 	}
-	var out bytes.Buffer
-	out.Grow(len(stub) + len(payload) + FooterLen)
-	out.Write(stub)
-	out.Write(payload)
-	_ = binary.Write(&out, binary.LittleEndian, uint64(len(payload)))
-	out.Write(PayloadMagic)
-	if err := os.WriteFile(outputPath, out.Bytes(), 0o755); err != nil {
-		return fmt.Errorf("failed to write %q: %w", outputPath, err)
+
+	res, errs := typecheck.CheckProgram(prog, entry, content)
+	if len(errs) > 0 {
+		return fmt.Errorf("type error in %s: %s", entry, errs[0].Message)
+	}
+
+	// Supported backend check
+	if o.Target.Arch != "amd64" {
+		return fmt.Errorf("native backend does not support target architecture %q yet", o.Target.Arch)
+	}
+	if o.Target.OS != "windows" && o.Target.OS != "linux" {
+		return fmt.Errorf("native backend does not support target OS %q yet", o.Target.OS)
+	}
+
+	return compileProgramToNative(prog, res, entry, o)
+}
+
+// compileProgramToNative coordinates lowering and linking.
+// Stubs for unsupported features return structured compile errors.
+func compileProgramToNative(prog *ast.Program, typeInfo *typecheck.Result, entry string, o Options) error {
+	for _, stmt := range prog.Statements {
+		if err := validateSupportedStatement(stmt, entry); err != nil {
+			return err
+		}
+	}
+
+	// In Stage 1, we set up the pipeline contract. Stage 2 will introduce pkg/ir and pkg/codegen.
+	// For now, return a clear diagnostic for programs awaiting Stage 2 code generation.
+	return fmt.Errorf("native backend code generator is being connected in stage 2 (entry: %s)", entry)
+}
+
+func validateSupportedStatement(stmt ast.Statement, file string) error {
+	switch s := stmt.(type) {
+	case *ast.BaStatement:
+		return fmt.Errorf("native backend does not support '@ba' yet (%s:%d)", file, s.Token.Line)
+	case *ast.FuncDeclaration:
+		if s.IsAsync {
+			return fmt.Errorf("native backend does not support 'async' yet (%s:%d)", file, s.Token.Line)
+		}
 	}
 	return nil
-}
-
-func fileExists(p string) bool {
-	fi, err := os.Stat(p)
-	return err == nil && !fi.IsDir()
 }

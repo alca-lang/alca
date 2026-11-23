@@ -32,7 +32,7 @@ go build -o pawl ./cmd/pawl
 ./pawl run examples/hello.al
 ```
 
-The Bytecode VM is the primary execution engine. Programs compile directly to standalone native Windows executables (`pawl build app.al`) and native DLLs (`pawl dll lib.al`).
+The Bytecode VM is the primary execution engine. Programs compile directly to standalone native machine code executables (`pawl build app.al`) and libraries (`pawl build lib.al --shared`).
 
 ---
 
@@ -99,7 +99,7 @@ pawl fmt [-w] <file.al>            # format to stdout, or rewrite in place
 pawl repl                          # interactive session with persistent state
 pawl lsp                           # Language Server Protocol over stdio
 pawl build <file.al> [-o out]      # standalone executable for the host (PE/COFF)
-pawl dll <file.al> [-o out.dll]    # compile into native Windows DLL / Linux SO
+pawl build <file.al> --shared [-o lib.dll] # compile into native shared library (.dll / .so / .dylib)
 pawl targets                       # show supported targets and installed runtimes
 ```
 

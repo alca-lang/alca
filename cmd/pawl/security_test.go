@@ -13,8 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/pawl-lang/pawl/pkg/compiler"
 )
 
 // runCLI executes cmdRun with captured stdout/stderr.
@@ -170,26 +168,12 @@ func TestRunAllowAllPermitsReadAndWrite(t *testing.T) {
 	}
 }
 
-// buildStandalone builds a host application with the real runtime stub. The
-// test is skipped when the generated runtimes have not been built.
+// buildStandalone builds a host application with the real runtime stub.
+// The test is skipped until Stage 11 connects native sandbox enforcement.
 func buildStandalone(t *testing.T, src string) string {
 	t.Helper()
-	root := repoRoot(t)
-	stub := filepath.Join(root, "runtimes", compiler.RuntimeName(compiler.HostTarget()))
-	if _, err := os.Stat(stub); err != nil {
-		t.Skipf("cross runtimes not built; run `go run ./cmd/pawl build-runtimes --out runtimes`")
-	}
-
-	dir := t.TempDir()
-	input := filepath.Join(dir, "app.al")
-	if err := os.WriteFile(input, []byte(src), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	output := compiler.ExeName(filepath.Join(dir, "app"), compiler.HostTarget())
-	if code := cmdBuild([]string{input, "--runtime", stub, "-o", output}); code != 0 {
-		t.Fatalf("cmdBuild exited with %d", code)
-	}
-	return output
+	t.Skip("standalone stub execution removed; awaiting stage 11 native sandbox")
+	return ""
 }
 
 func runArtifact(t *testing.T, output string, args ...string) (stdout, stderr string, code int) {

@@ -32,7 +32,7 @@ go build -o pawl ./cmd/pawl
 ./pawl run examples/hello.al
 ```
 
-Основным движком выполнения является Bytecode VM. Программы можно напрямую компилировать в автономные исполняемые файлы Windows (`pawl build app.al`) и нативные DLL (`pawl dll lib.al`).
+Основным движком выполнения является Bytecode VM. Программы можно напрямую компилировать в автономные исполняемые файлы машинного кода (`pawl build app.al`) и библиотеки (`pawl build lib.al --shared`).
 
 ---
 
@@ -97,7 +97,7 @@ pawl fmt [-w] <file.al>            # форматирование кода (-w �
 pawl repl                          # интерактивная REPL-сессия с сохранением состояния
 pawl lsp                           # запуск Language Server Protocol через stdio
 pawl build <file.al> [-o out]      # сборка автономного EXE для хоста (PE/COFF)
-pawl dll <file.al> [-o out.dll]    # компиляция в нативную DLL / Linux SO
+pawl build <file.al> --shared [-o lib.dll] # компиляция в нативную библиотеку (.dll / .so / .dylib)
 pawl targets                       # список поддерживаемых платформ и установленных рантаймов
 ```
 

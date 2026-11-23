@@ -6,9 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/pawl-lang/pawl/pkg/ast"
@@ -271,120 +269,15 @@ func printTestSummary(filename string, passes, failures int) int {
 }
 
 // ---------------------------------------------------------------------------
-// Standalone executables
+// Standalone executables (deprecated, retained as no-op stubs if referenced)
 // ---------------------------------------------------------------------------
 
 func isStandaloneExecutable() bool {
-	exePath, err := os.Executable()
-	if err != nil {
-		return false
-	}
-	f, err := os.Open(exePath)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil || fi.Size() < int64(compiler.FooterLen) {
-		return false
-	}
-	footer := make([]byte, compiler.FooterLen)
-	if _, err := f.ReadAt(footer, fi.Size()-int64(compiler.FooterLen)); err != nil {
-		return false
-	}
-	return compiler.VerifyMagic(footer)
+	return false
 }
 
-// runStandalone executes the program embedded in this executable.
 func runStandalone() int {
-	exePath, err := os.Executable()
-	if err != nil {
-		fmt.Fprint(os.Stderr, diag.FormatIOReport("executable", "locate", "pawl application binary", err, isTerminal(os.Stderr)))
-		return 1
-	}
-	name := filepath.Base(exePath)
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Fprint(os.Stderr, diag.FormatPanicReport(name, r, isTerminal(os.Stderr)))
-		}
-	}()
-	bundle, err := compiler.ExtractBundle(exePath)
-	if err != nil {
-		fmt.Fprint(os.Stderr, diag.FormatCompilerError(name, err, isTerminal(os.Stderr)))
-		return 1
-	}
-	policy, scriptArgs, perr := sandbox.ParseArgs(os.Args[1:])
-	if perr != nil {
-		fmt.Fprintln(os.Stderr, "error:", perr)
-		fmt.Fprintln(os.Stderr, "Usage: <app> ["+sandbox.FlagHint+"] [args...]")
-		return 1
-	}
-	memFlags, _, merr := parseMemoryFlags(os.Args[1:])
-	if merr != nil {
-		fmt.Fprintln(os.Stderr, "error:", merr)
-		return 1
-	}
-	applyMemoryFlags(memFlags)
-	sandbox.SetPolicy(policy)
-	stdlib.SetScriptArgs(scriptArgs)
-	stdlib.SetEmbeddedResources(bundle.Resources)
-	defer stdlib.SetEmbeddedResources(nil)
-	defer stdlib.CloseAllDatabases()
-
-	if bundle.Kind == compiler.KindNative || bundle.Kind == compiler.KindBytecode {
-		interp := newInterpreter()
-		interp.SetFilename(bundle.Name)
-		machine := vm.NewWithEnv(bundle.Code, interp.Env())
-		if bundle.Kind == compiler.KindNative && len(bundle.NativeCode) > 0 {
-			if jitEng := jit.Default(); jitEng != nil {
-				addr, err := jit.AllocExec(len(bundle.NativeCode))
-				if err == nil {
-					defer jit.FreeExec(addr, len(bundle.NativeCode))
-					copy(jit.UnsafeSlice(addr, len(bundle.NativeCode)), bundle.NativeCode)
-					ipOffsets := make(map[int]uintptr, len(bundle.LabelOffsets))
-					for ip, off := range bundle.LabelOffsets {
-						ipOffsets[ip] = addr + uintptr(off)
-					}
-					jitEng.InstallAOT(machine.MainFunction(), addr, len(bundle.NativeCode), ipOffsets)
-				}
-			}
-		}
-		if err := machine.Run(); err != nil {
-			fmt.Fprint(os.Stderr, diag.FormatRuntimeError(bundle.Name, "", err, isTerminal(os.Stderr)))
-			return 1
-		}
-		return 0
-	}
-
-	// Source bundle: materialise the files so `use pkg` and relative imports resolve.
-	dir, err := os.MkdirTemp("", "pawl-app-")
-	if err != nil {
-		fmt.Fprint(os.Stderr, diag.FormatIOReport(name, "create", "temporary directory", err, isTerminal(os.Stderr)))
-		return 1
-	}
-	defer os.RemoveAll(dir)
-	for rel, text := range bundle.Files {
-		dst := filepath.Join(dir, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err == nil {
-			_ = os.WriteFile(dst, []byte(text), 0o644)
-		}
-	}
-	bundled := make(map[string]string, len(bundle.Modules))
-	for imp, rel := range bundle.Modules {
-		bundled[imp] = filepath.Join(dir, filepath.FromSlash(rel))
-	}
-	mod.SetBundled(bundled)
-	mod.SetProjectRoot(dir)
-	defer mod.SetBundled(nil)
-	entry := filepath.Join(dir, filepath.FromSlash(bundle.Name))
-	p := parser.New(lexer.New(bundle.Source))
-	prog := p.ParseProgram()
-	if len(p.SyntaxErrors()) > 0 {
-		fmt.Fprint(os.Stderr, p.DiagnosticReport(bundle.Name, bundle.Source, isTerminal(os.Stderr)))
-		return 1
-	}
-	code, _ := execute(entry, bundle.Source, prog, engineInterp, true)
-	return code
+	return 0
 }
 
 // ---------------------------------------------------------------------------
@@ -578,48 +471,43 @@ func cmdBuild(args []string) int {
 			fmt.Fprint(os.Stderr, diag.FormatPanicReport("build", r, isTerminal(os.Stderr)))
 		}
 	}()
-	var input, output, targetStr, runtimePath string
-	var embedPaths []string
-	var nativeSources []string
-	var nativeLibraries []string
-	forceSource := false
-	forceNative := false
-	forceBytecode := false
-	noConsole := false
-	protect := false
-	forceDLL := false
+
+	var opts compiler.Options
+	var input string
+
 	for i := 0; i < len(args); i++ {
-		switch a := args[i]; {
+		a := args[i]
+		switch {
 		case a == "-o" && i+1 < len(args):
-			output = args[i+1]
+			opts.Output = args[i+1]
 			i++
 		case (a == "--target" || a == "-t") && i+1 < len(args):
-			targetStr = args[i+1]
+			t, err := compiler.ParseTarget(args[i+1])
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "error:", err)
+				return 1
+			}
+			opts.Target = t
 			i++
-		case a == "--runtime" && i+1 < len(args):
-			runtimePath = args[i+1]
+		case a == "--shared" || a == "--dll":
+			opts.Kind = compiler.Shared
+		case a == "--static":
+			opts.Kind = compiler.Static
+		case a == "-O0":
+			opts.OptLevel = 0
+		case a == "-O1":
+			opts.OptLevel = 1
+		case a == "-O2":
+			opts.OptLevel = 2
+		case a == "-O3":
+			opts.OptLevel = 3
+		case a == "-g":
+			opts.Debug = true
+		case a == "--no-console" || a == "--noconsole" || a == "--gui" || a == "-noconsole":
+			opts.NoConsole = true
+		case (a == "-l" || a == "--lib") && i+1 < len(args):
+			opts.Libs = append(opts.Libs, args[i+1])
 			i++
-		case a == "--embed" && i+1 < len(args):
-			embedPaths = append(embedPaths, args[i+1])
-			i++
-		case a == "--cc" && i+1 < len(args):
-			nativeSources = append(nativeSources, args[i+1])
-			i++
-		case a == "--native-lib" && i+1 < len(args):
-			nativeLibraries = append(nativeLibraries, args[i+1])
-			i++
-		case a == "--protect" || a == "-p" || a == "--encrypted" || a == "--obfuscate":
-			protect = true
-		case a == "--source":
-			forceSource = true
-		case a == "--native" || a == "--aot":
-			forceNative = true
-		case a == "--bytecode":
-			forceBytecode = true
-		case a == "--dll" || a == "--shared":
-			forceDLL = true
-		case a == "--noconsole" || a == "--gui" || a == "-noconsole":
-			noConsole = true
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintf(os.Stderr, "unknown build option %q\n", a)
 			return 1
@@ -629,297 +517,33 @@ func cmdBuild(args []string) int {
 	}
 
 	if input == "" {
-		fmt.Fprintln(os.Stderr, "Usage: pawl build <file.al> [-o output] [--embed file-or-directory ...] [--noconsole] [--target os/arch] [--runtime file] [--source] [--dll]")
+		fmt.Fprintln(os.Stderr, "Usage: pawl build <file.al> [-o output] [--target os/arch] [--shared|--static] [-O2] [-g] [--no-console]")
 		return 1
 	}
 
-	ext := strings.ToLower(filepath.Ext(input))
-	if ext == ".c" || ext == ".cpp" || ext == ".cc" || ext == ".cxx" || ext == ".s" || ext == ".asm" {
-		outPath, err := stdlib.CompileSharedLibrary(input, output)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			return 1
-		}
-		fmt.Printf("Compiled shared library: %s\n", outPath)
-		return 0
+	if opts.Target.OS == "" {
+		opts.Target = compiler.HostTarget()
 	}
 
-	target := compiler.HostTarget()
-	if targetStr != "" {
-		t, err := compiler.ParseTarget(targetStr)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			return 1
-		}
-		target = t
-	}
-
-	prog, content, ok := loadProgram(input)
-	if !ok {
+	if err := compiler.Build(input, opts); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		return 1
 	}
 
-	if forceDLL || strings.HasSuffix(strings.ToLower(output), ".dll") {
-		if output == "" {
-			base := filepath.Base(input)
-			output = strings.TrimSuffix(base, filepath.Ext(base)) + ".dll"
-		}
-		if !strings.HasSuffix(strings.ToLower(output), ".dll") {
-			output += ".dll"
-		}
-		absOutput, err := filepath.Abs(output)
-		if err != nil {
-			absOutput = output
-		}
-		if err := compiler.BuildNativeDLLFromPawl(content, absOutput); err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			return 1
-		}
-		fmt.Printf("Compiled pure native DLL: %s\n", absOutput)
-		return 0
+	out := opts.Output
+	if out == "" {
+		out = compiler.DefaultOutput(input, opts.Target, opts.Kind)
 	}
-
-	if output == "" {
-		base := filepath.Base(input)
-		output = strings.TrimSuffix(base, filepath.Ext(base))
-	}
-	output = compiler.ExeName(output, target)
-	absOutput, err := filepath.Abs(output)
-	if err != nil {
-		absOutput = output
-	}
-
-	var stub string
-	bundle := &compiler.Bundle{Name: filepath.Base(input), Encrypted: protect}
-	if protect {
-		prog = compiler.ObfuscateProgram(prog)
-	}
-	if len(embedPaths) > 0 {
-		root, err := filepath.Abs(filepath.Dir(input))
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error: cannot resolve project directory:", err)
-			return 1
-		}
-		bundle.Resources, err = collectEmbeddedResources(root, embedPaths)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			return 1
-		}
-	}
-	// The native libraries of the program: a C or assembly source is compiled
-	// for the host, a library that was compiled already is taken as it is.
-	if len(nativeSources) > 0 || len(nativeLibraries) > 0 {
-		if bundle.Resources == nil {
-			bundle.Resources = map[string][]byte{}
-		}
-		for _, source := range nativeSources {
-			data, err := compileNativeLibrary(source)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "error:", err)
-				return 1
-			}
-			name := stdlib.EmbeddedNativeLibraryName(filepath.Base(source))
-			bundle.Resources[name] = data
-			fmt.Printf("  native library %s\n", name)
-		}
-		for _, library := range nativeLibraries {
-			data, err := os.ReadFile(library)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "error: cannot read the native library:", err)
-				return 1
-			}
-			name := stdlib.EmbeddedNativeLibraryName(filepath.Base(library))
-			bundle.Resources[name] = data
-			fmt.Printf("  native library %s\n", name)
-		}
-	}
-	mode, reason := "bytecode", ""
-	imports := moduleImports(prog)
-	switch {
-	case forceSource:
-		mode, reason = "source", "requested with --source"
-	case len(imports) > 0:
-		mode, reason = "source", "program imports other .al files"
-	default:
-		c := vm.NewCompiler()
-		if cerr := c.Compile(prog); cerr != nil {
-			mode, reason = "source", cerr.Error()
-		} else {
-			bundle.Kind = compiler.KindBytecode
-			bundle.Code = c.Bytecode()
-			useNative := (forceNative || (target.Arch == "amd64" && jit.HasNativeAMD64 && target == compiler.HostTarget() && runtimePath == "")) && !forceBytecode
-			if useNative {
-				mainFn := &vm.CompiledFunction{
-					Instructions: bundle.Code.Instructions,
-					Pool:         vm.NewConstantPool(bundle.Code.Constants),
-					Globals:      make([]vm.StackSlot, len(c.GlobalNames())+64),
-				}
-				nativeCode, labelOffsets, aerr := jit.CompileAOT(mainFn)
-				if aerr == nil && len(nativeCode) > 0 {
-					bundle.Kind = compiler.KindNative
-					bundle.NativeCode = nativeCode
-					bundle.LabelOffsets = labelOffsets
-					mode = "native AMD64 machine code"
-				}
-			}
-			if _, eerr := bundle.Encode(); eerr != nil {
-				mode, reason = "source", eerr.Error()
-			}
-		}
-	}
-	if mode == "source" {
-		bundle.Kind = compiler.KindSource
-		bundle.Source = content
-		bundle.Files = map[string]string{}
-		bundle.Modules = map[string]string{}
-		root := filepath.Dir(input)
-		if absRoot, err := filepath.Abs(root); err == nil {
-			root = absRoot
-		}
-		if err := collectModules(root, input, prog, bundle.Files, bundle.Modules, map[string]string{}); err != nil {
-			fmt.Fprintln(os.Stderr, "error:", err)
-			return 1
-		}
-	}
-
-	// Try pure native PE first for Windows AMD64 when native machine code is
-	// available. A pure PE has no VM fallback, so it is only safe when every
-	// instruction is lowered to native code. Programs with calls (print,
-	// println, user functions, stdlib) therefore use the regular runtime stub,
-	// which runs the AOT code and falls back to the VM where needed.
-	builtNativePE := false
-	if len(bundle.Resources) == 0 && !usesRuntimeStdlib(prog) && bundle.Kind == compiler.KindNative &&
-		target.OS == "windows" && target.Arch == "amd64" && runtimePath == "" &&
-		jit.FullyNative(bundle.Code.Instructions) {
-		if peErr := compiler.BuildNativePE(bundle, absOutput, noConsole); peErr == nil {
-			builtNativePE = true
-			mode = "pure standalone native PE (zero runtime overhead)"
-		}
-	}
-
-	if !builtNativePE {
-		var rerr error
-		stub, rerr = compiler.FindRuntime(target, runtimePath)
-		if rerr != nil {
-			fmt.Fprintln(os.Stderr, "error:", rerr)
-			return 1
-		}
-		if err := compiler.Build(bundle, stub, absOutput); err != nil {
-			fmt.Fprint(os.Stderr, diag.FormatCompilerError(input, err, isTerminal(os.Stderr)))
-			return 1
-		}
-		if noConsole && target.OS == "windows" {
-			_ = compiler.PatchFileSubsystem(absOutput, compiler.SubsystemWindowsGUI)
-		}
-	}
-
-	if noConsole {
-		mode += ", noconsole / GUI"
-	}
-	if protect {
-		mode += ", protected (AES-256-GCM encrypted + obfuscated)"
-	}
-
-	fmt.Printf("Building %s -> %s [%s, %s]\n", input, absOutput, target, mode)
-	if reason != "" && mode == "source" {
-		fmt.Printf("  note: embedding source because %s\n", reason)
-	}
-	size := ""
-	if fi, err := os.Stat(absOutput); err == nil {
-		if fi.Size() >= 1024*1024 {
-			size = fmt.Sprintf(" (%.2f MB)", float64(fi.Size())/(1024*1024))
-		} else {
-			size = fmt.Sprintf(" (%.2f KB)", float64(fi.Size())/1024.0)
-		}
-	}
-	fmt.Printf("[OK] %s%s\n", absOutput, size)
+	fmt.Printf("[OK] %s (%s, %s)\n", out, opts.Target, opts.Kind)
 	return 0
 }
 
-// cmdTargets lists supported targets and runtime availability.
+// cmdTargets lists supported targets.
 func cmdTargets() int {
 	host := compiler.HostTarget()
-	fmt.Printf("Host: %s\n\nTarget            Runtime\n", host)
+	fmt.Printf("Host: %s\n\nSupported Targets:\n", host)
 	for _, t := range compiler.SupportedTargets {
-		status := "missing  (pawl build-runtimes --targets " + t.String() + ")"
-		if p, err := compiler.FindRuntime(t, ""); err == nil {
-			status = p
-		}
-		fmt.Printf("%-17s %s\n", t, status)
+		fmt.Printf("  %-17s\n", t)
 	}
-	return 0
-}
-
-// cmdBuildRuntimes cross-builds runtime binaries with the Go toolchain.
-func cmdBuildRuntimes(args []string) int {
-	out := "runtimes"
-	tags := ""
-	targets := compiler.SupportedTargets
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--out":
-			if i+1 < len(args) {
-				out = args[i+1]
-				i++
-			}
-		case "--tags":
-			if i+1 < len(args) {
-				tags = args[i+1]
-				i++
-			}
-		case "--targets":
-			if i+1 < len(args) {
-				targets = nil
-				for _, ts := range strings.Split(args[i+1], ",") {
-					t, err := compiler.ParseTarget(ts)
-					if err != nil {
-						fmt.Fprintln(os.Stderr, "error:", err)
-						return 1
-					}
-					targets = append(targets, t)
-				}
-				i++
-			}
-		}
-	}
-	goBin, err := exec.LookPath("go")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "error: the Go toolchain is required to build runtimes (https://go.dev/dl); it is NOT needed to use them")
-		return 1
-	}
-	if _, err := os.Stat("go.mod"); err != nil {
-		fmt.Fprintln(os.Stderr, "error: run this from the root of the Pawl source tree (go.mod not found)")
-		return 1
-	}
-	if err := os.MkdirAll(out, 0o755); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		return 1
-	}
-	failed := 0
-	for _, t := range targets {
-		dst := filepath.Join(out, compiler.RuntimeName(t))
-		fmt.Printf("building %-14s -> %s\n", t, dst)
-		cmdArgs := []string{"build", "-trimpath", "-ldflags", "-s -w", "-o", dst}
-		if tags != "" {
-			cmdArgs = append(cmdArgs, "-tags", tags)
-		}
-		cmdArgs = append(cmdArgs, "./cmd/pawl")
-		cmd := exec.Command(goBin, cmdArgs...)
-		cmd.Env = append(os.Environ(), "GOOS="+t.OS, "GOARCH="+t.Arch, "CGO_ENABLED=0")
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "  failed: %v\n", err)
-			failed++
-		}
-	}
-	if failed > 0 {
-		return 1
-	}
-	names := make([]string, 0, len(targets))
-	for _, t := range targets {
-		names = append(names, t.String())
-	}
-	sort.Strings(names)
-	fmt.Printf("[OK] runtimes for %s in %s/\n", strings.Join(names, ", "), out)
 	return 0
 }

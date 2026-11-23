@@ -143,6 +143,34 @@ func (c *Checker) Errors() []*diag.SyntaxError { return c.errors }
 // TypeOf returns the static type recorded for an expression (nil if unknown).
 func (c *Checker) TypeOf(e ast.Expression) Type { return c.types[e] }
 
+// Types returns a copy of all expression type annotations recorded during typechecking.
+func (c *Checker) Types() map[ast.Expression]Type {
+	res := make(map[ast.Expression]Type, len(c.types))
+	for k, v := range c.types {
+		res[k] = v
+	}
+	return res
+}
+
+// Result bundles the AST typechecking results.
+type Result struct {
+	Checker *Checker
+	Types   map[ast.Expression]Type
+	Errors  []*diag.SyntaxError
+}
+
+// CheckProgram parses (if needed via caller) and typechecks prog, returning Result.
+func CheckProgram(prog *ast.Program, filename, source string) (*Result, []*diag.SyntaxError) {
+	checker := NewChecker(filename, source)
+	errs := checker.Check(prog)
+	res := &Result{
+		Checker: checker,
+		Types:   checker.types,
+		Errors:  errs,
+	}
+	return res, errs
+}
+
 func (c *Checker) addError(tok token.Token, msg, suggestion string) {
 	length := len(tok.Literal)
 	if length <= 0 {
