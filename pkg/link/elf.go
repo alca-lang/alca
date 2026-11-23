@@ -56,6 +56,9 @@ func LinkELF(art *amd64.CompiledArtifact, outputPath string) error {
 	asm.EmitUint32(12)                    // sys_brk
 	asm.EmitBytes(0x0F, 0x05)             // syscall
 
+	// xor r14, r14 (clear lastErr)
+	asm.EmitBytes(0x4D, 0x31, 0xF6)
+
 	asm.EmitByte(0xE8) // call main
 	callMainPatch := asm.CodeLen()
 	asm.EmitUint32(0)

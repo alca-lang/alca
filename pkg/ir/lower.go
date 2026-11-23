@@ -17,6 +17,7 @@ func Lower(prog *ast.Program, typeInfo *typecheck.Result) (*Program, error) {
 		irProg:        &Program{},
 		functions:     make(map[string]*Function),
 		structLayouts: make(map[string]*structLayout),
+		enums:         make(map[string]map[string]int64),
 	}
 	return builder.lowerProgram(prog)
 }
@@ -35,10 +36,12 @@ type loweringContext struct {
 	irProg        *Program
 	functions     map[string]*Function
 	structLayouts map[string]*structLayout
+	enums         map[string]map[string]int64 // enumName -> variantName -> tag
 
 	currentFn    *Function
 	currentBlock *Block
 	locals       map[string]VReg
+	tmpCounter   int
 
 	// Loops for break/continue
 	loopContinue []*Block
@@ -132,8 +135,31 @@ func (l *loweringContext) lowerProgram(prog *ast.Program) (*Program, error) {
 }
 
 func (l *loweringContext) buildLayouts(prog *ast.Program) error {
+	// Register built-in error struct layout: code: i64 (off 0), msg: ptr (off 8)
+	errLayout := &structLayout{
+		name:       "error",
+		isClass:    false,
+		fields:     map[string]int64{"code": 0, "msg": 8, "message": 8},
+		fieldTypes: map[string]Type{"code": TypeI64, "msg": TypePtr, "message": TypePtr},
+		totalSize:  16,
+	}
+	l.structLayouts["error"] = errLayout
+
 	for _, stmt := range prog.Statements {
 		switch s := stmt.(type) {
+		case *ast.EnumDeclaration:
+			variants := make(map[string]int64)
+			for idx, v := range s.Variants {
+				var tag int64 = int64(idx)
+				if v.Value != nil {
+					if intVal, ok := v.Value.(*ast.IntegerLiteral); ok {
+						tag = intVal.Value
+					}
+				}
+				variants[v.Name] = tag
+			}
+			l.enums[s.Name] = variants
+
 		case *ast.StructDeclaration:
 			layout := &structLayout{
 				name:       s.Name,
@@ -331,6 +357,30 @@ func (l *loweringContext) typeToIR(t typecheck.Type) Type {
 func (l *loweringContext) lowerStatement(stmt ast.Statement) error {
 	switch s := stmt.(type) {
 	case *ast.VarDeclaration:
+		if se, ok := s.Value.(*ast.StreamExpression); ok && (se.Operator == ">>>" || se.Operator == "?>>>") {
+			// e.g. res := validate(-10) ?>>> e
+			valReg, err := l.lowerExpression(se.Source)
+			if err != nil {
+				return err
+			}
+			if targetIdent, ok := se.Target.(*ast.Identifier); ok {
+				tReg, exists := l.locals[targetIdent.Value]
+				if !exists {
+					tReg = l.currentFn.NewVReg(TypePtr)
+					l.locals[targetIdent.Value] = tReg
+				}
+				if se.Operator == "?>>>" {
+					l.emit(&Instruction{Op: OpGetErr, Dst: tReg})
+				} else {
+					l.emit(&Instruction{Op: OpCopy, Dst: tReg, Src1: valReg})
+				}
+			}
+			localReg := l.currentFn.NewVReg(valReg.Type)
+			l.emit(&Instruction{Op: OpCopy, Dst: localReg, Src1: valReg})
+			l.locals[s.Name.Value] = localReg
+			return nil
+		}
+
 		valReg, err := l.lowerExpression(s.Value)
 		if err != nil {
 			return err
@@ -353,6 +403,9 @@ func (l *loweringContext) lowerStatement(stmt ast.Statement) error {
 		return nil
 
 	case *ast.ExpressionStatement:
+		if se, ok := s.Expression.(*ast.StreamExpression); ok && (se.Operator == ">>>" || se.Operator == "?>>>") {
+			return l.lowerStreamCapture(se)
+		}
 		_, err := l.lowerExpression(s.Expression)
 		return err
 
@@ -390,6 +443,9 @@ func (l *loweringContext) lowerStatement(stmt ast.Statement) error {
 	case *ast.ForStatement:
 		return l.lowerForStatement(s)
 
+	case *ast.MatchStatement:
+		return l.lowerMatchStatement(s)
+
 	case *ast.BreakStatement:
 		if len(l.loopBreak) == 0 {
 			return fmt.Errorf("break outside of loop")
@@ -408,9 +464,71 @@ func (l *loweringContext) lowerStatement(stmt ast.Statement) error {
 		l.currentBlock = l.currentFn.NewBlock("after_continue")
 		return nil
 
+	case *ast.EnumDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration:
+		// Already processed in buildLayouts and declarations pass
+		return nil
+
 	default:
 		return fmt.Errorf("statement %T not supported yet in native backend", stmt)
 	}
+}
+
+func (l *loweringContext) lowerStreamCapture(se *ast.StreamExpression) error {
+	id, ok := se.Target.(*ast.Identifier)
+	if !ok {
+		return fmt.Errorf("capture stream target must be variable identifier")
+	}
+
+	resReg, err := l.lowerExpression(se.Source)
+	if err != nil {
+		return err
+	}
+
+	if se.Operator == ">>>" {
+		targetReg, exists := l.locals[id.Value]
+		if !exists {
+			targetReg = l.currentFn.NewVReg(resReg.Type)
+			l.locals[id.Value] = targetReg
+		}
+		l.emit(&Instruction{Op: OpCopy, Dst: targetReg, Src1: resReg})
+		return nil
+	}
+
+	// Operator is "?>>>" (error capture)
+	targetReg, exists := l.locals[id.Value]
+	if !exists {
+		targetReg = l.currentFn.NewVReg(TypePtr)
+		l.locals[id.Value] = targetReg
+	}
+	l.emit(&Instruction{Op: OpGetErr, Dst: targetReg})
+	return nil
+}
+
+func (l *loweringContext) lowerMatchStatement(s *ast.MatchStatement) error {
+	l.tmpCounter++
+	tmpName := fmt.Sprintf("@match_%d", l.tmpCounter)
+	tmpIdent := &ast.Identifier{Token: s.Token, Value: tmpName}
+	decl := &ast.VarDeclaration{Token: s.Token, Name: tmpIdent, Value: s.Subject}
+	if err := l.lowerStatement(decl); err != nil {
+		return err
+	}
+
+	var chain *ast.IfStatement
+	for i, cs := range s.Cases {
+		cond := &ast.InfixExpression{Token: cs.Token, Left: tmpIdent, Operator: "==", Right: cs.Pattern}
+		if i == 0 {
+			chain = &ast.IfStatement{Token: s.Token, Condition: cond, Consequence: cs.Body, ElseBlock: s.Default}
+		} else {
+			chain.Alternatives = append(chain.Alternatives, &ast.ElifClause{Token: cs.Token, Condition: cond, Body: cs.Body})
+		}
+	}
+
+	if chain != nil {
+		return l.lowerIfStatement(chain)
+	} else if s.Default != nil {
+		return l.lowerStatement(s.Default)
+	}
+	return nil
 }
 
 func (l *loweringContext) lowerIfStatement(s *ast.IfStatement) error {
@@ -439,7 +557,19 @@ func (l *loweringContext) lowerIfStatement(s *ast.IfStatement) error {
 	}
 
 	l.currentBlock = elseBlock
-	if s.ElseBlock != nil {
+	if len(s.Alternatives) > 0 {
+		// Desugar elif into nested IfStatement in elseBlock
+		nestedIf := &ast.IfStatement{
+			Token:        s.Alternatives[0].Token,
+			Condition:    s.Alternatives[0].Condition,
+			Consequence:  s.Alternatives[0].Body,
+			Alternatives: s.Alternatives[1:],
+			ElseBlock:    s.ElseBlock,
+		}
+		if err := l.lowerIfStatement(nestedIf); err != nil {
+			return err
+		}
+	} else if s.ElseBlock != nil {
 		if err := l.lowerStatement(s.ElseBlock); err != nil {
 			return err
 		}
@@ -629,6 +759,11 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 		l.emit(&Instruction{Op: OpConstInt, Dst: dst, IntVal: expr.Value})
 		return dst, nil
 
+	case *ast.NullLiteral:
+		dst := l.currentFn.NewVReg(TypePtr)
+		l.emit(&Instruction{Op: OpConstInt, Dst: dst, IntVal: 0})
+		return dst, nil
+
 	case *ast.StringLiteral:
 		dst := l.currentFn.NewVReg(TypePtr)
 		l.emit(&Instruction{Op: OpConstStr, Dst: dst, StrVal: expr.Value})
@@ -692,6 +827,50 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 		l.emit(&Instruction{Op: OpStore, Src1: listHdr, IntVal: 16, Src2: capReg})
 		return listHdr, nil
 
+	case *ast.MapLiteral:
+		// Map layout: header (24 bytes: buckets_ptr, len, cap)
+		// Each bucket is 16 bytes: key (8 bytes), val (8 bytes)
+		n := int64(len(expr.Pairs))
+		capVal := n
+		if capVal < 4 {
+			capVal = 4
+		}
+		// Allocate buckets: capVal * 16 bytes
+		bucketsBytes := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: bucketsBytes, IntVal: capVal * 16})
+		bucketsPtr := l.currentFn.NewVReg(TypePtr)
+		l.emit(&Instruction{Op: OpAlloc, Dst: bucketsPtr, Src1: bucketsBytes})
+
+		// Store initial pairs
+		for i, p := range expr.Pairs {
+			kReg, err := l.lowerExpression(p.Key)
+			if err != nil {
+				return VReg{}, err
+			}
+			vReg, err := l.lowerExpression(p.Value)
+			if err != nil {
+				return VReg{}, err
+			}
+			l.emit(&Instruction{Op: OpStore, Src1: bucketsPtr, IntVal: int64(i*16), Src2: kReg})
+			l.emit(&Instruction{Op: OpStore, Src1: bucketsPtr, IntVal: int64(i*16 + 8), Src2: vReg})
+		}
+
+		// Allocate map header (24 bytes: buckets_ptr, len, cap)
+		mapHdrSize := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: mapHdrSize, IntVal: 24})
+		mapHdr := l.currentFn.NewVReg(TypePtr)
+		l.emit(&Instruction{Op: OpAlloc, Dst: mapHdr, Src1: mapHdrSize})
+
+		lenReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: lenReg, IntVal: n})
+		capReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: capReg, IntVal: capVal})
+
+		l.emit(&Instruction{Op: OpStore, Src1: mapHdr, IntVal: 0, Src2: bucketsPtr})
+		l.emit(&Instruction{Op: OpStore, Src1: mapHdr, IntVal: 8, Src2: lenReg})
+		l.emit(&Instruction{Op: OpStore, Src1: mapHdr, IntVal: 16, Src2: capReg})
+		return mapHdr, nil
+
 	case *ast.IndexExpression:
 		leftReg, err := l.lowerExpression(expr.Left)
 		if err != nil {
@@ -702,6 +881,15 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 			return VReg{}, err
 		}
 
+		isMap := false
+		if l.typeInfo != nil && l.typeInfo.Types != nil {
+			if t, ok := l.typeInfo.Types[expr.Left]; ok {
+				if _, okMap := t.(*typecheck.MapType); okMap {
+					isMap = true
+				}
+			}
+		}
+
 		elemIRType := TypeI64
 		if l.typeInfo != nil && l.typeInfo.Types != nil {
 			if t, ok := l.typeInfo.Types[expr]; ok {
@@ -709,6 +897,67 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 			}
 		}
 
+		if isMap {
+			// Linear probe lookup in map buckets
+			// map header: [0] = buckets_ptr, [8] = len, [16] = cap
+			bucketsPtr := l.currentFn.NewVReg(TypePtr)
+			l.emit(&Instruction{Op: OpLoad, Dst: bucketsPtr, Src1: leftReg, IntVal: 0})
+			mapLen := l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpLoad, Dst: mapLen, Src1: leftReg, IntVal: 8})
+
+			loopIdx := l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpConstInt, Dst: loopIdx, IntVal: 0})
+
+			resVal := l.currentFn.NewVReg(elemIRType)
+			l.emit(&Instruction{Op: OpConstInt, Dst: resVal, IntVal: 0})
+
+			condBlock := l.currentFn.NewBlock("map_lookup_cond")
+			bodyBlock := l.currentFn.NewBlock("map_lookup_body")
+			stepBlock := l.currentFn.NewBlock("map_lookup_step")
+			afterBlock := l.currentFn.NewBlock("map_lookup_after")
+
+			l.emit(&Instruction{Op: OpJmp, Target: condBlock})
+
+			l.currentBlock = condBlock
+			cmpLt := l.currentFn.NewVReg(TypeI8)
+			l.emit(&Instruction{Op: OpLt, Dst: cmpLt, Src1: loopIdx, Src2: mapLen})
+			l.emit(&Instruction{Op: OpBranch, Src1: cmpLt, Target: bodyBlock, ElseTgt: afterBlock})
+
+			l.currentBlock = bodyBlock
+			// bucket addr = bucketsPtr + loopIdx * 16
+			sixteen := l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpConstInt, Dst: sixteen, IntVal: 16})
+			bOff := l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpMul, Dst: bOff, Src1: loopIdx, Src2: sixteen})
+			bAddr := l.currentFn.NewVReg(TypePtr)
+			l.emit(&Instruction{Op: OpAdd, Dst: bAddr, Src1: bucketsPtr, Src2: bOff})
+
+			currKey := l.currentFn.NewVReg(idxReg.Type)
+			l.emit(&Instruction{Op: OpLoad, Dst: currKey, Src1: bAddr, IntVal: 0})
+
+			keyMatch := l.currentFn.NewVReg(TypeI8)
+			l.emit(&Instruction{Op: OpEq, Dst: keyMatch, Src1: currKey, Src2: idxReg})
+
+			foundBlock := l.currentFn.NewBlock("map_lookup_found")
+			l.emit(&Instruction{Op: OpBranch, Src1: keyMatch, Target: foundBlock, ElseTgt: stepBlock})
+
+			l.currentBlock = foundBlock
+			l.emit(&Instruction{Op: OpLoad, Dst: resVal, Src1: bAddr, IntVal: 8})
+			l.emit(&Instruction{Op: OpJmp, Target: afterBlock})
+
+			l.currentBlock = stepBlock
+			one := l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpConstInt, Dst: one, IntVal: 1})
+			nextIdx := l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpAdd, Dst: nextIdx, Src1: loopIdx, Src2: one})
+			l.emit(&Instruction{Op: OpCopy, Dst: loopIdx, Src1: nextIdx})
+			l.emit(&Instruction{Op: OpJmp, Target: condBlock})
+
+			l.currentBlock = afterBlock
+			return resVal, nil
+		}
+
+		// List indexing
 		// Read dataPtr = load leftReg[0]
 		dataPtr := l.currentFn.NewVReg(TypePtr)
 		l.emit(&Instruction{Op: OpLoad, Dst: dataPtr, Src1: leftReg, IntVal: 0})
@@ -725,6 +974,17 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 		return resReg, nil
 
 	case *ast.DotExpression:
+		// Check if expr.Left is an enum identifier (e.g. Color.Red)
+		if ident, ok := expr.Left.(*ast.Identifier); ok {
+			if variants, isEnum := l.enums[ident.Value]; isEnum {
+				if tag, hasVariant := variants[expr.Field]; hasVariant {
+					dst := l.currentFn.NewVReg(TypeI64)
+					l.emit(&Instruction{Op: OpConstInt, Dst: dst, IntVal: tag})
+					return dst, nil
+				}
+			}
+		}
+
 		leftReg, err := l.lowerExpression(expr.Left)
 		if err != nil {
 			return VReg{}, err
@@ -824,6 +1084,89 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 			if err != nil {
 				return VReg{}, err
 			}
+
+			isMap := false
+			if l.typeInfo != nil && l.typeInfo.Types != nil {
+				if t, ok := l.typeInfo.Types[tgt.Left]; ok {
+					if _, okMap := t.(*typecheck.MapType); okMap {
+						isMap = true
+					}
+				}
+			}
+
+			if isMap {
+				// Map assignment: if key exists in [0..len), update bucket[8].
+				// Else append at bucket[len]: store key at [len*16], val at [len*16+8], len++
+				bucketsPtr := l.currentFn.NewVReg(TypePtr)
+				l.emit(&Instruction{Op: OpLoad, Dst: bucketsPtr, Src1: collReg, IntVal: 0})
+				mapLen := l.currentFn.NewVReg(TypeI64)
+				l.emit(&Instruction{Op: OpLoad, Dst: mapLen, Src1: collReg, IntVal: 8})
+
+				loopIdx := l.currentFn.NewVReg(TypeI64)
+				l.emit(&Instruction{Op: OpConstInt, Dst: loopIdx, IntVal: 0})
+
+				condBlock := l.currentFn.NewBlock("map_store_cond")
+				bodyBlock := l.currentFn.NewBlock("map_store_body")
+				stepBlock := l.currentFn.NewBlock("map_store_step")
+				appendBlock := l.currentFn.NewBlock("map_store_append")
+				doneBlock := l.currentFn.NewBlock("map_store_done")
+
+				l.emit(&Instruction{Op: OpJmp, Target: condBlock})
+
+				l.currentBlock = condBlock
+				cmpLt := l.currentFn.NewVReg(TypeI8)
+				l.emit(&Instruction{Op: OpLt, Dst: cmpLt, Src1: loopIdx, Src2: mapLen})
+				l.emit(&Instruction{Op: OpBranch, Src1: cmpLt, Target: bodyBlock, ElseTgt: appendBlock})
+
+				l.currentBlock = bodyBlock
+				sixteen := l.currentFn.NewVReg(TypeI64)
+				l.emit(&Instruction{Op: OpConstInt, Dst: sixteen, IntVal: 16})
+				bOff := l.currentFn.NewVReg(TypeI64)
+				l.emit(&Instruction{Op: OpMul, Dst: bOff, Src1: loopIdx, Src2: sixteen})
+				bAddr := l.currentFn.NewVReg(TypePtr)
+				l.emit(&Instruction{Op: OpAdd, Dst: bAddr, Src1: bucketsPtr, Src2: bOff})
+
+				currKey := l.currentFn.NewVReg(idxReg.Type)
+				l.emit(&Instruction{Op: OpLoad, Dst: currKey, Src1: bAddr, IntVal: 0})
+
+				keyMatch := l.currentFn.NewVReg(TypeI8)
+				l.emit(&Instruction{Op: OpEq, Dst: keyMatch, Src1: currKey, Src2: idxReg})
+
+				foundBlock := l.currentFn.NewBlock("map_store_found")
+				l.emit(&Instruction{Op: OpBranch, Src1: keyMatch, Target: foundBlock, ElseTgt: stepBlock})
+
+				l.currentBlock = foundBlock
+				l.emit(&Instruction{Op: OpStore, Src1: bAddr, IntVal: 8, Src2: valReg})
+				l.emit(&Instruction{Op: OpJmp, Target: doneBlock})
+
+				l.currentBlock = stepBlock
+				one := l.currentFn.NewVReg(TypeI64)
+				l.emit(&Instruction{Op: OpConstInt, Dst: one, IntVal: 1})
+				nextIdx := l.currentFn.NewVReg(TypeI64)
+				l.emit(&Instruction{Op: OpAdd, Dst: nextIdx, Src1: loopIdx, Src2: one})
+				l.emit(&Instruction{Op: OpCopy, Dst: loopIdx, Src1: nextIdx})
+				l.emit(&Instruction{Op: OpJmp, Target: condBlock})
+
+				l.currentBlock = appendBlock
+				// bucket addr = bucketsPtr + mapLen * 16
+				appBOff := l.currentFn.NewVReg(TypeI64)
+				l.emit(&Instruction{Op: OpMul, Dst: appBOff, Src1: mapLen, Src2: sixteen})
+				appBAddr := l.currentFn.NewVReg(TypePtr)
+				l.emit(&Instruction{Op: OpAdd, Dst: appBAddr, Src1: bucketsPtr, Src2: appBOff})
+
+				l.emit(&Instruction{Op: OpStore, Src1: appBAddr, IntVal: 0, Src2: idxReg})
+				l.emit(&Instruction{Op: OpStore, Src1: appBAddr, IntVal: 8, Src2: valReg})
+
+				newLen := l.currentFn.NewVReg(TypeI64)
+				l.emit(&Instruction{Op: OpAdd, Dst: newLen, Src1: mapLen, Src2: one})
+				l.emit(&Instruction{Op: OpStore, Src1: collReg, IntVal: 8, Src2: newLen})
+				l.emit(&Instruction{Op: OpJmp, Target: doneBlock})
+
+				l.currentBlock = doneBlock
+				return valReg, nil
+			}
+
+			// List store
 			dataPtr := l.currentFn.NewVReg(TypePtr)
 			l.emit(&Instruction{Op: OpLoad, Dst: dataPtr, Src1: collReg, IntVal: 0})
 			scaleReg := l.currentFn.NewVReg(TypeI64)
@@ -1036,12 +1379,14 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 
 		// Built-in: len(x)
 		if fnName == "len" && len(args) == 1 {
-			// Length is at offset 0 for string, offset 8 for list
+			// Length is at offset 0 for string, offset 8 for list and map
 			argExpr := expr.Arguments[0]
 			offset := int64(0) // default string len
 			if l.typeInfo != nil && l.typeInfo.Types != nil {
 				if t, ok := l.typeInfo.Types[argExpr]; ok {
 					if _, isList := t.(*typecheck.ListType); isList {
+						offset = 8
+					} else if _, isMap := t.(*typecheck.MapType); isMap {
 						offset = 8
 					}
 				}
@@ -1080,6 +1425,46 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 			Args:     args,
 		})
 		return dst, nil
+
+	case *ast.ErrExpression:
+		// Build error struct on heap: layout (code: i64, msg: ptr)
+		// err(message, code)
+		var msgReg VReg
+		if expr.Message != nil {
+			mr, err := l.lowerExpression(expr.Message)
+			if err != nil {
+				return VReg{}, err
+			}
+			msgReg = mr
+		} else {
+			msgReg = l.currentFn.NewVReg(TypePtr)
+			l.emit(&Instruction{Op: OpConstStr, Dst: msgReg, StrVal: "error"})
+		}
+
+		var codeReg VReg
+		if expr.Code != nil {
+			cr, err := l.lowerExpression(expr.Code)
+			if err != nil {
+				return VReg{}, err
+			}
+			codeReg = cr
+		} else {
+			codeReg = l.currentFn.NewVReg(TypeI64)
+			l.emit(&Instruction{Op: OpConstInt, Dst: codeReg, IntVal: 500})
+		}
+
+		errObj := l.currentFn.NewVReg(TypePtr)
+		sizeReg := l.currentFn.NewVReg(TypeI64)
+		l.emit(&Instruction{Op: OpConstInt, Dst: sizeReg, IntVal: 16})
+		l.emit(&Instruction{Op: OpAlloc, Dst: errObj, Src1: sizeReg})
+
+		// fields: code at 0, msg at 8
+		l.emit(&Instruction{Op: OpStore, Src1: errObj, IntVal: 0, Src2: codeReg})
+		l.emit(&Instruction{Op: OpStore, Src1: errObj, IntVal: 8, Src2: msgReg})
+
+		// Set global error slot
+		l.emit(&Instruction{Op: OpSetErr, Src1: errObj})
+		return errObj, nil
 
 	default:
 		return VReg{}, fmt.Errorf("expression %T not supported in native backend yet", e)

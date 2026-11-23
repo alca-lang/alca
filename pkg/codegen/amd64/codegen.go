@@ -398,6 +398,16 @@ func (g *CodeGenerator) emitInstruction(ctx *funcContext, inst *ir.Instruction) 
 	case ir.OpCallPtr:
 		return g.emitCallPtr(ctx, inst)
 
+	case ir.OpSetErr:
+		// mov r14, [rbp - disp]
+		srcDisp := -ctx.slotOffsets[inst.Src1.ID]
+		g.asm.MovRegMem(jit.R14, jit.RBP, srcDisp)
+
+	case ir.OpGetErr:
+		// mov [rbp - disp], r14
+		dstDisp := -ctx.slotOffsets[inst.Dst.ID]
+		g.asm.MovMemReg(jit.RBP, dstDisp, jit.R14)
+
 	case ir.OpRet:
 		if inst.Src1.Type != ir.TypeVoid && inst.Src1.ID >= 0 {
 			srcDisp := -ctx.slotOffsets[inst.Src1.ID]

@@ -151,6 +151,74 @@ println(c.bump())
 println(c.count)
 `,
 		},
+		{
+			name: "enums_and_match",
+			src: `
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+c := Color.Green
+match c {
+    case Color.Red {
+        println(1)
+    }
+    case Color.Green {
+        println(2)
+    }
+    else {
+        println(3)
+    }
+}
+`,
+		},
+		{
+			name: "null_and_nullable",
+			src: `
+struct Box {
+    val: int
+}
+b: Box | null = null
+if b == null {
+    println("is null")
+}
+b = Box(77)
+if b != null {
+    println(b.val)
+}
+`,
+		},
+		{
+			name: "error_instantiation_and_stream_capture",
+			src: `
+func validate(val: int) -> int {
+    if val < 0 {
+        err("invalid number", code=422)
+        return 0
+    }
+    return val * 2
+}
+e: error | null = null
+res := validate(-10) ?>>> e
+if e != null {
+    println(e.code)
+    println(e.msg)
+}
+`,
+		},
+		{
+			name: "map_operations",
+			src: `
+m: map[string, int] = {"alpha": 10, "beta": 20}
+println(len(m))
+println(m["alpha"])
+println(m["beta"])
+m["gamma"] = 30
+println(len(m))
+println(m["gamma"])
+`,
+		},
 	}
 
 	for _, tt := range tests {

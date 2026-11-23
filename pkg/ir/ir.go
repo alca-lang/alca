@@ -88,6 +88,9 @@ const (
 	OpLoad
 	OpStore
 	OpCallPtr
+	// Error handling (Stage 5)
+	OpSetErr
+	OpGetErr
 )
 
 func (o Op) String() string {
@@ -118,6 +121,10 @@ func (o Op) String() string {
 		return "store"
 	case OpCallPtr:
 		return "call_ptr"
+	case OpSetErr:
+		return "set_err"
+	case OpGetErr:
+		return "get_err"
 	case OpCopy:
 		return "copy"
 	case OpAdd:
@@ -230,6 +237,10 @@ func (inst *Instruction) String() string {
 			return fmt.Sprintf("  %s = call_ptr %s(%s)", inst.Dst, inst.Src1, strings.Join(args, ", "))
 		}
 		return fmt.Sprintf("  call_ptr %s(%s)", inst.Src1, strings.Join(args, ", "))
+	case OpSetErr:
+		return fmt.Sprintf("  set_err %s", inst.Src1)
+	case OpGetErr:
+		return fmt.Sprintf("  %s = get_err", inst.Dst)
 	case OpRet:
 		if inst.Src1.Type != TypeVoid {
 			return fmt.Sprintf("  ret %s", inst.Src1)

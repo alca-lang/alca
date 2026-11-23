@@ -68,6 +68,10 @@ func LinkPE(art *amd64.CompiledArtifact, outputPath string, noConsole bool) erro
 	text.Write([]byte{0x48, 0x89, 0x05})
 	_ = binary.Write(text, binary.LittleEndian, dispAllocPtr)
 
+	// xor r14, r14 (clear lastErr)
+	// 4D 31 F6: xor r14, r14
+	text.Write([]byte{0x4D, 0x31, 0xF6})
+
 	// call main (rel32)
 	text.WriteByte(0xE8)
 	callMainPatch := text.Len()
