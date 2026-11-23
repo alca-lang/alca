@@ -89,9 +89,8 @@ func crypto_probe() {
     println(crypto.hmac_sha256("key", "data"))
     println(crypto.constant_time_equal("abc", "abc"))
     println(crypto.constant_time_equal("abc", "abd"))
-    println(crypto.aes_decrypt("
+    println(crypto.aes_decrypt("` + ciphertextKey + `", "` + ciphertextValue + `"))
 }
-` + ciphertextKey + `", "` + ciphertextValue + `"))
 crypto_probe()
 `,
 			want: []string{
@@ -519,12 +518,11 @@ use std.io
 use std.csv
 use std.path
 func host_probe() {
-    println(io.read_file("
-}
-` + textPath + `"))
+    println(io.read_file("` + textPath + `"))
     rows := csv.read("` + csvPath + `")
     println(rows[0]["a"])
     println(path.base("` + csvPath + `"))
+}
 host_probe()
 `
 	for _, mode := range stdlibDiffModes() {
