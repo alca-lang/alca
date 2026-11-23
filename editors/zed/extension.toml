@@ -1,0 +1,11 @@
+id = "pawl-icons"
+name = "Pawl Icons"
+version = "1.0.0"
+schema_version = 1
+description = "Official Pawl file icons for Zed Editor."
+repository = "https://github.com/pawl-lang/pawl"
+authors = ["Pawl Team <pawl@example.com>"]
+themes = []
+icon_themes = [
+    "icon_themes/pawl.json"
+]

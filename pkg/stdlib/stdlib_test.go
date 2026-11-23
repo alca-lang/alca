@@ -1,0 +1,1567 @@
+// Copyright 2026 Pawl Programming Language
+// SPDX-License-Identifier: Apache-2.0
+
+package stdlib_test
+
+import (
+	"fmt"
+	"math"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/pawl-lang/pawl/pkg/interpreter"
+	"github.com/pawl-lang/pawl/pkg/sandbox"
+	"github.com/pawl-lang/pawl/pkg/stdlib"
+)
+
+func TestTimeModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterTimeBuiltins(env)
+
+	val, ok := env.Get("time")
+	if !ok {
+		t.Fatalf("expected 'time' module to be registered")
+	}
+	m, ok := val.(*interpreter.MapValue)
+	if !ok {
+		t.Fatalf("expected 'time' to be *MapValue, got %T", val)
+	}
+
+	// now
+	nowFn, _ := m.Get("now")
+	nowVal := nowFn.(*interpreter.BuiltinFunction).Fn()
+	sec := nowVal.(*interpreter.IntegerValue).Val
+	if sec <= 0 {
+		t.Errorf("expected positive timestamp, got %d", sec)
+	}
+
+	// now_ms
+	nowMsFn, _ := m.Get("now_ms")
+	nowMsVal := nowMsFn.(*interpreter.BuiltinFunction).Fn()
+	ms := nowMsVal.(*interpreter.IntegerValue).Val
+	if ms < sec*1000 {
+		t.Errorf("expected ms >= sec*1000, got %d vs %d", ms, sec)
+	}
+
+	// now_str
+	nowStrFn, _ := m.Get("now_str")
+	sVal := nowStrFn.(*interpreter.BuiltinFunction).Fn()
+	s := sVal.(*interpreter.StringValue).Val
+	if len(s) < 10 || !strings.Contains(s, "-") {
+		t.Errorf("expected date string, got %q", s)
+	}
+
+	// format and parse
+	fmtFn, _ := m.Get("format")
+	formatted := fmtFn.(*interpreter.BuiltinFunction).Fn(nowVal, &interpreter.StringValue{Val: "YYYY-MM-DD"})
+	dateStr := formatted.(*interpreter.StringValue).Val
+	if len(dateStr) != 10 {
+		t.Errorf("expected YYYY-MM-DD date, got %q", dateStr)
+	}
+
+	parseFn, _ := m.Get("parse")
+	parsed := parseFn.(*interpreter.BuiltinFunction).Fn(formatted, &interpreter.StringValue{Val: "YYYY-MM-DD"})
+	if _, ok := parsed.(*interpreter.IntegerValue); !ok {
+		t.Errorf("expected integer timestamp from parse, got %v", parsed)
+	}
+
+	// date
+	dateFn, _ := m.Get("date")
+	dMap := dateFn.(*interpreter.BuiltinFunction).Fn(nowVal).(*interpreter.MapValue)
+	yearVal, _ := dMap.Get("year")
+	if yearVal.(*interpreter.IntegerValue).Val < 2024 {
+		t.Errorf("unexpected year %v", yearVal)
+	}
+
+	// diff
+	diffFn, _ := m.Get("diff")
+	diffVal := diffFn.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 100}, &interpreter.IntegerValue{Val: 40})
+	if diffVal.(*interpreter.FloatValue).Val != 60.0 {
+		t.Errorf("expected diff 60, got %v", diffVal)
+	}
+}
+
+func TestPathModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterPathBuiltins(env)
+
+	val, ok := env.Get("path")
+	if !ok {
+		t.Fatalf("expected 'path' module to be registered")
+	}
+	m := val.(*interpreter.MapValue)
+
+	// join
+	joinFn, _ := m.Get("join")
+	joined := joinFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "folder"},
+		&interpreter.StringValue{Val: "sub"},
+		&interpreter.StringValue{Val: "file.al"},
+	).(*interpreter.StringValue).Val
+	if !strings.Contains(joined, "folder") || !strings.Contains(joined, "file.al") {
+		t.Errorf("unexpected join result: %q", joined)
+	}
+
+	// base, dir, ext, stem
+	baseFn, _ := m.Get("base")
+	base := baseFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: joined}).(*interpreter.StringValue).Val
+	if base != "file.al" {
+		t.Errorf("expected base 'file.al', got %q", base)
+	}
+
+	dirFn, _ := m.Get("dir")
+	dir := dirFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: joined}).(*interpreter.StringValue).Val
+	if !strings.Contains(dir, "folder") {
+		t.Errorf("expected dir containing 'folder', got %q", dir)
+	}
+
+	extFn, _ := m.Get("ext")
+	ext := extFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: joined}).(*interpreter.StringValue).Val
+	if ext != ".al" {
+		t.Errorf("expected ext '.al', got %q", ext)
+	}
+
+	stemFn, _ := m.Get("stem")
+	stem := stemFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: joined}).(*interpreter.StringValue).Val
+	if stem != "file" {
+		t.Errorf("expected stem 'file', got %q", stem)
+	}
+
+	// split
+	splitFn, _ := m.Get("split")
+	splitList := splitFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: joined}).(*interpreter.ListValue)
+	if len(splitList.ElementsSlice()) != 2 {
+		t.Errorf("expected 2 elements in split, got %d", len(splitList.ElementsSlice()))
+	}
+
+	// matches
+	matchFn, _ := m.Get("matches")
+	isMatch := matchFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "*.al"},
+		&interpreter.StringValue{Val: "app.al"},
+	)
+	if isMatch != interpreter.TRUE {
+		t.Errorf("expected *.al to match app.al")
+	}
+}
+
+func TestCryptoModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterCryptoBuiltins(env)
+
+	val, ok := env.Get("crypto")
+	if !ok {
+		t.Fatalf("expected 'crypto' module to be registered")
+	}
+	m := val.(*interpreter.MapValue)
+
+	// sha256
+	sha256Fn, _ := m.Get("sha256")
+	hashVal := sha256Fn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "hello pawl"}).(*interpreter.StringValue).Val
+	if len(hashVal) != 64 {
+		t.Errorf("expected 64 hex chars for sha256, got %d (%q)", len(hashVal), hashVal)
+	}
+
+	// md5
+	md5Fn, _ := m.Get("md5")
+	md5Val := md5Fn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "hello pawl"}).(*interpreter.StringValue).Val
+	if len(md5Val) != 32 {
+		t.Errorf("expected 32 hex chars for md5, got %d (%q)", len(md5Val), md5Val)
+	}
+
+	// base64 encode/decode
+	b64EncFn, _ := m.Get("base64_encode")
+	b64DecFn, _ := m.Get("base64_decode")
+	enc := b64EncFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "secret token"}).(*interpreter.StringValue).Val
+	dec := b64DecFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: enc}).(*interpreter.StringValue).Val
+	if dec != "secret token" {
+		t.Errorf("base64 roundtrip failed: got %q, expected 'secret token'", dec)
+	}
+
+	// uuid
+	uuidFn, _ := m.Get("uuid")
+	u := uuidFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.StringValue).Val
+	if len(u) != 36 || strings.Count(u, "-") != 4 {
+		t.Errorf("expected valid UUID format, got %q", u)
+	}
+
+	// random_string
+	randStrFn, _ := m.Get("random_string")
+	rnd := randStrFn.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 24}).(*interpreter.StringValue).Val
+	if len(rnd) != 24 {
+		t.Errorf("expected length 24, got %d (%q)", len(rnd), rnd)
+	}
+
+	// random_int
+	randIntFn, _ := m.Get("random_int")
+	ri := randIntFn.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 10}, &interpreter.IntegerValue{Val: 20}).(*interpreter.IntegerValue).Val
+	if ri < 10 || ri > 20 {
+		t.Errorf("expected random int in [10, 20], got %d", ri)
+	}
+}
+
+func TestPathManagement(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterEnvBuiltins(env)
+	stdlib.RegisterPathBuiltins(env)
+
+	envVal, _ := env.Get("env")
+	envModule := envVal.(*interpreter.MapValue)
+
+	pathVal, _ := env.Get("path")
+	pathModule := pathVal.(*interpreter.MapValue)
+
+	// 1. get_path
+	getPathFn, _ := envModule.Get("get_path")
+	pathsList := getPathFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
+	initialCount := len(pathsList.ElementsSlice())
+	if initialCount == 0 {
+		t.Errorf("expected non-empty PATH in test environment")
+	}
+
+	// 2. add_path
+	testDir := "C:\\pawl_dummy_test_dir_12345"
+	if stdlib.OSName() != "windows" {
+		testDir = "/tmp/pawl_dummy_test_dir_12345"
+	}
+
+	addPathFn, _ := envModule.Get("add_path")
+	addRes := addPathFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: testDir})
+	if addRes != interpreter.TRUE {
+		t.Errorf("expected add_path to return true, got %v", addRes)
+	}
+
+	// 3. has_path
+	hasPathFn, _ := envModule.Get("has_path")
+	hasRes := hasPathFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: testDir})
+	if hasRes != interpreter.TRUE {
+		t.Errorf("expected has_path to return true after adding")
+	}
+
+	// 4. prepend_path
+	prependPathFn, _ := envModule.Get("prepend_path")
+	prependRes := prependPathFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: testDir})
+	if prependRes != interpreter.TRUE {
+		t.Errorf("expected prepend_path to return true, got %v", prependRes)
+	}
+
+	updatedPaths := getPathFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
+	if len(updatedPaths.ElementsSlice()) == 0 || updatedPaths.ElementsSlice()[0].(*interpreter.StringValue).Val != testDir {
+		t.Errorf("expected prepended dir to be first in PATH, got %v", updatedPaths.ElementsSlice()[0])
+	}
+
+	// 5. remove_path
+	removePathFn, _ := envModule.Get("remove_path")
+	removeRes := removePathFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: testDir})
+	if removeRes != interpreter.TRUE {
+		t.Errorf("expected remove_path to return true, got %v", removeRes)
+	}
+
+	hasAfterRemove := hasPathFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: testDir})
+	if hasAfterRemove != interpreter.FALSE {
+		t.Errorf("expected has_path to return false after removing")
+	}
+
+	// 6. which (in env and path)
+	whichEnvFn, _ := envModule.Get("which")
+	whichPathFn, _ := pathModule.Get("which")
+
+	targetBin := "go"
+	whichRes := whichEnvFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: targetBin})
+	if whichRes == interpreter.NULL {
+		t.Errorf("expected to find binary %q in PATH", targetBin)
+	}
+	whichPathRes := whichPathFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: targetBin})
+	if whichPathRes == interpreter.NULL || whichPathRes.(*interpreter.StringValue).Val != whichRes.(*interpreter.StringValue).Val {
+		t.Errorf("path.which should match env.which: %v vs %v", whichPathRes, whichRes)
+	}
+
+	// 7. list_sep, split_list, join_list
+	listSepFn, _ := pathModule.Get("list_sep")
+	sep := listSepFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.StringValue).Val
+	if sep != ";" && sep != ":" {
+		t.Errorf("expected list separator to be ';' or ':', got %q", sep)
+	}
+
+	splitListFn, _ := pathModule.Get("split_list")
+	joinListFn, _ := pathModule.Get("join_list")
+
+	sampleJoined := "foo" + sep + "bar" + sep + "baz"
+	splitRes := splitListFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: sampleJoined}).(*interpreter.ListValue)
+	if len(splitRes.ElementsSlice()) != 3 {
+		t.Errorf("expected 3 split items, got %d", len(splitRes.ElementsSlice()))
+	}
+
+	joinedRes := joinListFn.(*interpreter.BuiltinFunction).Fn(splitRes).(*interpreter.StringValue).Val
+	if joinedRes != sampleJoined {
+		t.Errorf("expected joined %q, got %q", sampleJoined, joinedRes)
+	}
+
+	// 8. get_user_path
+	getUserPathFn, _ := envModule.Get("get_user_path")
+	userPaths := getUserPathFn.(*interpreter.BuiltinFunction).Fn()
+	if userPaths.Type() != interpreter.LIST_VAL {
+		t.Errorf("expected get_user_path to return LIST, got %s", userPaths.Type())
+	}
+}
+
+func TestRegexModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterRegexBuiltins(env)
+
+	val, _ := env.Get("re")
+	m := val.(*interpreter.MapValue)
+
+	// match
+	matchFn, _ := m.Get("match")
+	isMatch := matchFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: `^\d{3}-\d{2}$`},
+		&interpreter.StringValue{Val: "123-45"},
+	)
+	if isMatch != interpreter.TRUE {
+		t.Errorf("expected match to return true")
+	}
+
+	// find
+	findFn, _ := m.Get("find")
+	found := findFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: `\b[A-Z]+\b`},
+		&interpreter.StringValue{Val: "hello PAWL world"},
+	).(*interpreter.StringValue).Val
+	if found != "PAWL" {
+		t.Errorf("expected 'PAWL', got %q", found)
+	}
+
+	// find_groups
+	findGroupsFn, _ := m.Get("find_groups")
+	groups := findGroupsFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: `(\w+)@(\w+\.\w+)`},
+		&interpreter.StringValue{Val: "contact admin@pawl.dev for info"},
+	).(*interpreter.ListValue)
+	if len(groups.ElementsSlice()) != 3 {
+		t.Fatalf("expected 3 elements in groups, got %d", len(groups.ElementsSlice()))
+	}
+	if groups.ElementsSlice()[1].(*interpreter.StringValue).Val != "admin" {
+		t.Errorf("expected group 1 to be 'admin', got %v", groups.ElementsSlice()[1])
+	}
+	if groups.ElementsSlice()[2].(*interpreter.StringValue).Val != "pawl.dev" {
+		t.Errorf("expected group 2 to be 'pawl.dev', got %v", groups.ElementsSlice()[2])
+	}
+
+	// replace
+	replaceFn, _ := m.Get("replace")
+	rep := replaceFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: `\s+`},
+		&interpreter.StringValue{Val: "_"},
+		&interpreter.StringValue{Val: "pawl   lang   dev"},
+	).(*interpreter.StringValue).Val
+	if rep != "pawl_lang_dev" {
+		t.Errorf("expected 'pawl_lang_dev', got %q", rep)
+	}
+
+	// split
+	splitFn, _ := m.Get("split")
+	sp := splitFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: `[,;]\s*`},
+		&interpreter.StringValue{Val: "apple, banana; orange,grape"},
+	).(*interpreter.ListValue)
+	if len(sp.ElementsSlice()) != 4 {
+		t.Errorf("expected 4 split items, got %d", len(sp.ElementsSlice()))
+	}
+}
+
+func TestArchiveModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterArchiveBuiltins(env)
+
+	val, _ := env.Get("archive")
+	m := val.(*interpreter.MapValue)
+
+	tempDir := t.TempDir()
+	srcDir := filepath.Join(tempDir, "src")
+	_ = os.MkdirAll(srcDir, 0755)
+	_ = os.WriteFile(filepath.Join(srcDir, "file1.txt"), []byte("hello zip"), 0644)
+	_ = os.WriteFile(filepath.Join(srcDir, "file2.txt"), []byte("hello tar"), 0644)
+
+	// ZIP Create & Extract
+	zipFile := filepath.Join(tempDir, "test.zip")
+	zipDest := filepath.Join(tempDir, "zip_out")
+
+	zipCreateFn, _ := m.Get("zip_create")
+	zipExtFn, _ := m.Get("zip_extract")
+	listFn, _ := m.Get("list")
+
+	res := zipCreateFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: srcDir},
+		&interpreter.StringValue{Val: zipFile},
+	)
+	if res != interpreter.TRUE {
+		t.Fatalf("zip_create failed: %v", res)
+	}
+
+	listRes := listFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: zipFile}).(*interpreter.ListValue)
+	if len(listRes.ElementsSlice()) < 2 {
+		t.Errorf("expected at least 2 entries in zip list, got %d", len(listRes.ElementsSlice()))
+	}
+
+	extRes := zipExtFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: zipFile},
+		&interpreter.StringValue{Val: zipDest},
+	)
+	if extRes != interpreter.TRUE {
+		t.Fatalf("zip_extract failed: %v", extRes)
+	}
+
+	readBack, err := os.ReadFile(filepath.Join(zipDest, "file1.txt"))
+	if err != nil || string(readBack) != "hello zip" {
+		t.Errorf("extracted content mismatch: %v (%s)", err, string(readBack))
+	}
+
+	// TAR.GZ Create & Extract
+	tarFile := filepath.Join(tempDir, "test.tar.gz")
+	tarDest := filepath.Join(tempDir, "tar_out")
+
+	tarCreateFn, _ := m.Get("tar_create")
+	tarExtFn, _ := m.Get("tar_extract")
+
+	tRes := tarCreateFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: srcDir},
+		&interpreter.StringValue{Val: tarFile},
+	)
+	if tRes != interpreter.TRUE {
+		t.Fatalf("tar_create failed: %v", tRes)
+	}
+
+	tExtRes := tarExtFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: tarFile},
+		&interpreter.StringValue{Val: tarDest},
+	)
+	if tExtRes != interpreter.TRUE {
+		t.Fatalf("tar_extract failed: %v", tExtRes)
+	}
+
+	readTar, err := os.ReadFile(filepath.Join(tarDest, "file2.txt"))
+	if err != nil || string(readTar) != "hello tar" {
+		t.Errorf("tar extracted content mismatch: %v (%s)", err, string(readTar))
+	}
+}
+
+func TestFormatsModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterFormatsBuiltins(env)
+
+	// 1. CSV
+	csvVal, _ := env.Get("csv")
+	csvModule := csvVal.(*interpreter.MapValue)
+
+	csvParseFn, _ := csvModule.Get("parse")
+	csvStringifyFn, _ := csvModule.Get("stringify")
+
+	csvRaw := "id,name,role\n1,Alice,Dev\n2,Bob,Ops\n"
+	csvParsed := csvParseFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: csvRaw}).(*interpreter.ListValue)
+	if len(csvParsed.ElementsSlice()) != 2 {
+		t.Fatalf("expected 2 parsed rows, got %d", len(csvParsed.ElementsSlice()))
+	}
+	row0 := csvParsed.ElementsSlice()[0].(*interpreter.MapValue)
+	nameVal, _ := row0.Get("name")
+	if nameVal.(*interpreter.StringValue).Val != "Alice" {
+		t.Errorf("expected 'Alice', got %v", nameVal)
+	}
+
+	csvGen := csvStringifyFn.(*interpreter.BuiltinFunction).Fn(csvParsed).(*interpreter.StringValue).Val
+	if !strings.Contains(csvGen, "Alice") || !strings.Contains(csvGen, "role") {
+		t.Errorf("expected serialized csv with Alice and role, got %s", csvGen)
+	}
+
+	// 2. INI
+	iniVal, _ := env.Get("ini")
+	iniModule := iniVal.(*interpreter.MapValue)
+
+	iniParseFn, _ := iniModule.Get("parse")
+	iniRaw := "[server]\nhost = 0.0.0.0\nport = 8080\n[database]\nname = pawl_db\n"
+	iniParsed := iniParseFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: iniRaw}).(*interpreter.MapValue)
+
+	srvSec, ok := iniParsed.Get("server")
+	if !ok {
+		t.Fatalf("expected 'server' section in parsed ini")
+	}
+	portVal, _ := srvSec.(*interpreter.MapValue).Get("port")
+	if portVal.(*interpreter.StringValue).Val != "8080" {
+		t.Errorf("expected port '8080', got %v", portVal)
+	}
+
+	// 3. JSON Query
+	jsonQueryFn, _ := env.Get("json_query")
+	doc := `{"cluster":{"nodes":[{"name":"node-1","ip":"10.0.0.1"},{"name":"node-2","ip":"10.0.0.2"}]}}`
+	node2Ip := jsonQueryFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: doc},
+		&interpreter.StringValue{Val: "cluster.nodes[1].ip"},
+	)
+	if node2Ip == interpreter.NULL || node2Ip.(*interpreter.StringValue).Val != "10.0.0.2" {
+		t.Errorf("expected '10.0.0.2', got %v", node2Ip)
+	}
+
+	// 4. json_query must also accept an already-decoded map/list value, not
+	// only a raw JSON string. Decoded maps Inspect() with unquoted keys, which
+	// is not valid JSON, so a naive string round-trip silently yields null.
+	decoded := interpreter.NewMap()
+	decoded.Set("a", interpreter.NewList(
+		&interpreter.IntegerValue{Val: 1},
+		&interpreter.IntegerValue{Val: 2},
+		&interpreter.IntegerValue{Val: 3},
+	))
+	got := jsonQueryFn.(*interpreter.BuiltinFunction).Fn(decoded, &interpreter.StringValue{Val: "a[2]"})
+	if iv, ok := got.(*interpreter.IntegerValue); !ok || iv.Val != 3 {
+		t.Errorf("json_query on a decoded map: expected 3, got %v", got)
+	}
+}
+
+func TestSysModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterSysBuiltins(env)
+
+	val, _ := env.Get("sys")
+	m := val.(*interpreter.MapValue)
+
+	// disk_usage
+	diskFn, _ := m.Get("disk_usage")
+	diskInfo := diskFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.MapValue)
+	totalGb, ok := diskInfo.Get("total_gb")
+	if !ok || totalGb.(*interpreter.FloatValue).Val <= 0 {
+		t.Errorf("expected positive total_gb for disk usage")
+	}
+
+	// ram_usage
+	ramFn, _ := m.Get("ram_usage")
+	ramInfo := ramFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.MapValue)
+	totalMb, ok := ramInfo.Get("total_mb")
+	if !ok || totalMb.(*interpreter.FloatValue).Val <= 0 {
+		t.Errorf("expected positive total_mb for RAM usage")
+	}
+
+	// cpu_count
+	cpuFn, _ := m.Get("cpu_count")
+	cpus := cpuFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.IntegerValue).Val
+	if cpus <= 0 {
+		t.Errorf("expected positive cpu_count, got %d", cpus)
+	}
+
+	// network_interfaces
+	netFn, _ := m.Get("network_interfaces")
+	ifaces := netFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
+	if len(ifaces.ElementsSlice()) == 0 {
+		t.Errorf("expected at least 1 network interface")
+	}
+}
+
+func TestCLIModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterCLIBuiltins(env)
+
+	val, _ := env.Get("cli")
+	m := val.(*interpreter.MapValue)
+
+	// color
+	colorFn, _ := m.Get("color")
+	col := colorFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "green"},
+		&interpreter.StringValue{Val: "Success"},
+	).(*interpreter.StringValue).Val
+	if !strings.Contains(col, "\x1b[32m") || !strings.Contains(col, "Success") {
+		t.Errorf("expected ANSI green formatted text, got %q", col)
+	}
+
+	// progress_bar
+	progFn, _ := m.Get("progress_bar")
+	bar := progFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.IntegerValue{Val: 50},
+		&interpreter.IntegerValue{Val: 100},
+	).(*interpreter.StringValue).Val
+	if !strings.Contains(bar, "50.0%") {
+		t.Errorf("expected progress bar to contain 50.0%%, got %s", bar)
+	}
+
+	// parse
+	parseFn, _ := m.Get("parse")
+	stdlib.SetScriptArgs([]string{"--port=9000", "-v", "deploy"})
+	spec := interpreter.NewMap()
+	spec.Set("port", &interpreter.IntegerValue{Val: 8080})
+	spec.Set("verbose", interpreter.FALSE)
+
+	parsed := parseFn.(*interpreter.BuiltinFunction).Fn(spec).(*interpreter.MapValue)
+	pVal, _ := parsed.Get("port")
+	if pVal.(*interpreter.IntegerValue).Val != 9000 {
+		t.Errorf("expected parsed port to be 9000, got %v", pVal)
+	}
+	vVal, _ := parsed.Get("verbose")
+	if vVal != interpreter.TRUE {
+		t.Errorf("expected parsed verbose to be true, got %v", vVal)
+	}
+}
+
+func TestLogModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterLogBuiltins(env)
+
+	val, _ := env.Get("log")
+	m := val.(*interpreter.MapValue)
+
+	setLvlFn, _ := m.Get("set_level")
+	res := setLvlFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "debug"})
+	if res != interpreter.TRUE {
+		t.Errorf("expected set_level to return true")
+	}
+
+	setFmtFn, _ := m.Get("set_format")
+	resFmt := setFmtFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "json"})
+	if resFmt != interpreter.TRUE {
+		t.Errorf("expected set_format to return true")
+	}
+
+	infoFn, _ := m.Get("info")
+	fields := interpreter.NewMap()
+	fields.Set("port", &interpreter.IntegerValue{Val: 8080})
+	infoFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "Server started"}, fields)
+}
+
+func TestMathModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterMathBuiltins(env)
+
+	val, _ := env.Get("math")
+	m := val.(*interpreter.MapValue)
+
+	// PI
+	piVal, _ := m.Get("PI")
+	if math.Abs(piVal.(*interpreter.FloatValue).Val-math.Pi) > 1e-9 {
+		t.Errorf("PI mismatch: %v", piVal)
+	}
+
+	// sqrt
+	sqrtFn, _ := m.Get("sqrt")
+	sq := sqrtFn.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 144}).(*interpreter.FloatValue).Val
+	if sq != 12.0 {
+		t.Errorf("expected sqrt(144) == 12, got %f", sq)
+	}
+
+	// pow
+	powFn, _ := m.Get("pow")
+	pw := powFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.IntegerValue{Val: 2},
+		&interpreter.IntegerValue{Val: 8},
+	).(*interpreter.FloatValue).Val
+	if pw != 256.0 {
+		t.Errorf("expected pow(2, 8) == 256, got %f", pw)
+	}
+
+	// round, floor, ceil
+	roundFn, _ := m.Get("round")
+	floorFn, _ := m.Get("floor")
+	ceilFn, _ := m.Get("ceil")
+
+	r := roundFn.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: 3.7}).(*interpreter.IntegerValue).Val
+	fl := floorFn.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: 3.7}).(*interpreter.IntegerValue).Val
+	cl := ceilFn.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: 3.2}).(*interpreter.IntegerValue).Val
+	if r != 4 || fl != 3 || cl != 4 {
+		t.Errorf("round/floor/ceil mismatch: %d, %d, %d", r, fl, cl)
+	}
+
+	// clamp
+	clampFn, _ := m.Get("clamp")
+	clamped := clampFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.IntegerValue{Val: 150},
+		&interpreter.IntegerValue{Val: 0},
+		&interpreter.IntegerValue{Val: 100},
+	).(*interpreter.IntegerValue).Val
+	if clamped != 100 {
+		t.Errorf("expected clamped value 100, got %d", clamped)
+	}
+}
+
+func TestDBModule(t *testing.T) {
+	if !stdlib.DBDriversLinked {
+		t.Skip("built with -tags nodb: SQL drivers are not linked")
+	}
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterDBBuiltins(env)
+
+	val, ok := env.Get("db")
+	if !ok {
+		t.Fatalf("expected 'db' module to be registered")
+	}
+	dbMod := val.(*interpreter.MapValue)
+
+	sqliteFn, ok := dbMod.Get("sqlite")
+	if !ok {
+		t.Fatalf("expected db.sqlite to be defined")
+	}
+
+	// Open in-memory SQLite database
+	connVal := sqliteFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: ":memory:"})
+	conn, ok := connVal.(*interpreter.MapValue)
+	if !ok {
+		t.Fatalf("expected DB connection map, got %v", connVal)
+	}
+
+	// ping
+	pingFn, _ := conn.Get("ping")
+	isPing := pingFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.BoolValue).Val
+	if !isPing {
+		t.Fatalf("expected ping to succeed")
+	}
+
+	// exec DDL
+	execFn, _ := conn.Get("exec")
+	ddlRes := execFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "CREATE TABLE accounts (id INTEGER PRIMARY KEY, username TEXT, balance REAL);"},
+	)
+	if ddlRes.Type() == interpreter.ERROR_VAL {
+		t.Fatalf("DDL error: %v", ddlRes.Inspect())
+	}
+
+	// exec INSERT
+	insertRes := execFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "INSERT INTO accounts (username, balance) VALUES (?, ?);"},
+		&interpreter.StringValue{Val: "alice"},
+		&interpreter.FloatValue{Val: 250.75},
+	)
+	if insertRes.Type() == interpreter.ERROR_VAL {
+		t.Fatalf("INSERT error: %v", insertRes.Inspect())
+	}
+	resMap := insertRes.(*interpreter.MapValue)
+	ra, _ := resMap.Get("rows_affected")
+	if ra.(*interpreter.IntegerValue).Val != 1 {
+		t.Errorf("expected 1 row affected, got %v", ra)
+	}
+
+	// query
+	queryFn, _ := conn.Get("query")
+	qRes := queryFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "SELECT id, username, balance FROM accounts WHERE username = ?;"},
+		&interpreter.StringValue{Val: "alice"},
+	)
+	rowsList, ok := qRes.(*interpreter.ListValue)
+	if !ok || len(rowsList.ElementsSlice()) != 1 {
+		t.Fatalf("expected 1 row returned, got %v", qRes)
+	}
+	rowMap := rowsList.ElementsSlice()[0].(*interpreter.MapValue)
+	nameVal, _ := rowMap.Get("username")
+	if nameVal.(*interpreter.StringValue).Val != "alice" {
+		t.Errorf("expected username 'alice', got %v", nameVal)
+	}
+	balVal, _ := rowMap.Get("balance")
+	if balVal.(*interpreter.FloatValue).Val != 250.75 {
+		t.Errorf("expected balance 250.75, got %v", balVal)
+	}
+
+	// Transaction commit
+	beginFn, _ := conn.Get("begin")
+	txVal := beginFn.(*interpreter.BuiltinFunction).Fn()
+	txMap := txVal.(*interpreter.MapValue)
+
+	txExec, _ := txMap.Get("exec")
+	txExec.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "INSERT INTO accounts (username, balance) VALUES (?, ?);"},
+		&interpreter.StringValue{Val: "bob"},
+		&interpreter.FloatValue{Val: 500.00},
+	)
+	txCommit, _ := txMap.Get("commit")
+	txCommit.(*interpreter.BuiltinFunction).Fn()
+
+	// query_row
+	queryRowFn, _ := conn.Get("query_row")
+	row := queryRowFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "SELECT username, balance FROM accounts WHERE username = ?;"},
+		&interpreter.StringValue{Val: "bob"},
+	).(*interpreter.MapValue)
+	bobName, _ := row.Get("username")
+	if bobName.(*interpreter.StringValue).Val != "bob" {
+		t.Errorf("expected 'bob', got %v", bobName)
+	}
+
+	// close
+	closeFn, _ := conn.Get("close")
+	closeFn.(*interpreter.BuiltinFunction).Fn()
+}
+
+func TestMetricsModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterMetricsBuiltins(env)
+
+	val, ok := env.Get("metrics")
+	if !ok {
+		t.Fatalf("expected 'metrics' module to be registered")
+	}
+	m := val.(*interpreter.MapValue)
+
+	// counter
+	counterFn, _ := m.Get("counter")
+	cVal := counterFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "test_requests_total"},
+		&interpreter.StringValue{Val: "Total requests"},
+	).(*interpreter.MapValue)
+	cInc, _ := cVal.Get("inc")
+	cInc.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 5})
+	cGet, _ := cVal.Get("get")
+	cV := cGet.(*interpreter.BuiltinFunction).Fn().(*interpreter.FloatValue).Val
+	if cV != 5.0 {
+		t.Errorf("expected counter 5.0, got %f", cV)
+	}
+
+	// gauge
+	gaugeFn, _ := m.Get("gauge")
+	gVal := gaugeFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "test_active_sessions"},
+		&interpreter.StringValue{Val: "Active sessions"},
+	).(*interpreter.MapValue)
+	gSet, _ := gVal.Get("set")
+	gSet.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 20})
+	gDec, _ := gVal.Get("dec")
+	gDec.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 3})
+	gGet, _ := gVal.Get("get")
+	gV := gGet.(*interpreter.BuiltinFunction).Fn().(*interpreter.FloatValue).Val
+	if gV != 17.0 {
+		t.Errorf("expected gauge 17.0, got %f", gV)
+	}
+
+	// export
+	exportFn, _ := m.Get("export")
+	text := exportFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.StringValue).Val
+	if !strings.Contains(text, "test_requests_total 5") || !strings.Contains(text, "test_active_sessions 17") {
+		t.Errorf("expected exported metrics text, got:\n%s", text)
+	}
+}
+
+// TestMetricsHistogramBucketsAreCumulative guards against double-cumulating the
+// per-bucket hit counts: three observations in buckets {1,2,3} must export
+// le=1 -> 1, le=2 -> 2, le=3 -> 3, le=+Inf -> 3.
+func TestMetricsHistogramBucketsAreCumulative(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterMetricsBuiltins(env)
+
+	val, _ := env.Get("metrics")
+	m := val.(*interpreter.MapValue)
+	histFn, _ := m.Get("histogram")
+	buckets := &interpreter.ListValue{Elements: []interpreter.Value{
+		&interpreter.FloatValue{Val: 1},
+		&interpreter.FloatValue{Val: 2},
+		&interpreter.FloatValue{Val: 3},
+	}}
+	hVal := histFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "test_histogram_cumulative"},
+		&interpreter.StringValue{Val: "histogram"},
+		buckets,
+	).(*interpreter.MapValue)
+	observe, _ := hVal.Get("observe")
+	for _, v := range []float64{0.5, 1.5, 2.5} {
+		observe.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: v})
+	}
+
+	exportFn, _ := m.Get("export")
+	text := exportFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.StringValue).Val
+	for _, want := range []string{
+		`test_histogram_cumulative_bucket{le="1"} 1`,
+		`test_histogram_cumulative_bucket{le="2"} 2`,
+		`test_histogram_cumulative_bucket{le="3"} 3`,
+		`test_histogram_cumulative_bucket{le="+Inf"} 3`,
+		"test_histogram_cumulative_count 3",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected %q in exported metrics, got:\n%s", want, text)
+		}
+	}
+}
+
+func TestSecurityAndPermissionLogging(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterLogBuiltins(env)
+	stdlib.RegisterSecurityBuiltins(env)
+
+	// 1. Check IsPermissionError detection
+	if !stdlib.IsPermissionError(os.ErrPermission) {
+		t.Errorf("expected os.ErrPermission to be recognized as permission error")
+	}
+	if !stdlib.IsPermissionError(fmt.Errorf("open C:\\secret: Access is denied")) {
+		t.Errorf("expected 'Access is denied' string to be recognized as permission error")
+	}
+
+	// 2. Direct log permission denied
+	stdlib.LogPermissionDenied("read_protected", "/etc/shadow", fmt.Errorf("permission denied"))
+	errs := stdlib.GetRecentAccessErrors()
+	if len(errs) == 0 {
+		t.Fatalf("expected recent access error event to be recorded")
+	}
+	last := errs[len(errs)-1]
+	if last.Operation != "read_protected" || last.Resource != "/etc/shadow" {
+		t.Errorf("unexpected logged event: %+v", last)
+	}
+
+	// 3. log.access_denied builtin
+	logModVal, ok := env.Get("std.log")
+	if !ok {
+		t.Fatalf("expected std.log to be registered")
+	}
+	logMod := logModVal.(*interpreter.MapValue)
+	accFn, ok := logMod.Get("access_denied")
+	if !ok {
+		t.Fatalf("expected log.access_denied to be registered")
+	}
+	accFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "delete_database"},
+		&interpreter.StringValue{Val: "/var/lib/data"},
+		&interpreter.StringValue{Val: "unauthorized role"},
+	)
+
+	// 4. log.get_access_errors builtin
+	getErrFn, ok := logMod.Get("get_access_errors")
+	if !ok {
+		t.Fatalf("expected log.get_access_errors to be registered")
+	}
+	recordedList := getErrFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
+	if len(recordedList.ElementsSlice()) < 2 {
+		t.Errorf("expected at least 2 recorded access errors, got %d", len(recordedList.ElementsSlice()))
+	}
+
+	// 5. log.audit builtin
+	auditFn, ok := logMod.Get("audit")
+	if !ok {
+		t.Fatalf("expected log.audit to be registered")
+	}
+	auditRes := auditFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: "AUTH"},
+		&interpreter.StringValue{Val: "LOGIN"},
+		&interpreter.StringValue{Val: "admin"},
+		&interpreter.StringValue{Val: "SUCCESS"},
+	)
+	if auditRes != interpreter.TRUE {
+		t.Errorf("expected audit function to return true")
+	}
+}
+
+func TestAdvancedIOAndFileHandles(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterIOBuiltins(env)
+
+	ioModVal, _ := env.Get("std.io")
+	ioMod := ioModVal.(*interpreter.MapValue)
+
+	// Create temp file
+	tmpFile, err := os.CreateTemp("", "pawl_test_io_*.txt")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %s", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	// 1. io.open with 'w+' mode
+	openFn, ok := ioMod.Get("open")
+	if !ok {
+		t.Fatalf("expected io.open to be registered")
+	}
+
+	handleVal := openFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: tmpPath},
+		&interpreter.StringValue{Val: "w+"},
+	)
+	if handleVal.Type() == interpreter.ERROR_VAL {
+		t.Fatalf("failed to open handle: %s", handleVal.(*interpreter.ErrorValue).Message)
+	}
+	handle := handleVal.(*interpreter.MapValue)
+
+	// 2. Write to handle
+	writeFn, _ := handle.Get("write")
+	writeFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "Hello Pawl Stream!\nSecond Line"})
+
+	// 3. Seek to beginning
+	seekFn, _ := handle.Get("seek")
+	posVal := seekFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.IntegerValue{Val: 0},
+		&interpreter.IntegerValue{Val: 0},
+	).(*interpreter.IntegerValue)
+	if posVal.Val != 0 {
+		t.Errorf("expected seek pos 0, got %d", posVal.Val)
+	}
+
+	// 4. Tell current offset
+	tellFn, _ := handle.Get("tell")
+	tellVal := tellFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.IntegerValue)
+	if tellVal.Val != 0 {
+		t.Errorf("expected tell pos 0, got %d", tellVal.Val)
+	}
+
+	// 5. Read line
+	readLineFn, _ := handle.Get("read_line")
+	line := readLineFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.StringValue).Val
+	if line != "Hello Pawl Stream!" {
+		t.Errorf("expected 'Hello Pawl Stream!', got %q", line)
+	}
+
+	// 6. Lock and Unlock handle
+	lockFn, _ := handle.Get("lock")
+	unlockFn, _ := handle.Get("unlock")
+	_ = lockFn.(*interpreter.BuiltinFunction).Fn()
+	_ = unlockFn.(*interpreter.BuiltinFunction).Fn()
+
+	// 7. Close handle
+	closeFn, _ := handle.Get("close")
+	closeRes := closeFn.(*interpreter.BuiltinFunction).Fn()
+	if closeRes != interpreter.TRUE {
+		t.Errorf("expected handle.close to return true")
+	}
+
+	// 8. check_access
+	checkAccessFn, _ := ioMod.Get("check_access")
+	canRead := checkAccessFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.StringValue{Val: tmpPath},
+		&interpreter.StringValue{Val: "r"},
+	)
+	if canRead != interpreter.TRUE {
+		t.Errorf("expected check_access to return true for readable temp file")
+	}
+
+	// 9. permissions
+	permFn, _ := ioMod.Get("permissions")
+	permVal := permFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: tmpPath}).(*interpreter.MapValue)
+	if !permVal.Has("octal") || !permVal.Has("mode") {
+		t.Errorf("expected permissions map to have octal and mode fields")
+	}
+
+	// 10. is_permission_error
+	isPermErrFn, _ := ioMod.Get("is_permission_error")
+	errVal := interpreter.NewError(403, "access denied")
+	if isPermErrFn.(*interpreter.BuiltinFunction).Fn(errVal) != interpreter.TRUE {
+		t.Errorf("expected is_permission_error to return true for 403 error")
+	}
+}
+
+func TestSystemTracking(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterSysBuiltins(env)
+
+	sysModVal, _ := env.Get("std.sys")
+	sysMod := sysModVal.(*interpreter.MapValue)
+
+	// 1. uptime
+	uptimeFn, ok := sysMod.Get("uptime")
+	if !ok {
+		t.Fatalf("expected sys.uptime to be registered")
+	}
+	uptime := uptimeFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.FloatValue).Val
+	if uptime < 0 {
+		t.Errorf("expected non-negative uptime, got %f", uptime)
+	}
+
+	// 2. whoami
+	whoamiFn, ok := sysMod.Get("whoami")
+	if !ok {
+		t.Fatalf("expected sys.whoami to be registered")
+	}
+	whoami := whoamiFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.MapValue)
+	if !whoami.Has("user") || !whoami.Has("hostname") || !whoami.Has("is_admin") {
+		t.Errorf("expected whoami map to have user, hostname, is_admin fields")
+	}
+
+	// 3. process_list
+	procListFn, ok := sysMod.Get("process_list")
+	if !ok {
+		t.Fatalf("expected sys.process_list to be registered")
+	}
+	procs := procListFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
+	if len(procs.ElementsSlice()) == 0 {
+		t.Errorf("expected non-empty process list")
+	}
+
+	// 4. disk_partitions
+	partsFn, ok := sysMod.Get("disk_partitions")
+	if !ok {
+		t.Fatalf("expected sys.disk_partitions to be registered")
+	}
+	parts := partsFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.ListValue)
+	if len(parts.ElementsSlice()) == 0 {
+		t.Errorf("expected non-empty disk partitions list")
+	}
+
+	// 5. load_avg
+	loadFn, ok := sysMod.Get("load_avg")
+	if !ok {
+		t.Fatalf("expected sys.load_avg to be registered")
+	}
+	loadValue := loadFn.(*interpreter.BuiltinFunction).Fn()
+	if runtime.GOOS == "windows" {
+		if err, ok := loadValue.(*interpreter.ErrorValue); !ok || err.Code != 501 {
+			t.Errorf("Windows load_avg should report unsupported: %v", loadValue)
+		}
+	} else {
+		loads, ok := loadValue.(*interpreter.MapValue)
+		if !ok || !loads.Has("1m") || !loads.Has("5m") || !loads.Has("15m") {
+			t.Errorf("expected load_avg map to have 1m, 5m, 15m, got %v", loadValue)
+		}
+	}
+
+	pidsFn, ok := sysMod.Get("pids")
+	if !ok {
+		t.Fatal("expected sys.pids to be registered")
+	}
+	pids := pidsFn.(*interpreter.BuiltinFunction).Fn()
+	if pids.Type() != interpreter.LIST_VAL || len(pids.(*interpreter.ListValue).ElementsSlice()) == 0 {
+		t.Fatalf("expected sys.pids to return a non-empty list, got %v", pids)
+	}
+	bootTimeFn, ok := sysMod.Get("boot_time")
+	if !ok {
+		t.Fatal("expected sys.boot_time to be registered")
+	}
+	if bootTime := bootTimeFn.(*interpreter.BuiltinFunction).Fn(); bootTime.Type() != interpreter.FLOAT_VAL {
+		t.Fatalf("expected sys.boot_time to return a float, got %T", bootTime)
+	}
+}
+
+func TestSystemAPIModulesAndPowerControlPermission(t *testing.T) {
+	previousPolicy := sandbox.CurrentPolicy()
+	sandbox.SetPolicy(sandbox.DenyAll())
+	defer sandbox.SetPolicy(previousPolicy)
+
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterPlatformBuiltins(env)
+	stdlib.RegisterPowerBuiltins(env)
+	stdlib.RegisterDevicesBuiltins(env)
+	stdlib.RegisterWin32Builtins(env)
+	for _, moduleName := range []string{"platform", "power", "devices", "win32"} {
+		if _, ok := env.Get("std." + moduleName); !ok {
+			t.Fatalf("expected std.%s to be registered", moduleName)
+		}
+	}
+
+	powerModule, _ := env.Get("power")
+	shutdown, _ := powerModule.(*interpreter.MapValue).Get("shutdown")
+	result := shutdown.(*interpreter.BuiltinFunction).Fn()
+	if result.Type() != interpreter.ERROR_VAL || result.(*interpreter.ErrorValue).Code != 403 {
+		t.Fatalf("power.shutdown should be denied without system-control permission, got %v", result)
+	}
+	if runtime.GOOS == "windows" {
+		win32Module, _ := env.Get("win32")
+		openKey, _ := win32Module.(*interpreter.MapValue).Get("reg_open_key")
+		result := openKey.(*interpreter.BuiltinFunction).Fn(
+			&interpreter.StringValue{Val: "HKEY_CURRENT_USER"},
+			&interpreter.StringValue{Val: "Software"},
+		)
+		if result.Type() != interpreter.ERROR_VAL || result.(*interpreter.ErrorValue).Code != 403 {
+			t.Fatalf("registry access should be denied without --allow-all, got %v", result)
+		}
+	}
+}
+
+func TestFFIModule(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterFFIBuiltins(env)
+
+	ffiVal, ok := env.Get("std.ffi")
+	if !ok {
+		t.Fatalf("expected std.ffi to be registered")
+	}
+	ffiMod := ffiVal.(*interpreter.MapValue)
+
+	// 1. size_of
+	sizeOfFn, _ := ffiMod.Get("size_of")
+	intSize := sizeOfFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "int32"}).(*interpreter.IntegerValue).Val
+	ptrSize := sizeOfFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "ptr"}).(*interpreter.IntegerValue).Val
+	if intSize != 4 || ptrSize != int64(strconv.IntSize/8) {
+		t.Errorf("size_of mismatch: int32=%d, ptr=%d", intSize, ptrSize)
+	}
+	longSize := sizeOfFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "long"}).(*interpreter.IntegerValue).Val
+	expectedLongSize := int64(strconv.IntSize / 8)
+	if runtime.GOOS == "windows" {
+		expectedLongSize = 4
+	}
+	if longSize != expectedLongSize {
+		t.Errorf("size_of long = %d, want %d", longSize, expectedLongSize)
+	}
+
+	// 2. alloc
+	allocFn, _ := ffiMod.Get("alloc")
+	bufVal := allocFn.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 32}).(*interpreter.BlobValue)
+	if len(bufVal.Data) != 32 {
+		t.Errorf("expected alloc 32 bytes, got %d", len(bufVal.Data))
+	}
+
+	// 3. String pointers
+	cStrFn, _ := ffiMod.Get("c_str")
+	ptrToStrFn, _ := ffiMod.Get("ptr_to_str")
+	ptr := cStrFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "Pawl Native FFI"})
+	recovered := ptrToStrFn.(*interpreter.BuiltinFunction).Fn(ptr).(*interpreter.StringValue).Val
+	if recovered != "Pawl Native FFI" {
+		t.Errorf("expected 'Pawl Native FFI', got %q", recovered)
+	}
+
+	allocPtrFn, _ := ffiMod.Get("alloc_ptr")
+	freeFn, _ := ffiMod.Get("free")
+	copyToPtrFn, _ := ffiMod.Get("copy_to_ptr")
+	readFromPtrFn, _ := ffiMod.Get("read_from_ptr")
+	ownedPtr := allocPtrFn.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 8})
+	if ownedPtr.Type() == interpreter.ERROR_VAL {
+		t.Fatalf("alloc_ptr failed: %s", ownedPtr.(*interpreter.ErrorValue).Message)
+	}
+	if result := copyToPtrFn.(*interpreter.BuiltinFunction).Fn(
+		ownedPtr,
+		&interpreter.StringValue{Val: "Pawl"},
+	); result != interpreter.TRUE {
+		t.Fatalf("copy_to_ptr failed: %v", result)
+	}
+	copied := readFromPtrFn.(*interpreter.BuiltinFunction).Fn(
+		ownedPtr,
+		&interpreter.IntegerValue{Val: 4},
+	).(*interpreter.BlobValue)
+	if string(copied.Data) != "Pawl" {
+		t.Fatalf("read_from_ptr returned %q, want Pawl", copied.Data)
+	}
+	if result := freeFn.(*interpreter.BuiltinFunction).Fn(ownedPtr); result != interpreter.TRUE {
+		t.Fatalf("free failed: %v", result)
+	}
+
+	// 4. On Windows: test loading kernel32.dll and calling GetCurrentProcessId
+	if runtime.GOOS == "windows" {
+		loadFn, _ := ffiMod.Get("load")
+		libVal := loadFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "kernel32.dll"})
+		if libVal.Type() == interpreter.ERROR_VAL {
+			t.Fatalf("failed to load kernel32.dll: %s", libVal.(*interpreter.ErrorValue).Message)
+		}
+		lib := libVal.(*interpreter.MapValue)
+
+		callFn, _ := lib.Get("call")
+		pidVal := callFn.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "GetCurrentProcessId"})
+		if pidVal.Type() != interpreter.INTEGER_VAL {
+			t.Fatalf("expected integer PID from GetCurrentProcessId, got %v", pidVal)
+		}
+		pid := pidVal.(*interpreter.IntegerValue).Val
+		expectedPid := int64(os.Getpid())
+		if pid != expectedPid {
+			t.Errorf("GetCurrentProcessId mismatch: expected %d, got %d", expectedPid, pid)
+		}
+
+		// Also test callable func
+		funcMaker, _ := lib.Get("func")
+		getTickFn := funcMaker.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "GetTickCount64"})
+		tickVal := getTickFn.(*interpreter.BuiltinFunction).Fn().(*interpreter.IntegerValue).Val
+		if tickVal <= 0 {
+			t.Errorf("expected positive tick count, got %d", tickVal)
+		}
+
+		closeFn, _ := lib.Get("close")
+		closeFn.(*interpreter.BuiltinFunction).Fn()
+	}
+}
+
+func TestFFISandboxAndAllocationLimits(t *testing.T) {
+	const maxAllocation = 16 << 20
+	previousPolicy := sandbox.CurrentPolicy()
+	defer sandbox.SetPolicy(previousPolicy)
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterFFIBuiltins(env)
+	moduleValue, _ := env.Get("std.ffi")
+	module := moduleValue.(*interpreter.MapValue)
+	load, _ := module.Get("load")
+	// FFI is now permitted by default (no --allow-all required); only the
+	// allocation limits and invalid arguments are still rejected.
+	allocPtr, _ := module.Get("alloc_ptr")
+	if result := allocPtr.(*interpreter.BuiltinFunction).Fn(interpreter.NewInteger(8)); result.Type() != interpreter.ERROR_VAL {
+		// alloc_ptr may succeed for a small allocation; that is acceptable.
+	}
+	_ = load
+
+	sandbox.SetPolicy(sandbox.AllowAll())
+	alloc, _ := module.Get("alloc")
+	for _, size := range []interpreter.Value{
+		interpreter.NewInteger(0),
+		interpreter.NewInteger(-1),
+		interpreter.NewInteger(maxAllocation + 1),
+		&interpreter.FloatValue{Val: 1},
+	} {
+		if result := alloc.(*interpreter.BuiltinFunction).Fn(size); result.Type() != interpreter.ERROR_VAL {
+			t.Errorf("ffi.alloc accepted invalid size %v and returned %T", size, result)
+		}
+	}
+	if result := allocPtr.(*interpreter.BuiltinFunction).Fn(interpreter.NewInteger(maxAllocation + 1)); result.Type() != interpreter.ERROR_VAL {
+		t.Errorf("ffi.alloc_ptr accepted oversized allocation and returned %T", result)
+	}
+}
+
+func TestLibtorchHelpers(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterLibtorchBuiltins(env)
+
+	ltVal, ok := env.Get("std.libtorch")
+	if !ok {
+		t.Fatalf("expected std.libtorch to be registered")
+	}
+	ltMod := ltVal.(*interpreter.MapValue)
+	toListFn, _ := ltMod.Get("to_list")
+	itemFn, _ := ltMod.Get("item")
+
+	toList := func(v interpreter.Value) *interpreter.ListValue {
+		return toListFn.(*interpreter.BuiltinFunction).Fn(v).(*interpreter.ListValue)
+	}
+	toItem := func(v interpreter.Value) float64 {
+		return itemFn.(*interpreter.BuiltinFunction).Fn(v).(*interpreter.FloatValue).Val
+	}
+
+	// 1. matrix creation
+	matrixFn, _ := ltMod.Get("matrix")
+	mVal := matrixFn.(*interpreter.BuiltinFunction).Fn(
+		&interpreter.IntegerValue{Val: 2},
+		&interpreter.IntegerValue{Val: 3},
+		&interpreter.FloatValue{Val: 1.5},
+	)
+	mList := toList(mVal)
+	if len(mList.ElementsSlice()) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(mList.ElementsSlice()))
+	}
+	r0 := mList.ElementsSlice()[0].(*interpreter.ListValue)
+	if len(r0.ElementsSlice()) != 3 || r0.ElementsSlice()[0].(*interpreter.FloatValue).Val != 1.5 {
+		t.Errorf("unexpected matrix contents: %+v", r0)
+	}
+
+	// 2. matmul with raw lists: [ [1, 2], [3, 4] ] x [ [2, 0], [1, 2] ] = [ [4, 4], [10, 8] ]
+	matmulFn, _ := ltMod.Get("matmul")
+	matA := interpreter.NewList(
+		interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 2}),
+		interpreter.NewList(&interpreter.FloatValue{Val: 3}, &interpreter.FloatValue{Val: 4}),
+	)
+	matB := interpreter.NewList(
+		interpreter.NewList(&interpreter.FloatValue{Val: 2}, &interpreter.FloatValue{Val: 0}),
+		interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 2}),
+	)
+	resMat := toList(matmulFn.(*interpreter.BuiltinFunction).Fn(matA, matB))
+	row0 := resMat.ElementsSlice()[0].(*interpreter.ListValue)
+	row1 := resMat.ElementsSlice()[1].(*interpreter.ListValue)
+	if row0.ElementsSlice()[0].(*interpreter.FloatValue).Val != 4 || row0.ElementsSlice()[1].(*interpreter.FloatValue).Val != 4 ||
+		row1.ElementsSlice()[0].(*interpreter.FloatValue).Val != 10 || row1.ElementsSlice()[1].(*interpreter.FloatValue).Val != 8 {
+		t.Errorf("matmul result mismatch: row0=%+v, row1=%+v", row0, row1)
+	}
+
+	// 3. dot product with raw lists: [1, 2, 3] . [4, 5, 6] = 4 + 10 + 18 = 32
+	dotFn, _ := ltMod.Get("dot")
+	v1 := interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 2}, &interpreter.FloatValue{Val: 3})
+	v2 := interpreter.NewList(&interpreter.FloatValue{Val: 4}, &interpreter.FloatValue{Val: 5}, &interpreter.FloatValue{Val: 6})
+	dotRes := toItem(dotFn.(*interpreter.BuiltinFunction).Fn(v1, v2))
+	if dotRes != 32.0 {
+		t.Errorf("expected dot product 32.0, got %f", dotRes)
+	}
+
+	// 4. relu and sigmoid with raw lists and scalars
+	reluFn, _ := ltMod.Get("relu")
+	sigFn, _ := ltMod.Get("sigmoid")
+	if toItem(reluFn.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: -5.0})) != 0.0 {
+		t.Errorf("expected relu(-5) == 0")
+	}
+	reluListRes := toList(reluFn.(*interpreter.BuiltinFunction).Fn(interpreter.NewList(&interpreter.FloatValue{Val: -1.0}, &interpreter.FloatValue{Val: 2.0})))
+	if reluListRes.ElementsSlice()[0].(*interpreter.FloatValue).Val != 0.0 || reluListRes.ElementsSlice()[1].(*interpreter.FloatValue).Val != 2.0 {
+		t.Errorf("expected relu([-1.0, 2.0]) == [0.0, 2.0], got %+v", reluListRes)
+	}
+	if toItem(sigFn.(*interpreter.BuiltinFunction).Fn(&interpreter.FloatValue{Val: 0.0})) != 0.5 {
+		t.Errorf("expected sigmoid(0) == 0.5")
+	}
+
+	// 5. softmax with raw list: sum of outputs == 1.0
+	softmaxFn, _ := ltMod.Get("softmax")
+	softRes := toList(softmaxFn.(*interpreter.BuiltinFunction).Fn(
+		interpreter.NewList(&interpreter.FloatValue{Val: 1.0}, &interpreter.FloatValue{Val: 2.0}, &interpreter.FloatValue{Val: 3.0}),
+	))
+	sum := 0.0
+	for _, e := range softRes.ElementsSlice() {
+		sum += e.(*interpreter.FloatValue).Val
+	}
+	if math.Abs(sum-1.0) > 1e-6 {
+		t.Errorf("expected softmax sum to be 1.0, got %f", sum)
+	}
+
+	// 6. dense_forward with raw lists: input [ [1, 2] ] * weights [ [1, 0], [0, 1] ] + bias [ 5, 10 ] = [ [6, 12] ]
+	denseFn, _ := ltMod.Get("dense_forward")
+	inMat := interpreter.NewList(interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 2}))
+	wMat := interpreter.NewList(
+		interpreter.NewList(&interpreter.FloatValue{Val: 1}, &interpreter.FloatValue{Val: 0}),
+		interpreter.NewList(&interpreter.FloatValue{Val: 0}, &interpreter.FloatValue{Val: 1}),
+	)
+	bias := interpreter.NewList(&interpreter.FloatValue{Val: 5}, &interpreter.FloatValue{Val: 10})
+	denseOut := toList(denseFn.(*interpreter.BuiltinFunction).Fn(inMat, wMat, bias, &interpreter.StringValue{Val: "linear"}))
+	outRow := denseOut.ElementsSlice()[0].(*interpreter.ListValue)
+	if outRow.ElementsSlice()[0].(*interpreter.FloatValue).Val != 6.0 || outRow.ElementsSlice()[1].(*interpreter.FloatValue).Val != 12.0 {
+		t.Errorf("dense_forward mismatch: %+v", outRow)
+	}
+
+	// 7. mse with raw lists
+	mseFn, _ := ltMod.Get("mse")
+	yTrue := interpreter.NewList(&interpreter.FloatValue{Val: 1.0}, &interpreter.FloatValue{Val: 2.0})
+	yPred := interpreter.NewList(&interpreter.FloatValue{Val: 3.0}, &interpreter.FloatValue{Val: 4.0})
+	mseVal := toItem(mseFn.(*interpreter.BuiltinFunction).Fn(yTrue, yPred))
+	if math.Abs(mseVal-4.0) > 1e-6 {
+		t.Errorf("expected mse == 4.0, got %f", mseVal)
+	}
+}
+
+func TestCompressAndCryptoAndHTTPBuiltins(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterCompressBuiltins(env)
+	stdlib.RegisterCryptoBuiltins(env)
+	stdlib.RegisterHTTPBuiltins(env)
+
+	compressModVal, _ := env.Get("compress")
+	compressMod := compressModVal.(*interpreter.MapValue)
+	cryptoModVal, _ := env.Get("crypto")
+	cryptoMod := cryptoModVal.(*interpreter.MapValue)
+	httpModVal, _ := env.Get("http")
+	httpMod := httpModVal.(*interpreter.MapValue)
+
+	// 1. Gzip
+	gzipComp, _ := compressMod.Get("gzip_compress")
+	gzipDecomp, _ := compressMod.Get("gzip_decompress")
+	original := "Hello Pawl Compression!"
+	compRes := gzipComp.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: original})
+	decompRes := gzipDecomp.(*interpreter.BuiltinFunction).Fn(compRes)
+	if decompRes.(*interpreter.StringValue).Val != original {
+		t.Fatalf("gzip mismatch: got %q, want %q", decompRes.(*interpreter.StringValue).Val, original)
+	}
+
+	// 2. Zlib
+	zlibComp, _ := compressMod.Get("zlib_compress")
+	zlibDecomp, _ := compressMod.Get("zlib_decompress")
+	zcompRes := zlibComp.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: original})
+	zdecompRes := zlibDecomp.(*interpreter.BuiltinFunction).Fn(zcompRes)
+	if zdecompRes.(*interpreter.StringValue).Val != original {
+		t.Fatalf("zlib mismatch: got %q, want %q", zdecompRes.(*interpreter.StringValue).Val, original)
+	}
+
+	// 3. AES GCM
+	aesEnc, _ := cryptoMod.Get("aes_encrypt")
+	aesDec, _ := cryptoMod.Get("aes_decrypt")
+	key := "0123456789abcdef0123456789abcdef"
+	secretText := "Top Secret Pawl Data 12345"
+	encRes := aesEnc.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: key}, &interpreter.StringValue{Val: secretText})
+	decRes := aesDec.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: key}, encRes)
+	if decRes.(*interpreter.StringValue).Val != secretText {
+		t.Fatalf("aes mismatch: got %q, want %q", decRes.(*interpreter.StringValue).Val, secretText)
+	}
+
+	// Wrong key fails
+	badDec := aesDec.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "wrong-key"}, encRes)
+	if _, isErr := badDec.(*interpreter.ErrorValue); !isErr {
+		t.Fatalf("aes decrypt with wrong key should fail, got %v", badDec)
+	}
+
+	// 4. HMAC SHA512
+	hmac512, _ := cryptoMod.Get("hmac_sha512")
+	hRes := hmac512.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "key"}, &interpreter.StringValue{Val: "data"})
+	hStr := hRes.(*interpreter.StringValue).Val
+	if len(hStr) != 128 { // SHA512 is 64 bytes = 128 hex chars
+		t.Fatalf("hmac_sha512 bad length: got %d", len(hStr))
+	}
+
+	// 5. HTTP serve and request
+	prevPolicy := sandbox.CurrentPolicy()
+	sandbox.SetPolicy(sandbox.Policy{Net: sandbox.Capability{All: true}})
+	defer sandbox.SetPolicy(prevPolicy)
+
+	httpServe, _ := httpMod.Get("serve")
+	if httpServe == nil {
+		httpServe, _ = httpMod.Get("http_serve")
+	}
+	httpReq, _ := httpMod.Get("request")
+	if httpReq == nil {
+		httpReq, _ = httpMod.Get("http_request")
+	}
+	handler := &interpreter.BuiltinFunction{
+		Name: "handler",
+		Fn: func(a ...interpreter.Value) interpreter.Value {
+			res := interpreter.NewMap()
+			res.Set("status", &interpreter.IntegerValue{Val: 200})
+			res.Set("body", &interpreter.StringValue{Val: "pawl-http-ok"})
+			return res
+		},
+	}
+	serverVal := httpServe.(*interpreter.BuiltinFunction).Fn(&interpreter.IntegerValue{Val: 29876}, handler)
+	serverMap, ok := serverVal.(*interpreter.MapValue)
+	if !ok {
+		t.Fatalf("expected server map, got %v", serverVal)
+	}
+	closeFn, _ := serverMap.Get("close")
+	defer closeFn.(*interpreter.BuiltinFunction).Fn()
+
+	time.Sleep(50 * time.Millisecond)
+
+	reqRes := httpReq.(*interpreter.BuiltinFunction).Fn(&interpreter.StringValue{Val: "GET"}, &interpreter.StringValue{Val: "http://127.0.0.1:29876/test"})
+	respMap, ok := reqRes.(*interpreter.MapValue)
+	if !ok {
+		t.Fatalf("expected response map, got %v", reqRes)
+	}
+	bodyVal, _ := respMap.Get("body")
+	if bodyVal.(*interpreter.StringValue).Val != "pawl-http-ok" {
+		t.Fatalf("expected body 'pawl-http-ok', got %q", bodyVal.(*interpreter.StringValue).Val)
+	}
+}
+
+func TestStringFormatAndPad(t *testing.T) {
+	env := interpreter.NewEnvironment()
+	stdlib.RegisterStringBuiltins(env)
+
+	sVal, _ := env.Get("std.string")
+	strMod := sVal.(*interpreter.MapValue)
+	fmtFnVal, _ := strMod.Get("format")
+	fmtFn := fmtFnVal.(*interpreter.BuiltinFunction)
+	padFnVal, _ := strMod.Get("pad")
+	padFn := padFnVal.(*interpreter.BuiltinFunction)
+
+	// format indexed
+	res1 := fmtFn.Fn(&interpreter.StringValue{Val: "Hello {0}, count {1}!"}, &interpreter.StringValue{Val: "Alice"}, &interpreter.IntegerValue{Val: 5})
+	if res1.(*interpreter.StringValue).Val != "Hello Alice, count 5!" {
+		t.Errorf("unexpected format indexed: %q", res1.(*interpreter.StringValue).Val)
+	}
+
+	// format sequential
+	res2 := fmtFn.Fn(&interpreter.StringValue{Val: "val={}, ok={}"}, &interpreter.IntegerValue{Val: 42}, interpreter.TRUE)
+	if res2.(*interpreter.StringValue).Val != "val=42, ok=true" {
+		t.Errorf("unexpected format sequential: %q", res2.(*interpreter.StringValue).Val)
+	}
+
+	// pad both
+	res3 := padFn.Fn(&interpreter.StringValue{Val: "hi"}, &interpreter.IntegerValue{Val: 6}, &interpreter.StringValue{Val: "*"}, &interpreter.StringValue{Val: "both"})
+	if res3.(*interpreter.StringValue).Val != "**hi**" {
+		t.Errorf("unexpected pad both: %q", res3.(*interpreter.StringValue).Val)
+	}
+
+	// pad left
+	res4 := padFn.Fn(&interpreter.StringValue{Val: "hi"}, &interpreter.IntegerValue{Val: 5}, &interpreter.StringValue{Val: "-"}, &interpreter.StringValue{Val: "left"})
+	if res4.(*interpreter.StringValue).Val != "---hi" {
+		t.Errorf("unexpected pad left: %q", res4.(*interpreter.StringValue).Val)
+	}
+}
+
+func TestErrorValueCategoriesAndMethods(t *testing.T) {
+	errVal := interpreter.NewError(interpreter.ErrCodeNotFound, "user profile not found")
+	if errVal.Category() != "not_found" {
+		t.Errorf("expected not_found category, got %q", errVal.Category())
+	}
+
+	codeRes, err := errVal.CallMethod("code", nil)
+	if err != nil || codeRes.(*interpreter.IntegerValue).Val != 404 {
+		t.Errorf("expected code() == 404, got %v (err=%v)", codeRes, err)
+	}
+
+	catRes, err := errVal.CallMethod("category", nil)
+	if err != nil || catRes.(*interpreter.StringValue).Val != "not_found" {
+		t.Errorf("expected category() == 'not_found', got %v (err=%v)", catRes, err)
+	}
+
+	msgRes, err := errVal.CallMethod("message", nil)
+	if err != nil || msgRes.(*interpreter.StringValue).Val != "user profile not found" {
+		t.Errorf("expected message(), got %v (err=%v)", msgRes, err)
+	}
+
+	timeRes, err := errVal.CallMethod("time", nil)
+	if err != nil || timeRes.(*interpreter.StringValue).Val == "" {
+		t.Errorf("expected RFC3339 timestamp string from time(), got %v (err=%v)", timeRes, err)
+	}
+}

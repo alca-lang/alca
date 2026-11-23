@@ -1,0 +1,26 @@
+# Generated Pawl runtime stubs for cross-compilation.
+/runtimes/
+
+# Generated release bundle (binaries and copied docs). Rebuild with
+# scripts/make-release.ps1 or scripts/make-release.sh.
+/releases/
+
+# Local CLI builds and built applications.
+/pawl
+/pawl.exe
+*.test
+
+# Compiled binaries and build outputs
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.a
+*.o
+*.tar.gz
+*.zip
+
+# Local runtime data & caches
+/data/

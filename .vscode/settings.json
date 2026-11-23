@@ -1,0 +1,23 @@
+{
+  "workbench.colorTheme": "Dark+ Pure Black (OLED)",
+  "workbench.preferredDarkColorTheme": "Dark+ Pure Black (OLED)",
+  "chat.titleBar.signIn.enabled": false,
+  "chat.titleBar.openInAgentsWindow.enabled": false,
+  "chat.agentsControl.enabled": false,
+  "chat.agent.enabled": false,
+  "chat.welcomePage.signIn.enabled": false,
+  "chat.unifiedAgentsBar.enabled": false,
+  "chat.commandCenter.enabled": false,
+  "workbench.navigationControl.enabled": false,
+  "chat.agentHost.claudeAgent.enabled": false,
+  "chat.agentHost.codexAgent.enabled": false,
+  "chat.agentHost.byokModels.enabled": false,
+  "chat.agentHost.enabled": false,
+  "workbench.commandCenter": false,
+  "workbench.userDataSync.enable": false,
+  "workbench.settingsRegistry.sync": false,
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none",
+  "update.showReleaseNotes": false,
+  "github.copilot.enable": false
+}

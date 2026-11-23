@@ -1,0 +1,113 @@
+{
+  "comments": {
+    "lineComment": "//",
+    "blockComment": [
+      "/*",
+      "*/"
+    ]
+  },
+  "brackets": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ]
+  ],
+  "wordPattern": "[A-Za-z_][A-Za-z0-9_]*",
+  "autoClosingPairs": [
+    {
+      "open": "{",
+      "close": "}"
+    },
+    {
+      "open": "[",
+      "close": "]"
+    },
+    {
+      "open": "(",
+      "close": ")"
+    },
+    {
+      "open": "\"",
+      "close": "\"",
+      "notIn": [
+        "string"
+      ]
+    },
+    {
+      "open": "'",
+      "close": "'",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    },
+    {
+      "open": "`",
+      "close": "`",
+      "notIn": [
+        "string",
+        "comment"
+      ]
+    }
+  ],
+  "surroundingPairs": [
+    [
+      "{",
+      "}"
+    ],
+    [
+      "[",
+      "]"
+    ],
+    [
+      "(",
+      ")"
+    ],
+    [
+      "\"",
+      "\""
+    ],
+    [
+      "'",
+      "'"
+    ],
+    [
+      "`",
+      "`"
+    ]
+  ],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\\([^)]*\\))?\\s*)?(?:(?:pub|public|private|const|async)\\s+)*(?:func|fn|struct|class|enum|interface|if|elif|else|while|for|foreach|loop|match|case|test|ba|threads|tx|watch|mock|try|catch|finally)\\b.*\\{\\s*(?://.*)?$",
+    "decreaseIndentPattern": "^\\s*\\}\\s*$"
+  },
+  "folding": {
+    "offSide": true,
+    "markers": {
+      "start": "^\\s*//\\s*#?region\\b",
+      "end": "^\\s*//\\s*#?endregion\\b"
+    }
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\\([^)]*\\))?\\s*)?(?:(?:pub|public|private|const|async)\\s+)*(?:func|fn|struct|class|enum|interface|if|elif|else|while|for|foreach|loop|match|case|test|ba|threads|tx|watch|mock|try|catch|finally)\\b.*\\{\\s*(?://.*)?$",
+      "action": {
+        "indent": "indent"
+      }
+    },
+    {
+      "beforeText": "^\\s*//",
+      "action": {
+        "indent": "none",
+        "appendText": "// "
+      }
+    }
+  ]
+}
