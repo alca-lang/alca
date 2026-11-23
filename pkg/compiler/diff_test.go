@@ -219,6 +219,17 @@ println(len(m))
 println(m["gamma"])
 `,
 		},
+		{
+			name: "math_stdlib",
+			src: `
+use std.math
+
+println(math.min(10, 25))
+println(math.max(10, 25))
+println(math.abs(-42))
+println(math.abs(99))
+`,
+		},
 	}
 
 	for _, tt := range tests {

@@ -464,8 +464,8 @@ func (l *loweringContext) lowerStatement(stmt ast.Statement) error {
 		l.currentBlock = l.currentFn.NewBlock("after_continue")
 		return nil
 
-	case *ast.EnumDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration:
-		// Already processed in buildLayouts and declarations pass
+	case *ast.EnumDeclaration, *ast.StructDeclaration, *ast.ClassDeclaration, *ast.UseStatement:
+		// Already processed in buildLayouts, imports and declarations pass
 		return nil
 
 	default:
@@ -1254,8 +1254,93 @@ func (l *loweringContext) lowerExpression(e ast.Expression) (VReg, error) {
 		return dst, nil
 
 	case *ast.CallExpression:
-		// 1. Method call: receiver.method(...)
+		// Check for stdlib module calls: module.func(...)
 		if dot, ok := expr.Function.(*ast.DotExpression); ok {
+			if ident, ok := dot.Left.(*ast.Identifier); ok {
+				modName := ident.Value
+				fnName := dot.Field
+
+				if modName == "math" {
+					var args []VReg
+					for _, a := range expr.Arguments {
+						ar, err := l.lowerExpression(a)
+						if err != nil {
+							return VReg{}, err
+						}
+						args = append(args, ar)
+					}
+
+					switch fnName {
+					case "min":
+						if len(args) == 2 {
+							dst := l.currentFn.NewVReg(args[0].Type)
+							cmp := l.currentFn.NewVReg(TypeI8)
+							l.emit(&Instruction{Op: OpLt, Dst: cmp, Src1: args[0], Src2: args[1]})
+							thenB := l.currentFn.NewBlock("min_then")
+							elseB := l.currentFn.NewBlock("min_else")
+							mergeB := l.currentFn.NewBlock("min_merge")
+							l.emit(&Instruction{Op: OpBranch, Src1: cmp, Target: thenB, ElseTgt: elseB})
+
+							l.currentBlock = thenB
+							l.emit(&Instruction{Op: OpCopy, Dst: dst, Src1: args[0]})
+							l.emit(&Instruction{Op: OpJmp, Target: mergeB})
+
+							l.currentBlock = elseB
+							l.emit(&Instruction{Op: OpCopy, Dst: dst, Src1: args[1]})
+							l.emit(&Instruction{Op: OpJmp, Target: mergeB})
+
+							l.currentBlock = mergeB
+							return dst, nil
+						}
+					case "max":
+						if len(args) == 2 {
+							dst := l.currentFn.NewVReg(args[0].Type)
+							cmp := l.currentFn.NewVReg(TypeI8)
+							l.emit(&Instruction{Op: OpGt, Dst: cmp, Src1: args[0], Src2: args[1]})
+							thenB := l.currentFn.NewBlock("max_then")
+							elseB := l.currentFn.NewBlock("max_else")
+							mergeB := l.currentFn.NewBlock("max_merge")
+							l.emit(&Instruction{Op: OpBranch, Src1: cmp, Target: thenB, ElseTgt: elseB})
+
+							l.currentBlock = thenB
+							l.emit(&Instruction{Op: OpCopy, Dst: dst, Src1: args[0]})
+							l.emit(&Instruction{Op: OpJmp, Target: mergeB})
+
+							l.currentBlock = elseB
+							l.emit(&Instruction{Op: OpCopy, Dst: dst, Src1: args[1]})
+							l.emit(&Instruction{Op: OpJmp, Target: mergeB})
+
+							l.currentBlock = mergeB
+							return dst, nil
+						}
+					case "abs":
+						if len(args) == 1 {
+							dst := l.currentFn.NewVReg(args[0].Type)
+							zero := l.currentFn.NewVReg(args[0].Type)
+							l.emit(&Instruction{Op: OpConstInt, Dst: zero, IntVal: 0})
+							cmp := l.currentFn.NewVReg(TypeI8)
+							l.emit(&Instruction{Op: OpLt, Dst: cmp, Src1: args[0], Src2: zero})
+							thenB := l.currentFn.NewBlock("abs_neg")
+							elseB := l.currentFn.NewBlock("abs_pos")
+							mergeB := l.currentFn.NewBlock("abs_merge")
+							l.emit(&Instruction{Op: OpBranch, Src1: cmp, Target: thenB, ElseTgt: elseB})
+
+							l.currentBlock = thenB
+							l.emit(&Instruction{Op: OpNeg, Dst: dst, Src1: args[0]})
+							l.emit(&Instruction{Op: OpJmp, Target: mergeB})
+
+							l.currentBlock = elseB
+							l.emit(&Instruction{Op: OpCopy, Dst: dst, Src1: args[0]})
+							l.emit(&Instruction{Op: OpJmp, Target: mergeB})
+
+							l.currentBlock = mergeB
+							return dst, nil
+						}
+					}
+				}
+			}
+
+			// Method call: receiver.method(...)
 			rcvReg, err := l.lowerExpression(dot.Left)
 			if err != nil {
 				return VReg{}, err
