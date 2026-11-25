@@ -12,6 +12,7 @@
 
 # Compiled binaries and build outputs
 /bin/
+/compiler/build/
 *.exe
 *.exe~
 *.dll
