@@ -1,0 +1,26 @@
+EXITCODE: 0
+--- STDOUT ---
+=== Pawl Lang: Prometheus Metrics Demo ===
+Метрики успешно собраны в приложении.
+
+--- Экспортированный Prometheus OpenMetrics формат ---
+# HELP active_user_sessions Количество активных пользовательских сессий
+# TYPE active_user_sessions gauge
+active_user_sessions 130
+# HELP api_requests_total Общее количество входящих API запросов
+# TYPE api_requests_total counter
+api_requests_total 15
+# HELP http_request_duration_seconds Время обработки запроса в секундах
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{le="0.01"} 0
+http_request_duration_seconds_bucket{le="0.05"} 1
+http_request_duration_seconds_bucket{le="0.1"} 2
+http_request_duration_seconds_bucket{le="0.5"} 3
+http_request_duration_seconds_bucket{le="1"} 3
+http_request_duration_seconds_bucket{le="+Inf"} 3
+http_request_duration_seconds_sum 0.45
+http_request_duration_seconds_count 3
+
+
+--- STDERR ---
+

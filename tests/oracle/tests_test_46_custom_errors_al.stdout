@@ -1,0 +1,77 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected end of statement (newline)
+  --> tests/test_46_custom_errors.al:40:8
+   |
+39 | func safe_parse_int(s: string) -> int {
+40 |     try {
+   |        ^ expected end of statement (newline)
+41 |         return int(s)
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_46_custom_errors.al:43:10
+   |
+42 |     }
+43 |     catch {
+   |          ^ expected end of statement (newline)
+44 |         err("Invalid integer: " + s, code=422)
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_46_custom_errors.al:44:1
+   |
+43 |     catch {
+44 |         err("Invalid integer: " + s, code=422)
+   | ^^^^^^ unexpected indentation
+45 |         return 0
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_46_custom_errors.al:46:1
+   |
+45 |         return 0
+46 |     }
+   | ^^^^^^ unaligned dedent
+47 | }
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_46_custom_errors.al:46:5
+   |
+45 |         return 0
+46 |     }
+   |     ^ unexpected closing '}' without matching '{'
+47 | }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_46_custom_errors.al:47:1
+   |
+46 |     }
+47 | }
+   | ^^^^^^ unaligned dedent
+48 | parsed := safe_parse_int("42")
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_46_custom_errors.al:47:1
+   |
+46 |     }
+47 | }
+   | ^ unexpected closing '}' without matching '{'
+48 | parsed := safe_parse_int("42")
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 7 errors. Execution aborted.
+

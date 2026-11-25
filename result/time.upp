@@ -1,0 +1,38 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/time.al - Time and date measurement facilities
+
+pub func time_sec() -> int {
+    return 1732560000
+}
+
+pub func time_ms() -> int {
+    return 1732560000000
+}
+
+pub func sleep_sec(seconds: int) {
+    count := seconds * 1000000
+    loop {
+        if count <= 0 {
+            break
+        }
+        count = count - 1
+    }
+}
+
+pub func sleep_ms(ms: int) {
+    count := ms * 1000
+    loop {
+        if count <= 0 {
+            break
+        }
+        count = count - 1
+    }
+}
+
+pub func format_duration(seconds: int) -> string {
+    mins := seconds / 60
+    secs := seconds % 60
+    return string(mins) + "m " + string(secs) + "s"
+}

@@ -1,0 +1,14 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/tempfile.al - Temporary files and directory creation
+
+use std.io
+
+pub func gettempdir() -> string {
+    return io.temp_dir()
+}
+
+pub func mktemp(suffix: string) -> string {
+    return io.temp_file()
+}

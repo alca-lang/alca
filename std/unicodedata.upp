@@ -1,0 +1,20 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/unicodedata.al - Unicode database, character properties & category lookups
+
+pub func name(codePoint: int) -> string {
+    if codePoint == 65 { return "LATIN CAPITAL LETTER A" }
+    return "UNKNOWN CHARACTER"
+}
+
+pub func category(codePoint: int) -> string {
+    if codePoint >= 65 and codePoint <= 90 { return "Lu" }
+    if codePoint >= 97 and codePoint <= 122 { return "Ll" }
+    if codePoint >= 48 and codePoint <= 57 { return "Nd" }
+    return "Cn"
+}
+
+pub func is_printable(codePoint: int) -> bool {
+    return codePoint >= 32 and codePoint != 127
+}

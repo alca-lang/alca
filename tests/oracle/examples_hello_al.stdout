@@ -1,0 +1,9 @@
+EXITCODE: 0
+--- STDOUT ---
+listening on 127.0.0.1:8080
+12.566370614359172
+handled: division by zero
+55
+
+--- STDERR ---
+

@@ -5,7 +5,7 @@
 
 #include <utility>
 
-namespace pawl::lexer {
+namespace ulang::lexer {
 namespace {
 
 using token::Kind;
@@ -874,4 +874,4 @@ bool isDigit(char ch) { return '0' <= ch && ch <= '9'; }
 
 bool isLetterOrDigit(char ch) { return isLetter(ch) || isDigit(ch); }
 
-} // namespace pawl::lexer
+} // namespace ulang::lexer

@@ -1,0 +1,1387 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:5:53
+   |
+ 4 | // 1. Map transformation
+ 5 | func map_transform(items: list[int], transform: func(int) -> int) -> list[int] {
+   |                                                     ^ expected ')' to close parenthesis, got "(" (()
+ 6 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:5:49
+   |
+ 4 | // 1. Map transformation
+ 5 | func map_transform(items: list[int], transform: func(int) -> int) -> list[int] {
+   |                                                 ^^^^ expected '{' after function signature
+ 6 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:5:58
+   |
+ 4 | // 1. Map transformation
+ 5 | func map_transform(items: list[int], transform: func(int) -> int) -> list[int] {
+   |                                                          ^ expected end of statement (newline)
+ 6 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:6:1
+   |
+ 5 | func map_transform(items: list[int], transform: func(int) -> int) -> list[int] {
+ 6 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+ 7 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:11:1
+   |
+10 |     return result
+11 | }
+   | ^^^^^^ unaligned dedent
+12 | mapped := map_transform([1, 2, 3], func(x: int) -> int:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:11:1
+   |
+10 |     return result
+11 | }
+   | ^ unexpected closing '}' without matching '{'
+12 | mapped := map_transform([1, 2, 3], func(x: int) -> int:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:12:36
+   |
+11 | }
+12 | mapped := map_transform([1, 2, 3], func(x: int) -> int:
+   |                                    ^^^^ unexpected token "func" (func)
+13 |     return x * 2
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:12:40
+   |
+11 | }
+12 | mapped := map_transform([1, 2, 3], func(x: int) -> int:
+   |                                        ^ expected ')' to close parenthesis, got "(" (()
+13 |     return x * 2
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:12:42
+   |
+11 | }
+12 | mapped := map_transform([1, 2, 3], func(x: int) -> int:
+   |                                          ^ expected ')' to close parenthesis, got ":" (:)
+13 |     return x * 2
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:12:42
+   |
+11 | }
+12 | mapped := map_transform([1, 2, 3], func(x: int) -> int:
+   |                                          ^ expected end of statement (newline)
+13 |     return x * 2
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:13:1
+   |
+12 | mapped := map_transform([1, 2, 3], func(x: int) -> int:
+13 |     return x * 2
+   | ^^^^^^ unexpected indentation
+14 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:14:1
+   |
+13 |     return x * 2
+14 | )
+   | ^^^^^^ unaligned dedent
+15 | assert mapped == [2, 4, 6]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_76_stream_transformations.al:14:1
+   |
+13 |     return x * 2
+14 | )
+   | ^ unexpected closing ')' without matching '('
+15 | assert mapped == [2, 4, 6]
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:18:56
+   |
+17 | // 2. Filter transformation
+18 | func filter_transform(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                        ^ expected ')' to close parenthesis, got "(" (()
+19 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:18:52
+   |
+17 | // 2. Filter transformation
+18 | func filter_transform(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                    ^^^^ expected '{' after function signature
+19 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:18:61
+   |
+17 | // 2. Filter transformation
+18 | func filter_transform(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                             ^ expected end of statement (newline)
+19 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:19:1
+   |
+18 | func filter_transform(items: list[int], predicate: func(int) -> bool) -> list[int] {
+19 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+20 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:26:1
+   |
+25 |     return result
+26 | }
+   | ^^^^^^ unaligned dedent
+27 | filtered := filter_transform([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:26:1
+   |
+25 |     return result
+26 | }
+   | ^ unexpected closing '}' without matching '{'
+27 | filtered := filter_transform([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:27:47
+   |
+26 | }
+27 | filtered := filter_transform([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                               ^^^^ unexpected token "func" (func)
+28 |     return x % 2 == 0
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:27:51
+   |
+26 | }
+27 | filtered := filter_transform([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                                   ^ expected ')' to close parenthesis, got "(" (()
+28 |     return x % 2 == 0
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:27:53
+   |
+26 | }
+27 | filtered := filter_transform([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                                     ^ expected ')' to close parenthesis, got ":" (:)
+28 |     return x % 2 == 0
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:27:53
+   |
+26 | }
+27 | filtered := filter_transform([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                                     ^ expected end of statement (newline)
+28 |     return x % 2 == 0
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:28:1
+   |
+27 | filtered := filter_transform([1, 2, 3, 4, 5], func(x: int) -> bool:
+28 |     return x % 2 == 0
+   | ^^^^^^ unexpected indentation
+29 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:29:1
+   |
+28 |     return x % 2 == 0
+29 | )
+   | ^^^^^^ unaligned dedent
+30 | assert filtered == [2, 4]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_76_stream_transformations.al:29:1
+   |
+28 |     return x % 2 == 0
+29 | )
+   | ^ unexpected closing ')' without matching '('
+30 | assert filtered == [2, 4]
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:33:54
+   |
+32 | // 3. Reduce transformation
+33 | func reduce_transform(items: list[int], reducer: func(int, int) -> int, initial: int) -> int {
+   |                                                      ^ expected ')' to close parenthesis, got "(" (()
+34 |     result := initial
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:33:50
+   |
+32 | // 3. Reduce transformation
+33 | func reduce_transform(items: list[int], reducer: func(int, int) -> int, initial: int) -> int {
+   |                                                  ^^^^ expected '{' after function signature
+34 |     result := initial
+   |
+   = help: provide '{' to start the function body
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_76_stream_transformations.al:33:58
+   |
+32 | // 3. Reduce transformation
+33 | func reduce_transform(items: list[int], reducer: func(int, int) -> int, initial: int) -> int {
+   |                                                          ^ expected ')' to close parenthesis, got "," (,)
+34 |     result := initial
+   |
+   = help: unclosed '(' from line 33, col 54; add a closing ')'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:34:1
+   |
+33 | func reduce_transform(items: list[int], reducer: func(int, int) -> int, initial: int) -> int {
+34 |     result := initial
+   | ^^^^^^ unexpected indentation
+35 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:39:1
+   |
+38 |     return result
+39 | }
+   | ^^^^^^ unaligned dedent
+40 | reduced := reduce_transform([1, 2, 3, 4], func(a: int, b: int) -> int:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:39:1
+   |
+38 |     return result
+39 | }
+   | ^ unexpected closing '}' without matching '{'
+40 | reduced := reduce_transform([1, 2, 3, 4], func(a: int, b: int) -> int:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:40:43
+   |
+39 | }
+40 | reduced := reduce_transform([1, 2, 3, 4], func(a: int, b: int) -> int:
+   |                                           ^^^^ unexpected token "func" (func)
+41 |     return a + b
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:40:47
+   |
+39 | }
+40 | reduced := reduce_transform([1, 2, 3, 4], func(a: int, b: int) -> int:
+   |                                               ^ expected ')' to close parenthesis, got "(" (()
+41 |     return a + b
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:40:49
+   |
+39 | }
+40 | reduced := reduce_transform([1, 2, 3, 4], func(a: int, b: int) -> int:
+   |                                                 ^ expected ')' to close parenthesis, got ":" (:)
+41 |     return a + b
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:40:49
+   |
+39 | }
+40 | reduced := reduce_transform([1, 2, 3, 4], func(a: int, b: int) -> int:
+   |                                                 ^ expected end of statement (newline)
+41 |     return a + b
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:41:1
+   |
+40 | reduced := reduce_transform([1, 2, 3, 4], func(a: int, b: int) -> int:
+41 |     return a + b
+   | ^^^^^^ unexpected indentation
+42 | , 0)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:42:1
+   |
+41 |     return a + b
+42 | , 0)
+   | ^^^^^^ unaligned dedent
+43 | assert reduced == 10
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected ',' outside list, map, or argument list
+  --> tests/test_76_stream_transformations.al:42:1
+   |
+41 |     return a + b
+42 | , 0)
+   | ^ unexpected ',' outside list, map, or argument list
+43 | assert reduced == 10
+   |
+   = help: remove the extra comma or enclose the items in brackets or parentheses
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:47:33
+   |
+46 | numbers := [1, 2, 3, 4, 5]
+47 | step1 := map_transform(numbers, func(x: int) -> int:
+   |                                 ^^^^ unexpected token "func" (func)
+48 |     return x * x
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:47:37
+   |
+46 | numbers := [1, 2, 3, 4, 5]
+47 | step1 := map_transform(numbers, func(x: int) -> int:
+   |                                     ^ expected ')' to close parenthesis, got "(" (()
+48 |     return x * x
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:47:39
+   |
+46 | numbers := [1, 2, 3, 4, 5]
+47 | step1 := map_transform(numbers, func(x: int) -> int:
+   |                                       ^ expected ')' to close parenthesis, got ":" (:)
+48 |     return x * x
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:47:39
+   |
+46 | numbers := [1, 2, 3, 4, 5]
+47 | step1 := map_transform(numbers, func(x: int) -> int:
+   |                                       ^ expected end of statement (newline)
+48 |     return x * x
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:48:1
+   |
+47 | step1 := map_transform(numbers, func(x: int) -> int:
+48 |     return x * x
+   | ^^^^^^ unexpected indentation
+49 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:49:1
+   |
+48 |     return x * x
+49 | )
+   | ^^^^^^ unaligned dedent
+50 | step2 := filter_transform(step1, func(x: int) -> bool:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_76_stream_transformations.al:49:1
+   |
+48 |     return x * x
+49 | )
+   | ^ unexpected closing ')' without matching '('
+50 | step2 := filter_transform(step1, func(x: int) -> bool:
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:50:34
+   |
+49 | )
+50 | step2 := filter_transform(step1, func(x: int) -> bool:
+   |                                  ^^^^ unexpected token "func" (func)
+51 |     return x > 5
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:50:38
+   |
+49 | )
+50 | step2 := filter_transform(step1, func(x: int) -> bool:
+   |                                      ^ expected ')' to close parenthesis, got "(" (()
+51 |     return x > 5
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:50:40
+   |
+49 | )
+50 | step2 := filter_transform(step1, func(x: int) -> bool:
+   |                                        ^ expected ')' to close parenthesis, got ":" (:)
+51 |     return x > 5
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:50:40
+   |
+49 | )
+50 | step2 := filter_transform(step1, func(x: int) -> bool:
+   |                                        ^ expected end of statement (newline)
+51 |     return x > 5
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:51:1
+   |
+50 | step2 := filter_transform(step1, func(x: int) -> bool:
+51 |     return x > 5
+   | ^^^^^^ unexpected indentation
+52 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:52:1
+   |
+51 |     return x > 5
+52 | )
+   | ^^^^^^ unaligned dedent
+53 | step3 := reduce_transform(step2, func(a: int, b: int) -> int:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_76_stream_transformations.al:52:1
+   |
+51 |     return x > 5
+52 | )
+   | ^ unexpected closing ')' without matching '('
+53 | step3 := reduce_transform(step2, func(a: int, b: int) -> int:
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:53:34
+   |
+52 | )
+53 | step3 := reduce_transform(step2, func(a: int, b: int) -> int:
+   |                                  ^^^^ unexpected token "func" (func)
+54 |     return a + b
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:53:38
+   |
+52 | )
+53 | step3 := reduce_transform(step2, func(a: int, b: int) -> int:
+   |                                      ^ expected ')' to close parenthesis, got "(" (()
+54 |     return a + b
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:53:40
+   |
+52 | )
+53 | step3 := reduce_transform(step2, func(a: int, b: int) -> int:
+   |                                        ^ expected ')' to close parenthesis, got ":" (:)
+54 |     return a + b
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:53:40
+   |
+52 | )
+53 | step3 := reduce_transform(step2, func(a: int, b: int) -> int:
+   |                                        ^ expected end of statement (newline)
+54 |     return a + b
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:54:1
+   |
+53 | step3 := reduce_transform(step2, func(a: int, b: int) -> int:
+54 |     return a + b
+   | ^^^^^^ unexpected indentation
+55 | , 0)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:55:1
+   |
+54 |     return a + b
+55 | , 0)
+   | ^^^^^^ unaligned dedent
+56 | assert step3 == 16 + 25 // 4^2 + 5^2
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected ',' outside list, map, or argument list
+  --> tests/test_76_stream_transformations.al:55:1
+   |
+54 |     return a + b
+55 | , 0)
+   | ^ unexpected ',' outside list, map, or argument list
+56 | assert step3 == 16 + 25 // 4^2 + 5^2
+   |
+   = help: remove the extra comma or enclose the items in brackets or parentheses
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:59:47
+   |
+58 | // 5. Group by transformation
+59 | func group_by(items: list[int], key_func: func(int) -> int) -> map[int, list[int]] {
+   |                                               ^ expected ')' to close parenthesis, got "(" (()
+60 |     result: map[int, list[int]] = {}
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:59:43
+   |
+58 | // 5. Group by transformation
+59 | func group_by(items: list[int], key_func: func(int) -> int) -> map[int, list[int]] {
+   |                                           ^^^^ expected '{' after function signature
+60 |     result: map[int, list[int]] = {}
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:59:52
+   |
+58 | // 5. Group by transformation
+59 | func group_by(items: list[int], key_func: func(int) -> int) -> map[int, list[int]] {
+   |                                                    ^ expected end of statement (newline)
+60 |     result: map[int, list[int]] = {}
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:60:1
+   |
+59 | func group_by(items: list[int], key_func: func(int) -> int) -> map[int, list[int]] {
+60 |     result: map[int, list[int]] = {}
+   | ^^^^^^ unexpected indentation
+61 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:71:1
+   |
+70 |     return result
+71 | }
+   | ^^^^^^ unaligned dedent
+72 | grouped := group_by([1, 2, 3, 4, 5, 6], func(x: int) -> int:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:71:1
+   |
+70 |     return result
+71 | }
+   | ^ unexpected closing '}' without matching '{'
+72 | grouped := group_by([1, 2, 3, 4, 5, 6], func(x: int) -> int:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:72:41
+   |
+71 | }
+72 | grouped := group_by([1, 2, 3, 4, 5, 6], func(x: int) -> int:
+   |                                         ^^^^ unexpected token "func" (func)
+73 |     return x % 2
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:72:45
+   |
+71 | }
+72 | grouped := group_by([1, 2, 3, 4, 5, 6], func(x: int) -> int:
+   |                                             ^ expected ')' to close parenthesis, got "(" (()
+73 |     return x % 2
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:72:47
+   |
+71 | }
+72 | grouped := group_by([1, 2, 3, 4, 5, 6], func(x: int) -> int:
+   |                                               ^ expected ')' to close parenthesis, got ":" (:)
+73 |     return x % 2
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:72:47
+   |
+71 | }
+72 | grouped := group_by([1, 2, 3, 4, 5, 6], func(x: int) -> int:
+   |                                               ^ expected end of statement (newline)
+73 |     return x % 2
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:73:1
+   |
+72 | grouped := group_by([1, 2, 3, 4, 5, 6], func(x: int) -> int:
+73 |     return x % 2
+   | ^^^^^^ unexpected indentation
+74 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:74:1
+   |
+73 |     return x % 2
+74 | )
+   | ^^^^^^ unaligned dedent
+75 | assert len(grouped[0]) == 3 // Even numbers
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_76_stream_transformations.al:74:1
+   |
+73 |     return x % 2
+74 | )
+   | ^ unexpected closing ')' without matching '('
+75 | assert len(grouped[0]) == 3 // Even numbers
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:79:45
+   |
+78 | // 6. Flat map transformation
+79 | func flat_map(items: list[int], mapper: func(int) -> list[int]) -> list[int] {
+   |                                             ^ expected ')' to close parenthesis, got "(" (()
+80 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:79:41
+   |
+78 | // 6. Flat map transformation
+79 | func flat_map(items: list[int], mapper: func(int) -> list[int]) -> list[int] {
+   |                                         ^^^^ expected '{' after function signature
+80 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:79:50
+   |
+78 | // 6. Flat map transformation
+79 | func flat_map(items: list[int], mapper: func(int) -> list[int]) -> list[int] {
+   |                                                  ^ expected end of statement (newline)
+80 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:80:1
+   |
+79 | func flat_map(items: list[int], mapper: func(int) -> list[int]) -> list[int] {
+80 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+81 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:88:1
+   |
+87 |     return result
+88 | }
+   | ^^^^^^ unaligned dedent
+89 | flat_mapped := flat_map([1, 2], func(x: int) -> list[int]:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:88:1
+   |
+87 |     return result
+88 | }
+   | ^ unexpected closing '}' without matching '{'
+89 | flat_mapped := flat_map([1, 2], func(x: int) -> list[int]:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:89:33
+   |
+88 | }
+89 | flat_mapped := flat_map([1, 2], func(x: int) -> list[int]:
+   |                                 ^^^^ unexpected token "func" (func)
+90 |     return [x, x * 2]
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:89:37
+   |
+88 | }
+89 | flat_mapped := flat_map([1, 2], func(x: int) -> list[int]:
+   |                                     ^ expected ')' to close parenthesis, got "(" (()
+90 |     return [x, x * 2]
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:89:39
+   |
+88 | }
+89 | flat_mapped := flat_map([1, 2], func(x: int) -> list[int]:
+   |                                       ^ expected ')' to close parenthesis, got ":" (:)
+90 |     return [x, x * 2]
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:89:39
+   |
+88 | }
+89 | flat_mapped := flat_map([1, 2], func(x: int) -> list[int]:
+   |                                       ^ expected end of statement (newline)
+90 |     return [x, x * 2]
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:90:1
+   |
+89 | flat_mapped := flat_map([1, 2], func(x: int) -> list[int]:
+90 |     return [x, x * 2]
+   | ^^^^^^ unexpected indentation
+91 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:91:1
+   |
+90 |     return [x, x * 2]
+91 | )
+   | ^^^^^^ unaligned dedent
+92 | assert flat_mapped == [1, 2, 2, 4]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_76_stream_transformations.al:91:1
+   |
+90 |     return [x, x * 2]
+91 | )
+   | ^ unexpected closing ')' without matching '('
+92 | assert flat_mapped == [1, 2, 2, 4]
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:95:49
+   |
+94 | // 7. Partition transformation
+95 | func partition(items: list[int], predicate: func(int) -> bool) -> (list[int], list[int]) {
+   |                                                 ^ expected ')' to close parenthesis, got "(" (()
+96 |     true_list: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:95:45
+   |
+94 | // 7. Partition transformation
+95 | func partition(items: list[int], predicate: func(int) -> bool) -> (list[int], list[int]) {
+   |                                             ^^^^ expected '{' after function signature
+96 |     true_list: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:95:54
+   |
+94 | // 7. Partition transformation
+95 | func partition(items: list[int], predicate: func(int) -> bool) -> (list[int], list[int]) {
+   |                                                      ^ expected end of statement (newline)
+96 |     true_list: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:96:1
+   |
+95 | func partition(items: list[int], predicate: func(int) -> bool) -> (list[int], list[int]) {
+96 |     true_list: list[int] = []
+   | ^^^^^^ unexpected indentation
+97 |     false_list: list[int] = []
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_76_stream_transformations.al:106:22
+   |
+105 |     }
+106 |     return (true_list, false_list)
+   |                      ^ expected ')' to close parenthesis, got "," (,)
+107 | }
+   |
+   = help: unclosed '(' from line 106, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:106:22
+   |
+105 |     }
+106 |     return (true_list, false_list)
+   |                      ^ expected end of statement (newline)
+107 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:107:1
+   |
+106 |     return (true_list, false_list)
+107 | }
+   | ^^^^^^ unaligned dedent
+108 | (evens, odds) := partition([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:107:1
+   |
+106 |     return (true_list, false_list)
+107 | }
+   | ^ unexpected closing '}' without matching '{'
+108 | (evens, odds) := partition([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_76_stream_transformations.al:108:7
+   |
+107 | }
+108 | (evens, odds) := partition([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |       ^ expected ')' to close parenthesis, got "," (,)
+109 |     return x % 2 == 0
+   |
+   = help: unclosed '(' from line 108, col 1; add a closing ')'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:109:1
+   |
+108 | (evens, odds) := partition([1, 2, 3, 4, 5], func(x: int) -> bool:
+109 |     return x % 2 == 0
+   | ^^^^^^ unexpected indentation
+110 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:110:1
+   |
+109 |     return x % 2 == 0
+110 | )
+   | ^^^^^^ unaligned dedent
+111 | assert evens == [2, 4]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_76_stream_transformations.al:110:1
+   |
+109 |     return x % 2 == 0
+110 | )
+   | ^ unexpected closing ')' without matching '('
+111 | assert evens == [2, 4]
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:115:50
+   |
+114 | // 8. Take while transformation
+115 | func take_while(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                  ^ expected ')' to close parenthesis, got "(" (()
+116 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:115:46
+   |
+114 | // 8. Take while transformation
+115 | func take_while(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                              ^^^^ expected '{' after function signature
+116 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:115:55
+   |
+114 | // 8. Take while transformation
+115 | func take_while(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                       ^ expected end of statement (newline)
+116 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:116:1
+   |
+115 | func take_while(items: list[int], predicate: func(int) -> bool) -> list[int] {
+116 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+117 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:126:1
+   |
+125 |     return result
+126 | }
+   | ^^^^^^ unaligned dedent
+127 | taken := take_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:126:1
+   |
+125 |     return result
+126 | }
+   | ^ unexpected closing '}' without matching '{'
+127 | taken := take_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:127:38
+   |
+126 | }
+127 | taken := take_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                      ^^^^ unexpected token "func" (func)
+128 |     return x < 4
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:127:42
+   |
+126 | }
+127 | taken := take_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                          ^ expected ')' to close parenthesis, got "(" (()
+128 |     return x < 4
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:127:44
+   |
+126 | }
+127 | taken := take_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                            ^ expected ')' to close parenthesis, got ":" (:)
+128 |     return x < 4
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:127:44
+   |
+126 | }
+127 | taken := take_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                            ^ expected end of statement (newline)
+128 |     return x < 4
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:128:1
+   |
+127 | taken := take_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+128 |     return x < 4
+   | ^^^^^^ unexpected indentation
+129 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:129:1
+   |
+128 |     return x < 4
+129 | )
+   | ^^^^^^ unaligned dedent
+130 | assert taken == [1, 2, 3]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_76_stream_transformations.al:129:1
+   |
+128 |     return x < 4
+129 | )
+   | ^ unexpected closing ')' without matching '('
+130 | assert taken == [1, 2, 3]
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:133:50
+   |
+132 | // 9. Drop while transformation
+133 | func drop_while(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                  ^ expected ')' to close parenthesis, got "(" (()
+134 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:133:46
+   |
+132 | // 9. Drop while transformation
+133 | func drop_while(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                              ^^^^ expected '{' after function signature
+134 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:133:55
+   |
+132 | // 9. Drop while transformation
+133 | func drop_while(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                       ^ expected end of statement (newline)
+134 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:134:1
+   |
+133 | func drop_while(items: list[int], predicate: func(int) -> bool) -> list[int] {
+134 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+135 |     dropping := true
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:144:1
+   |
+143 |     return result
+144 | }
+   | ^^^^^^ unaligned dedent
+145 | dropped := drop_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:144:1
+   |
+143 |     return result
+144 | }
+   | ^ unexpected closing '}' without matching '{'
+145 | dropped := drop_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_76_stream_transformations.al:145:40
+   |
+144 | }
+145 | dropped := drop_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                        ^^^^ unexpected token "func" (func)
+146 |     return x < 3
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_76_stream_transformations.al:145:44
+   |
+144 | }
+145 | dropped := drop_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                            ^ expected ')' to close parenthesis, got "(" (()
+146 |     return x < 3
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_76_stream_transformations.al:145:46
+   |
+144 | }
+145 | dropped := drop_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                              ^ expected ')' to close parenthesis, got ":" (:)
+146 |     return x < 3
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:145:46
+   |
+144 | }
+145 | dropped := drop_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+   |                                              ^ expected end of statement (newline)
+146 |     return x < 3
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:146:1
+   |
+145 | dropped := drop_while([1, 2, 3, 4, 5], func(x: int) -> bool:
+146 |     return x < 3
+   | ^^^^^^ unexpected indentation
+147 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:147:1
+   |
+146 |     return x < 3
+147 | )
+   | ^^^^^^ unaligned dedent
+148 | assert dropped == [3, 4, 5]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_76_stream_transformations.al:147:1
+   |
+146 |     return x < 3
+147 | )
+   | ^ unexpected closing ')' without matching '('
+148 | assert dropped == [3, 4, 5]
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:164:54
+   |
+163 | // 11. Zip transformation
+164 | func zip(a: list[int], b: list[int]) -> list[list[int]] {
+   |                                                      ^ expected '{' after function signature
+165 |     result: list[list[int]] = []
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_76_stream_transformations.al:164:55
+   |
+163 | // 11. Zip transformation
+164 | func zip(a: list[int], b: list[int]) -> list[list[int]] {
+   |                                                       ^ unexpected closing ']' without matching '['
+165 |     result: list[list[int]] = []
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:165:1
+   |
+164 | func zip(a: list[int], b: list[int]) -> list[list[int]] {
+165 |     result: list[list[int]] = []
+   | ^^^^^^ unexpected indentation
+166 |     min_len := len(a)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:176:1
+   |
+175 |     return result
+176 | }
+   | ^^^^^^ unaligned dedent
+177 | zipped := zip([1, 2, 3], [4, 5, 6])
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:176:1
+   |
+175 |     return result
+176 | }
+   | ^ unexpected closing '}' without matching '{'
+177 | zipped := zip([1, 2, 3], [4, 5, 6])
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "]" (])
+  --> tests/test_76_stream_transformations.al:181:33
+   |
+180 | // 12. Unzip transformation
+181 | func unzip(pairs: list[list[int]]) -> (list[int], list[int]) {
+   |                                 ^ expected ')' to close parenthesis, got "]" (])
+182 |     first: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_76_stream_transformations.al:181:32
+   |
+180 | // 12. Unzip transformation
+181 | func unzip(pairs: list[list[int]]) -> (list[int], list[int]) {
+   |                                ^ expected '{' after function signature
+182 |     first: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_76_stream_transformations.al:181:33
+   |
+180 | // 12. Unzip transformation
+181 | func unzip(pairs: list[list[int]]) -> (list[int], list[int]) {
+   |                                 ^ unexpected closing ']' without matching '['
+182 |     first: list[int] = []
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_76_stream_transformations.al:182:1
+   |
+181 | func unzip(pairs: list[list[int]]) -> (list[int], list[int]) {
+182 |     first: list[int] = []
+   | ^^^^^^ unexpected indentation
+183 |     second: list[int] = []
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_76_stream_transformations.al:188:18
+   |
+187 |     }
+188 |     return (first, second)
+   |                  ^ expected ')' to close parenthesis, got "," (,)
+189 | }
+   |
+   = help: unclosed '(' from line 188, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_76_stream_transformations.al:188:18
+   |
+187 |     }
+188 |     return (first, second)
+   |                  ^ expected end of statement (newline)
+189 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_76_stream_transformations.al:189:1
+   |
+188 |     return (first, second)
+189 | }
+   | ^^^^^^ unaligned dedent
+190 | (first, second) := unzip([[1, 4], [2, 5], [3, 6]])
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_76_stream_transformations.al:189:1
+   |
+188 |     return (first, second)
+189 | }
+   | ^ unexpected closing '}' without matching '{'
+190 | (first, second) := unzip([[1, 4], [2, 5], [3, 6]])
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_76_stream_transformations.al:190:7
+   |
+189 | }
+190 | (first, second) := unzip([[1, 4], [2, 5], [3, 6]])
+   |       ^ expected ')' to close parenthesis, got "," (,)
+191 | assert first == [1, 2, 3]
+   |
+   = help: unclosed '(' from line 190, col 1; add a closing ')'
+
+Found 138 errors. Execution aborted.
+

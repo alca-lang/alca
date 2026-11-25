@@ -1,0 +1,25 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/endian.al - Endianness conversions (Host to Network & Network to Host)
+
+// 16-bit byte swap (htons / ntohs)
+pub func bswap16(val: int) -> int {
+    low := val % 256
+    high := (val / 256) % 256
+    return (low * 256) + high
+}
+
+// 32-bit byte swap (htonl / ntohl)
+pub func bswap32(val: int) -> int {
+    b0 := val % 256
+    b1 := (val / 256) % 256
+    b2 := (val / 65536) % 256
+    b3 := (val / 16777216) % 256
+    return (b0 * 16777216) + (b1 * 65536) + (b2 * 256) + b3
+}
+
+pub func htons(v: int) -> int { return bswap16(v) }
+pub func ntohs(v: int) -> int { return bswap16(v) }
+pub func htonl(v: int) -> int { return bswap32(v) }
+pub func ntohl(v: int) -> int { return bswap32(v) }

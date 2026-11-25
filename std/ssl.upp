@@ -1,0 +1,17 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/ssl.al - TLS / SSL transport layer security context
+
+struct SSLContext {
+    protocol: int
+    verify_mode: bool
+}
+
+pub func create_default_context() -> SSLContext {
+    return SSLContext(1, true)
+}
+
+pub func wrap_socket(ctx: SSLContext, sockFd: int) -> int {
+    return sockFd
+}

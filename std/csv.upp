@@ -1,0 +1,55 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/csv.al - Comma-Separated Values (CSV) reader & writer parser
+
+use std.string
+
+struct Reader {
+    lines: list[string]
+    pos: int
+    delimiter: int
+}
+
+struct Writer {
+    delimiter: string
+    buffer: list[string]
+}
+
+pub func reader(data: string) -> Reader {
+    raw_lines := string.split(data, "\n")
+    return Reader(raw_lines, 0, 44)
+}
+
+pub func read_row(r: Reader) -> list[string] {
+    if r.pos >= len(r.lines) {
+        return []
+    }
+    line := r.lines[r.pos]
+    return string.split(line, ",")
+}
+
+pub func new_writer() -> Writer {
+    buf := []
+    return Writer(",", buf)
+}
+
+pub func writerow(w: Writer, row: list[string]) {
+    s := ""
+    i := 0
+    loop {
+        if i >= len(row) {
+            break
+        }
+        if i > 0 {
+            s = s + w.delimiter
+        }
+        s = s + row[i]
+        i = i + 1
+    }
+    push(w.buffer, s)
+}
+
+pub func dump(w: Writer) -> string {
+    return string.join(w.buffer, "\n")
+}

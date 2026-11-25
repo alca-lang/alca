@@ -1,0 +1,19 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/email.al - MIME & Email message parsing and generation
+
+struct EmailMessage {
+    from_addr: string
+    to_addr: string
+    subject: string
+    body: string
+}
+
+pub func new_message(from_a: string, to_a: string, subj: string, b: string) -> EmailMessage {
+    return EmailMessage(from_a, to_a, subj, b)
+}
+
+pub func as_string(msg: EmailMessage) -> string {
+    return "From: " + msg.from_addr + "\nTo: " + msg.to_addr + "\nSubject: " + msg.subject + "\n\n" + msg.body
+}

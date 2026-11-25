@@ -1,0 +1,22 @@
+EXITCODE: 0
+--- STDOUT ---
+Pawl Language v2.0
+Answer: 42
+Union value: Dynamic text
+Null value: null
+Server configured at 127.0.0.1:8080
+multiply(21) = 42
+Captured stream text
+
+Captured value was: Captured stream text
+Item: alpha
+Item: beta
+Item: gamma
+Allocated buffer: Temporary payload
+Freed buffer instantaneously: buffer is null
+10 / 2 = 5
+Handled error gracefully: division by zero forbidden
+Demo complete!
+
+--- STDERR ---
+

@@ -1,0 +1,107 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: variable declaration requires an initial value
+  --> tests/test_72_dynamic_programming.al:114:22
+   |
+113 |     n := len(weights)
+114 |     dp: list[list[int]] = []
+   |                      ^ variable declaration requires an initial value
+115 |     i := 0
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_72_dynamic_programming.al:114:23
+   |
+113 |     n := len(weights)
+114 |     dp: list[list[int]] = []
+   |                       ^ expected end of statement (newline)
+115 |     i := 0
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_72_dynamic_programming.al:131:88
+   |
+130 |             if weights[i - 1] <= w {
+131 |                 dp[w][i] = dp[w][i - 1] > dp[w - weights[i - 1]][i - 1] + values[i - 1] ?
+   |                                                                                        ^ expected end of statement (newline)
+132 |                               dp[w][i - 1] : dp[w - weights[i - 1]][i - 1] + values[i - 1]
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_72_dynamic_programming.al:132:43
+   |
+131 |                 dp[w][i] = dp[w][i - 1] > dp[w - weights[i - 1]][i - 1] + values[i - 1] ?
+132 |                               dp[w][i - 1] : dp[w - weights[i - 1]][i - 1] + values[i - 1]
+   |                                           ^ expected end of statement (newline)
+133 |             }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: variable declaration requires an initial value
+  --> tests/test_72_dynamic_programming.al:149:22
+   |
+148 |     n := len(s2)
+149 |     dp: list[list[int]] = []
+   |                      ^ variable declaration requires an initial value
+150 |     i := 0
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_72_dynamic_programming.al:149:23
+   |
+148 |     n := len(s2)
+149 |     dp: list[list[int]] = []
+   |                       ^ expected end of statement (newline)
+150 |     i := 0
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: variable declaration requires an initial value
+  --> tests/test_72_dynamic_programming.al:221:23
+   |
+220 |     n := len(s)
+221 |     dp: list[list[bool]] = []
+   |                       ^ variable declaration requires an initial value
+222 |     i := 0
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_72_dynamic_programming.al:221:24
+   |
+220 |     n := len(s)
+221 |     dp: list[list[bool]] = []
+   |                        ^ expected end of statement (newline)
+222 |     i := 0
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: variable declaration requires an initial value
+  --> tests/test_72_dynamic_programming.al:259:22
+   |
+258 | func unique_paths(m: int, n: int) -> int {
+259 |     dp: list[list[int]] = []
+   |                      ^ variable declaration requires an initial value
+260 |     i := 0
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_72_dynamic_programming.al:259:23
+   |
+258 | func unique_paths(m: int, n: int) -> int {
+259 |     dp: list[list[int]] = []
+   |                       ^ expected end of statement (newline)
+260 |     i := 0
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+Found 10 errors. Execution aborted.
+

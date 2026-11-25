@@ -1,0 +1,110 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/io.al - Bare-metal formatting, serial, & VGA console I/O (equivalent to <stdio.h>)
+
+use std.cpu
+use std.mem
+
+// COM1 Base Port (standard IBM PC)
+COM1 := 1016 // 0x3F8
+
+// VGA Text Mode Framebuffer Base Address
+VGA_BUFFER := 753664 // 0xB8000
+VGA_WHITE_ON_BLACK := 3840 // 0x0F00
+
+// Writes a single character to COM1 serial port
+pub func serial_putc(c: int) {
+    cpu.out8(COM1, c)
+}
+
+// Writes a null-terminated string to COM1 serial port
+pub func serial_puts(strAddr: int) {
+    i := 0
+    loop {
+        c := mem.read_u8(strAddr, i)
+        if c == 0 {
+            break
+        }
+        serial_putc(c)
+        i = i + 1
+    }
+}
+
+// Writes an integer in decimal format to COM1 serial port
+pub func serial_put_int(n: int) {
+    if n == 0 {
+        serial_putc(48) // '0'
+        return
+    }
+    val := n
+    if val < 0 {
+        serial_putc(45) // '-'
+        val = -val
+    }
+
+    // Buffer digits in reverse
+    digits := 0
+    rev := 0
+    while val > 0 {
+        rev = rev * 10 + (val % 10)
+        val = val / 10
+        digits = digits + 1
+    }
+
+    while digits > 0 {
+        serial_putc(48 + (rev % 10))
+        rev = rev / 10
+        digits = digits - 1
+    }
+}
+
+// VGA Text Console state
+vga_row := 0
+vga_col := 0
+
+// Clears 80x25 VGA text screen
+pub func vga_clear() {
+    blank := VGA_WHITE_ON_BLACK + 32 // ' '
+    for i in 0..2000 {
+        mem.write_u16(VGA_BUFFER, blank, i * 2)
+    }
+    vga_row = 0
+    vga_col = 0
+}
+
+// Prints a character to VGA text buffer with automatic newline and wrap
+pub func vga_putc(c: int) {
+    if c == 10 { // '\n'
+        vga_col = 0
+        vga_row = vga_row + 1
+        if vga_row >= 25 {
+            vga_row = 0
+        }
+        return
+    }
+
+    offset := (vga_row * 80 + vga_col) * 2
+    mem.write_u16(VGA_BUFFER, VGA_WHITE_ON_BLACK + c, offset)
+    vga_col = vga_col + 1
+    if vga_col >= 80 {
+        vga_col = 0
+        vga_row = vga_row + 1
+        if vga_row >= 25 {
+            vga_row = 0
+        }
+    }
+}
+
+// Prints a null-terminated string to VGA screen
+pub func vga_puts(strAddr: int) {
+    i := 0
+    loop {
+        c := mem.read_u8(strAddr, i)
+        if c == 0 {
+            break
+        }
+        vga_putc(c)
+        i = i + 1
+    }
+}

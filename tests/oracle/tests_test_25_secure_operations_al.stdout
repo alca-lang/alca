@@ -1,0 +1,57 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: undefined name 'time'
+  --> tests/test_25_secure_operations.al:180:29
+   |
+179 |     random_part := crypto.random_string(16, "0123456789abcdef")
+180 |     timestamp := string(int(time.now()))
+   |                             ^^^^ undefined name 'time'
+181 |     return crypto.sha256(random_part + timestamp)
+   |
+   = help: did you mean 'type'?
+
+error: undefined name 'time'
+  --> tests/test_25_secure_operations.al:196:20
+   |
+195 | func is_timestamp_valid(timestamp: int, max_age_seconds: int) -> bool {
+196 |     current := int(time.now())
+   |                    ^^^^ undefined name 'time'
+197 |     return (current - timestamp) <= max_age_seconds
+   |
+   = help: did you mean 'type'?
+
+error: undefined name 'time'
+  --> tests/test_25_secure_operations.al:199:18
+   |
+198 | }
+199 | recent_ts := int(time.now())
+   |                  ^^^^ undefined name 'time'
+200 | old_ts := recent_ts - 1000
+   |
+   = help: did you mean 'type'?
+
+error: undefined name 'time'
+  --> tests/test_25_secure_operations.al:212:38
+   |
+211 | func create_token_bucket(max: int) -> TokenBucket {
+212 |     return TokenBucket(max, max, int(time.now()))
+   |                                      ^^^^ undefined name 'time'
+213 | }
+   |
+   = help: did you mean 'type'?
+
+error: undefined name 'time'
+  --> tests/test_25_secure_operations.al:215:20
+   |
+214 | func consume_token(bucket: TokenBucket, tokens: int) -> TokenBucket {
+215 |     current := int(time.now())
+   |                    ^^^^ undefined name 'time'
+216 |     elapsed := current - bucket.last_refill
+   |
+   = help: did you mean 'type'?
+
+Found 5 errors. Execution aborted.
+

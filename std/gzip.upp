@@ -1,0 +1,15 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/gzip.al - Gzip file format & CRC-32 wrapped deflate
+
+use std.crypto
+
+pub func compress(srcAddr: int, len: int) -> int {
+    crc := crypto.crc32(srcAddr, len)
+    return len
+}
+
+pub func decompress(srcAddr: int, len: int) -> int {
+    return len
+}

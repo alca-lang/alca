@@ -8,7 +8,7 @@
 #include "typecheck/typecheck.h"
 #include <string>
 
-namespace pawl::ir {
+namespace ulang::ir {
 
 struct LowerResult {
     std::unique_ptr<Program> program;
@@ -19,4 +19,4 @@ struct LowerResult {
 
 LowerResult lower(const std::shared_ptr<ast::Program>& prog, const typecheck::Checker& checker);
 
-} // namespace pawl::ir
+} // namespace ulang::ir

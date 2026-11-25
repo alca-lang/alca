@@ -1,0 +1,167 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_22_directory_operations.al:236:48
+   |
+235 | }
+236 | func walk_directory(dir: string, callback: func(string) -> void) -> void {
+   |                                                ^ expected ')' to close parenthesis, got "(" (()
+237 |     // Simplified walk
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_22_directory_operations.al:236:44
+   |
+235 | }
+236 | func walk_directory(dir: string, callback: func(string) -> void) -> void {
+   |                                            ^^^^ expected '{' after function signature
+237 |     // Simplified walk
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_22_directory_operations.al:236:56
+   |
+235 | }
+236 | func walk_directory(dir: string, callback: func(string) -> void) -> void {
+   |                                                        ^ expected end of statement (newline)
+237 |     // Simplified walk
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_22_directory_operations.al:238:1
+   |
+237 |     // Simplified walk
+238 |     if io.file_exists(path.join(dir, "test.txt")) {
+   | ^^^^^^ unexpected indentation
+239 |         callback(path.join(dir, "test.txt"))
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_22_directory_operations.al:239:1
+   |
+238 |     if io.file_exists(path.join(dir, "test.txt")) {
+239 |         callback(path.join(dir, "test.txt"))
+   | ^^^^^^ unexpected indentation
+240 |     }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_22_directory_operations.al:240:1
+   |
+239 |         callback(path.join(dir, "test.txt"))
+240 |     }
+   | ^^^^^^ unaligned dedent
+241 |     if io.dir_exists(path.join(dir, "level1")) {
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_22_directory_operations.al:240:5
+   |
+239 |         callback(path.join(dir, "test.txt"))
+240 |     }
+   |     ^ unexpected closing '}' without matching '{'
+241 |     if io.dir_exists(path.join(dir, "level1")) {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_22_directory_operations.al:244:1
+   |
+243 |     }
+244 | }
+   | ^^^^^^ unaligned dedent
+245 | walked_files: list[string] = []
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_22_directory_operations.al:244:1
+   |
+243 |     }
+244 | }
+   | ^ unexpected closing '}' without matching '{'
+245 | walked_files: list[string] = []
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_22_directory_operations.al:246:26
+   |
+245 | walked_files: list[string] = []
+246 | walk_directory(test_dir, func(p: string) -> void:
+   |                          ^^^^ unexpected token "func" (func)
+247 |     walked_files = walked_files + [p]
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_22_directory_operations.al:246:30
+   |
+245 | walked_files: list[string] = []
+246 | walk_directory(test_dir, func(p: string) -> void:
+   |                              ^ expected ')' to close parenthesis, got "(" (()
+247 |     walked_files = walked_files + [p]
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_22_directory_operations.al:246:32
+   |
+245 | walked_files: list[string] = []
+246 | walk_directory(test_dir, func(p: string) -> void:
+   |                                ^ expected ')' to close parenthesis, got ":" (:)
+247 |     walked_files = walked_files + [p]
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_22_directory_operations.al:246:32
+   |
+245 | walked_files: list[string] = []
+246 | walk_directory(test_dir, func(p: string) -> void:
+   |                                ^ expected end of statement (newline)
+247 |     walked_files = walked_files + [p]
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_22_directory_operations.al:247:1
+   |
+246 | walk_directory(test_dir, func(p: string) -> void:
+247 |     walked_files = walked_files + [p]
+   | ^^^^^^ unexpected indentation
+248 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_22_directory_operations.al:248:1
+   |
+247 |     walked_files = walked_files + [p]
+248 | )
+   | ^^^^^^ unaligned dedent
+249 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_22_directory_operations.al:248:1
+   |
+247 |     walked_files = walked_files + [p]
+248 | )
+   | ^ unexpected closing ')' without matching '('
+249 | 
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+Found 16 errors. Execution aborted.
+

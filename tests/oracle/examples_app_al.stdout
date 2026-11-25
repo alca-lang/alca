@@ -1,0 +1,18 @@
+EXITCODE: 0
+--- STDOUT ---
+=== Starting Pawl Production App ===
+Hello from Pawl Native Executable!
+counter = 3
+Server IP: 192.168.1.100
+Server port: 8080
+Calculation: 15 + 27 = 42
+Checking node: web1
+Checking node: web2
+Checking node: database
+Logged operational event to ./audit.log via stream operator '>>'
+Buffer allocated: High memory temporary buffer
+Buffer instantly freed via null assignment: OK
+=== Pawl Application Finished Successfully ===
+
+--- STDERR ---
+

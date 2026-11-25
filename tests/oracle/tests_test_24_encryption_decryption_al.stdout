@@ -1,0 +1,67 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected end of statement (newline)
+  --> tests/test_24_encryption_decryption.al:18:28
+   |
+17 |         k_char := int(string.substring(key, i % len(key), i % len(key) + 1))
+18 |         encrypted := p_char ^ k_char
+   |                            ^ expected end of statement (newline)
+19 |         result = result + string.char(encrypted)
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_24_encryption_decryption.al:219:1
+   |
+218 |     return {
+219 |         "ciphertext": ciphertext,
+   | ^^^^^^ unexpected indentation
+220 |         "tag": auth_tag
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_24_encryption_decryption.al:219:7
+   |
+218 |     return {
+219 |         "ciphertext": ciphertext,
+   |       ^ expected end of statement (newline)
+220 |         "tag": auth_tag
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_24_encryption_decryption.al:220:14
+   |
+219 |         "ciphertext": ciphertext,
+220 |         "tag": auth_tag
+   |              ^ expected end of statement (newline)
+221 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_24_encryption_decryption.al:222:1
+   |
+221 |     }
+222 | }
+   | ^^^^^^ unaligned dedent
+223 | func aead_decrypt(data: map[string, string], key: string, associated_data: string) -> string {
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_24_encryption_decryption.al:222:1
+   |
+221 |     }
+222 | }
+   | ^ unexpected closing '}' without matching '{'
+223 | func aead_decrypt(data: map[string, string], key: string, associated_data: string) -> string {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 6 errors. Execution aborted.
+

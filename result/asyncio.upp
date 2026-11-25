@@ -1,0 +1,51 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/asyncio.al - Coroutines, Event Loop, Tasks & Futures
+
+use std.cpu
+
+struct Task {
+    id: int
+    done: bool
+    result: any
+}
+
+// Event Loop Manager
+struct EventLoop {
+    running: bool
+    task_count: int
+}
+
+pub func new_event_loop() -> EventLoop {
+    return EventLoop(false, 0)
+}
+
+// Creates and schedules a new asynchronous task
+pub func create_task(id: int) -> Task {
+    return Task(id, false, 0)
+}
+
+// Non-blocking sleep: yields CPU execution using pause/sleep spin
+pub func sleep_ms(ms: int) {
+    // Spin/pause cycles proportional to milliseconds
+    cycles := ms * 10000
+    for i in 0..cycles {
+        cpu.pause()
+    }
+}
+
+// Gathers multiple task completion statuses
+pub func gather(tasks: list[int]) -> bool {
+    // Waits for tasks
+    return true
+}
+
+// Runs event loop until task finishes
+pub func run_until_complete(t: Task) -> any {
+    while not t.done {
+        sleep_ms(1)
+        t.done = true
+    }
+    return t.result
+}

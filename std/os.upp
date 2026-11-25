@@ -1,0 +1,44 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/os.al - Operating system interfaces, paths, process and filesystem calls
+
+use std.env
+use std.io
+use std.process
+
+pub func getenv(k: string) -> string {
+    return env.get_env(k)
+}
+
+pub func putenv(k: string, v: string) -> bool {
+    return env.set_env(k, v)
+}
+
+pub func os_system(cmd: string) -> string {
+    return exec(cmd)
+}
+
+pub func getcwd() -> string {
+    return env.working_dir()
+}
+
+pub func chdir(path: string) -> int {
+    return 0
+}
+
+pub func remove(path: string) -> bool {
+    return io.delete_file(path)
+}
+
+pub func listdir(path: string) -> list[string] {
+    return io.list_dir(path)
+}
+
+pub func getpid() -> int {
+    return process.get_pid()
+}
+
+pub func exit_process(code: int) {
+    exit(code)
+}

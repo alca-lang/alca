@@ -1,0 +1,32 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/logging.al - Logging facility for ULang++ applications
+
+func log_impl(lvl: string, msg: string) {
+    println("[" + lvl + "] " + msg)
+}
+
+pub func debug(msg: string) {
+    log_impl("DEBUG", msg)
+}
+
+pub func info(msg: string) {
+    log_impl("INFO", msg)
+}
+
+pub func warning(msg: string) {
+    log_impl("WARN", msg)
+}
+
+pub func error(msg: string) {
+    log_impl("ERROR", msg)
+}
+
+pub func critical(msg: string) {
+    log_impl("CRITICAL", msg)
+}
+
+pub func log(level: int, msg: string) {
+    println("[" + string(level) + "] " + msg)
+}

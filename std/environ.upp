@@ -1,0 +1,22 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/environ.al - Process environment variable access
+
+use std.env
+
+pub func get(name: string) -> string {
+    return env.get_env(name)
+}
+
+pub func get_default(name: string, default_val: string) -> string {
+    v := env.get_env(name)
+    if len(v) == 0 {
+        return default_val
+    }
+    return v
+}
+
+pub func set(name: string, value: string) -> bool {
+    return env.set_env(name, value)
+}

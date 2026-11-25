@@ -2,37 +2,56 @@
 
 [English](README_EN.md) | [Русский](README_RU.md)
 
-**Pawl** — это современный, статически типизированный язык программирования, спроектированный для системной автоматизации, кроссплатформенных утилит и нативной разработки. Он сочетает эргономику скриптовых языков со статической безопасностью типов, выполнением на виртуальной машине (Bytecode VM) с JIT-ускорением и автономной сборкой без внешних тулчейнов:
-- **Windows**: Встроенный генератор исполняемых файлов PE/EXE и нативных библиотек DLL (не требуются MSVC, MinGW или Clang).
-- **Windows и Linux**: Быстрая Bytecode VM с многоуровневым JIT-компилятором и гранулярной песочницей на основе прав (Capabilities).
+**Pawl** — это высокопроизводительный статически типизированный язык системного программирования, спроектированный для разработки операционных систем на голом железе (Bare-Metal OS dev), низкоуровневых системных утилит и автономных нативных приложений.
+
+### Ключевые возможности:
+- 🚀 **Нативный AOT-компилятор**: Прямая трансляция в машинный код x86-64 без внешних линковщиков и виртуальных машин. Автономная сборка форматов **PE** (`.exe` для Windows), **ELF** (для Linux) и **Raw Binary**.
+- 💻 **Разработка операционных систем (OS & Bare-Metal)**:
+  - Процессорные интринсики Ring 0: `cpu.cli()`, `cpu.sti()`, `cpu.hlt()`, `cpu.pause()`, порты ввода/вывода `cpu.in8()`, `cpu.out8()`, регистры управления памятью и MMU `cpu.read_cr3()`, `cpu.write_cr3()`, `cpu.invlpg()`.
+  - Прямой доступ к физической памяти (MMIO): `mem.read_u8/16/32/64` и `mem.write_u8/16/32/64` (прямой вывод в видеобуфер VGA `0xB8000`, регистры APIC, контроллер прерываний PIC).
+- 💿 **Поддержка загрузчиков Multiboot 1 / GRUB / QEMU**:
+  - Таргет `--target freestanding-elf` внедряет заголовок Multiboot 1 с адресом загрузки `0x100000` (1 МБ). Скомпилированное ядро запускается прямо в QEMU (`qemu-system-x86_64 -kernel kernel.elf`).
+- ⚡ **Продвинутое управление памятью**:
+  - Собственный Mark-Sweep Garbage Collector (точный сборщик мусора) и сверхбыстрый арена-аллокатор (Bump Allocator).
+- 🧵 **Асинхронность и зелёные потоки**:
+  - Планировщик легких волокон (Fibers / Green Threads) с M:N конкурентностью.
 
 Файлы программ используют расширение `.al`.
 
 ```pawl
-use std.math
+use std.cpu
+use std.mem
 
-struct Server {
-    ip: string
-    port: int = 80
+// Пример минимального ядра ОС: вывод в видеобуфер VGA и сон
+func kernel_main() {
+    cpu.cli()
+    vga := 753664 // 0xB8000
+    attr := 3840  // White on black
+
+    // Пишем "PAWL" в видеобуфер
+    mem.write_u16(vga + 0, attr + 80) // 'P'
+    mem.write_u16(vga + 2, attr + 65) // 'A'
+    mem.write_u16(vga + 4, attr + 87) // 'W'
+    mem.write_u16(vga + 6, attr + 76) // 'L'
+
+    loop {
+        cpu.hlt()
+    }
 }
-
-pub fn area(r: float) -> float {
-    return math.PI * r * r
-}
-
-srv := Server("127.0.0.1", 8080)
-println("listening on " + srv.ip + ":" + string(srv.port))
-println(area(2.0))
 ```
 
-## Быстрый старт
+## Быстрый старт и сборка
 
-```bash
-go build -o pawl ./cmd/pawl
-./pawl run examples/hello.al
+```powershell
+# Сборка нативного компилятора:
+.\compiler\build.ps1
+
+# Сборка приложения под Windows/Linux:
+.\compiler\build_bin\pawl.exe build -o my_app.exe my_app.al
+
+# Сборка ядра ОС под QEMU/GRUB:
+.\compiler\build_bin\pawl.exe build --target freestanding-elf -o kernel.elf kernel.al
 ```
-
-Основным движком выполнения является Bytecode VM. Программы можно напрямую компилировать в автономные исполняемые файлы машинного кода (`pawl build app.al`) и библиотеки (`pawl build lib.al --shared`).
 
 ---
 

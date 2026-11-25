@@ -1,7 +1,7 @@
-// Copyright 2026 Pawl Programming Language
+// Copyright 2026 ULang++ Programming Language
 // SPDX-License-Identifier: Apache-2.0
 //
-// CLI scaffolding: lex, parse, version.
+// CLI scaffolding: lex, parse, version, build, run.
 
 #include <cstdio>
 #include <fstream>
@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <unordered_set>
 
 #include "ast/ast.h"
 #include "codegen/x64/codegen.h"
@@ -22,22 +23,51 @@
 #include "parser/parser.h"
 #include "token/token.h"
 #include "typecheck/typecheck.h"
+#include "mod/mod.h"
 
 namespace {
 
-constexpr std::string_view kVersion = "0.1.0-native";
+void loadImportedModules(std::shared_ptr<ulang::ast::Program> prog, const std::string& currentFilePath, std::unordered_set<std::string>& loaded) {
+    if (!prog) return;
+    std::vector<std::string> toLoad;
+    for (const auto& stmt : prog->statements) {
+        if (auto* u = dynamic_cast<ulang::ast::UseStatement*>(stmt.get())) {
+            auto res = ulang::mod::resolve(u->path, currentFilePath);
+            if (res && loaded.find(res->sourcePath) == loaded.end()) {
+                toLoad.push_back(res->sourcePath);
+                loaded.insert(res->sourcePath);
+            }
+        }
+    }
+    for (const auto& modFile : toLoad) {
+        std::ifstream f(modFile);
+        if (!f.is_open()) continue;
+        std::string modSrc((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+        auto modLex = std::make_unique<ulang::lexer::Lexer>(modSrc);
+        ulang::parser::Parser modP(std::move(modLex));
+        auto modProg = modP.parseProgram();
+        if (modProg && modP.syntaxErrors().empty()) {
+            loadImportedModules(modProg, modFile, loaded);
+            for (auto& s : modProg->statements) {
+                prog->statements.push_back(std::move(s));
+            }
+        }
+    }
+}
+
+constexpr std::string_view kVersion = "0.1.0-native (ULang++)";
 
 int usage() {
     std::cerr
-        << "usage: pawl <command> [options]\n"
+        << "usage: ulang++ <command> [options]\n"
         << "\n"
         << "commands:\n"
-        << "  build [-o <out>] [--target <t>] <file> compile a .al file directly to native binary\n"
-        << "  run <file>                            compile and run a .al file\n"
-        << "  lex [--dump] <file>                   tokenize a .al file\n"
-        << "  parse <file>                          parse and print AST of a .al file\n"
-        << "  check <file>                          typecheck a .al file\n"
-        << "  ir <file>                             emit Pawl IR for a .al file\n"
+        << "  build [-o <out>] [--target <t>] <file> compile a .upp file directly to native binary\n"
+        << "  run <file>                            compile and run a .upp file\n"
+        << "  lex [--dump] <file>                   tokenize a .upp file\n"
+        << "  parse <file>                          parse and print AST of a .upp file\n"
+        << "  check <file>                          typecheck a .upp file\n"
+        << "  ir <file>                             emit ULang++ IR for a .upp file\n"
         << "  version                               print compiler version\n";
     return 2;
 }
@@ -63,14 +93,14 @@ std::string hexEncode(const std::string& bytes) {
     return out;
 }
 
-void dumpTokens(const std::vector<pawl::token::Token>& tokens) {
+void dumpTokens(const std::vector<ulang::token::Token>& tokens) {
     for (const auto& tok : tokens) {
-        std::cout << pawl::token::kindName(tok.type) << '\t' << tok.line << '\t'
+        std::cout << ulang::token::kindName(tok.type) << '\t' << tok.line << '\t'
                   << tok.column << '\t' << hexEncode(tok.literal) << '\n';
     }
 }
 
-void printTokens(const std::vector<pawl::token::Token>& tokens) {
+void printTokens(const std::vector<ulang::token::Token>& tokens) {
     for (const auto& tok : tokens) {
         std::cout << tok.toString() << '\n';
     }
@@ -86,12 +116,12 @@ int handleLex(const std::vector<std::string>& args) {
             usage();
             return 0;
         } else if (!args[i].empty() && args[i][0] == '-' && args[i] != "-") {
-            std::cerr << "pawl lex: unknown option '" << args[i] << "'\n";
+            std::cerr << "ulang++ lex: unknown option '" << args[i] << "'\n";
             return 2;
         } else if (path.empty()) {
             path = args[i];
         } else {
-            std::cerr << "pawl lex: expected exactly one input file\n";
+            std::cerr << "ulang++ lex: expected exactly one input file\n";
             return 2;
         }
     }
@@ -101,11 +131,11 @@ int handleLex(const std::vector<std::string>& args) {
 
     std::string source;
     if (!readFile(path, source)) {
-        std::cerr << "pawl lex: cannot read '" << path << "'\n";
+        std::cerr << "ulang++ lex: cannot read '" << path << "'\n";
         return 1;
     }
 
-    pawl::lexer::Lexer lexer(std::move(source));
+    ulang::lexer::Lexer lexer(std::move(source));
     const auto tokens = lexer.tokenize();
     if (dump) {
         dumpTokens(tokens);
@@ -122,12 +152,12 @@ int handleParse(const std::vector<std::string>& args) {
             usage();
             return 0;
         } else if (!args[i].empty() && args[i][0] == '-' && args[i] != "-") {
-            std::cerr << "pawl parse: unknown option '" << args[i] << "'\n";
+            std::cerr << "ulang++ parse: unknown option '" << args[i] << "'\n";
             return 2;
         } else if (path.empty()) {
             path = args[i];
         } else {
-            std::cerr << "pawl parse: expected exactly one input file\n";
+            std::cerr << "ulang++ parse: expected exactly one input file\n";
             return 2;
         }
     }
@@ -137,12 +167,12 @@ int handleParse(const std::vector<std::string>& args) {
 
     std::string source;
     if (!readFile(path, source)) {
-        std::cerr << "pawl parse: cannot read '" << path << "'\n";
+        std::cerr << "ulang++ parse: cannot read '" << path << "'\n";
         return 1;
     }
 
-    auto lex = std::make_unique<pawl::lexer::Lexer>(source);
-    pawl::parser::Parser p(std::move(lex));
+    auto lex = std::make_unique<ulang::lexer::Lexer>(source);
+    ulang::parser::Parser p(std::move(lex));
     auto prog = p.parseProgram();
 
     if (!p.syntaxErrors().empty()) {
@@ -163,12 +193,12 @@ int handleCheck(const std::vector<std::string>& args) {
             usage();
             return 0;
         } else if (!args[i].empty() && args[i][0] == '-' && args[i] != "-") {
-            std::cerr << "pawl check: unknown option '" << args[i] << "'\n";
+            std::cerr << "ulang++ check: unknown option '" << args[i] << "'\n";
             return 2;
         } else if (path.empty()) {
             path = args[i];
         } else {
-            std::cerr << "pawl check: expected exactly one input file\n";
+            std::cerr << "ulang++ check: expected exactly one input file\n";
             return 2;
         }
     }
@@ -178,12 +208,12 @@ int handleCheck(const std::vector<std::string>& args) {
 
     std::string source;
     if (!readFile(path, source)) {
-        std::cerr << "pawl check: cannot read '" << path << "'\n";
+        std::cerr << "ulang++ check: cannot read '" << path << "'\n";
         return 1;
     }
 
-    auto lex = std::make_unique<pawl::lexer::Lexer>(source);
-    pawl::parser::Parser p(std::move(lex));
+    auto lex = std::make_unique<ulang::lexer::Lexer>(source);
+    ulang::parser::Parser p(std::move(lex));
     auto prog = p.parseProgram();
 
     if (!p.syntaxErrors().empty()) {
@@ -191,10 +221,10 @@ int handleCheck(const std::vector<std::string>& args) {
         return 1;
     }
 
-    pawl::typecheck::Checker c(path, source);
+    ulang::typecheck::Checker c(path, source);
     auto errs = c.check(prog);
     if (!errs.empty()) {
-        std::cerr << pawl::diag::formatReport(path, source, errs, false);
+        std::cerr << ulang::diag::formatReport(path, source, errs, false);
         return 1;
     }
 
@@ -209,12 +239,12 @@ int handleIR(const std::vector<std::string>& args) {
             usage();
             return 0;
         } else if (!args[i].empty() && args[i][0] == '-' && args[i] != "-") {
-            std::cerr << "pawl ir: unknown option '" << args[i] << "'\n";
+            std::cerr << "ulang++ ir: unknown option '" << args[i] << "'\n";
             return 2;
         } else if (path.empty()) {
             path = args[i];
         } else {
-            std::cerr << "pawl ir: expected exactly one input file\n";
+            std::cerr << "ulang++ ir: expected exactly one input file\n";
             return 2;
         }
     }
@@ -224,12 +254,12 @@ int handleIR(const std::vector<std::string>& args) {
 
     std::string source;
     if (!readFile(path, source)) {
-        std::cerr << "pawl ir: cannot read '" << path << "'\n";
+        std::cerr << "ulang++ ir: cannot read '" << path << "'\n";
         return 1;
     }
 
-    auto lex = std::make_unique<pawl::lexer::Lexer>(source);
-    pawl::parser::Parser p(std::move(lex));
+    auto lex = std::make_unique<ulang::lexer::Lexer>(source);
+    ulang::parser::Parser p(std::move(lex));
     auto prog = p.parseProgram();
 
     if (!p.syntaxErrors().empty()) {
@@ -237,16 +267,16 @@ int handleIR(const std::vector<std::string>& args) {
         return 1;
     }
 
-    pawl::typecheck::Checker c(path, source);
+    ulang::typecheck::Checker c(path, source);
     auto errs = c.check(prog);
     if (!errs.empty()) {
-        std::cerr << pawl::diag::formatReport(path, source, errs, false);
+        std::cerr << ulang::diag::formatReport(path, source, errs, false);
         return 1;
     }
 
-    auto irRes = pawl::ir::lower(prog, c);
+    auto irRes = ulang::ir::lower(prog, c);
     if (!irRes.ok()) {
-        std::cerr << "pawl ir error: " << irRes.error << '\n';
+        std::cerr << "ulang++ ir error: " << irRes.error << '\n';
         return 1;
     }
 
@@ -271,12 +301,12 @@ int handleBuild(const std::vector<std::string>& args) {
         } else if (args[i] == "--target" && i + 1 < args.size()) {
             target = args[++i];
         } else if (!args[i].empty() && args[i][0] == '-' && args[i] != "-") {
-            std::cerr << "pawl build: unknown option '" << args[i] << "'\n";
+            std::cerr << "ulang++ build: unknown option '" << args[i] << "'\n";
             return 2;
         } else if (path.empty()) {
             path = args[i];
         } else {
-            std::cerr << "pawl build: expected exactly one input file\n";
+            std::cerr << "ulang++ build: expected exactly one input file\n";
             return 2;
         }
     }
@@ -299,45 +329,58 @@ int handleBuild(const std::vector<std::string>& args) {
 
     std::string source;
     if (!readFile(path, source)) {
-        std::cerr << "pawl build: cannot read '" << path << "'\n";
+        std::cerr << "ulang++ build: cannot read '" << path << "'\n";
         return 1;
     }
 
-    auto lex = std::make_unique<pawl::lexer::Lexer>(source);
-    pawl::parser::Parser p(std::move(lex));
+    auto lex = std::make_unique<ulang::lexer::Lexer>(source);
+    ulang::parser::Parser p(std::move(lex));
     auto prog = p.parseProgram();
     if (!p.syntaxErrors().empty()) {
         std::cerr << p.diagnosticReport(path, source, false);
         return 1;
     }
 
-    pawl::typecheck::Checker c(path, source);
+    std::unordered_set<std::string> loadedFiles;
+    loadedFiles.insert(path);
+    loadImportedModules(prog, path, loadedFiles);
+
+    ulang::typecheck::Checker c(path, source);
     auto errs = c.check(prog);
     if (!errs.empty()) {
-        std::cerr << pawl::diag::formatReport(path, source, errs, false);
+        std::cerr << ulang::diag::formatReport(path, source, errs, false);
         return 1;
     }
 
-    auto irRes = pawl::ir::lower(prog, c);
+    auto irRes = ulang::ir::lower(prog, c);
     if (!irRes.ok()) {
-        std::cerr << "pawl build error: " << irRes.error << '\n';
+        std::cerr << "ulang++ build error: " << irRes.error << '\n';
         return 1;
     }
 
     bool isWin = (target.find("windows") != std::string::npos);
-    pawl::codegen::x64::ABI abi = isWin ? pawl::codegen::x64::ABI::Win64 : pawl::codegen::x64::ABI::SysV;
-    pawl::codegen::x64::CodeGenerator cg(abi);
+    bool isFreestanding = (target.find("baremetal") != std::string::npos || target.find("freestanding") != std::string::npos || target.find("kernel") != std::string::npos);
+    bool isRawBin = (target.find("raw") != std::string::npos || target.find("bin") != std::string::npos);
+
+    ulang::codegen::x64::ABI abi = isWin ? ulang::codegen::x64::ABI::Win64 : ulang::codegen::x64::ABI::SysV;
+    ulang::codegen::x64::CodeGenerator cg(abi);
     auto art = cg.generate(*irRes.program);
 
     bool ok = false;
-    if (isWin) {
-        ok = pawl::link::pe::linkPE(art, outPath, false);
+    if (isFreestanding) {
+        if (isRawBin) {
+            ok = ulang::link::elf::linkRawBinary(art, outPath);
+        } else {
+            ok = ulang::link::elf::linkMultibootELF(art, outPath);
+        }
+    } else if (isWin) {
+        ok = ulang::link::pe::linkPE(art, outPath, false);
     } else {
-        ok = pawl::link::elf::linkELF(art, outPath);
+        ok = ulang::link::elf::linkELF(art, outPath);
     }
 
     if (!ok) {
-        std::cerr << "pawl build error: failed to write output file '" << outPath << "'\n";
+        std::cerr << "ulang++ build error: failed to write output file '" << outPath << "'\n";
         return 1;
     }
 
@@ -350,9 +393,9 @@ int handleRun(const std::vector<std::string>& args) {
         return usage();
     }
     std::string path = args[1];
-    std::string tmpExe = "temp_pawl_run.exe";
+    std::string tmpExe = "temp_ulang_run.exe";
 #ifndef _WIN32
-    tmpExe = "./temp_pawl_run";
+    tmpExe = "./temp_ulang_run";
 #endif
 
     std::vector<std::string> buildArgs = {"build", "-o", tmpExe, path};
@@ -376,7 +419,7 @@ int main(int argc, char** argv) {
 
     const std::string command = args[0];
     if (command == "version" || command == "--version") {
-        std::cout << "pawl " << kVersion << '\n';
+        std::cout << "ulang++ " << kVersion << '\n';
         return 0;
     }
     if (command == "-h" || command == "--help" || command == "help") {
@@ -402,6 +445,6 @@ int main(int argc, char** argv) {
         return handleIR(args);
     }
 
-    std::cerr << "pawl: unknown command '" << command << "'\n";
+    std::cerr << "ulang++: unknown command '" << command << "'\n";
     return usage();
 }

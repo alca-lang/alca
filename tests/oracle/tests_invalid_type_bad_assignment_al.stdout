@@ -1,0 +1,17 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: cannot assign string to 'age' of type int
+  --> tests/invalid/type_bad_assignment.al:6:7
+   |
+ 5 | age: int = 25
+ 6 | age = "not a number"
+   |       ^^^^^^^^^^^^ cannot assign string to 'age' of type int
+ 7 | 
+   |
+   = help: use int(x) to convert
+
+Found 1 error. Execution aborted.
+

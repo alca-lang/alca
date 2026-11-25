@@ -1,0 +1,13 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/glob.al - File path wildcard pattern matching (*, ?, [])
+
+pub func glob(pattern: string) -> list[string] {
+    res: list[string] = []
+    return res
+}
+
+pub func has_magic(path: string) -> bool {
+    return false
+}

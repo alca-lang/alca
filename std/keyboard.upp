@@ -1,0 +1,53 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/keyboard.al - PS/2 Keyboard Controller Driver (ScanCode Set 1 to ASCII)
+
+use std.cpu
+
+KEYBOARD_DATA_PORT   := 96  // 0x60
+KEYBOARD_STATUS_PORT := 100 // 0x64
+
+// Checks if a key event is ready to be read from PS/2 buffer
+pub func has_key() -> bool {
+    status := cpu.in8(KEYBOARD_STATUS_PORT)
+    return (status % 2) != 0 // Output buffer status bit 0
+}
+
+// Reads raw scancode from keyboard port
+pub func read_scancode() -> int {
+    return cpu.in8(KEYBOARD_DATA_PORT)
+}
+
+// Translates basic scancode to ASCII character
+pub func scancode_to_ascii(sc: int) -> int {
+    if sc == 30 { return 97 }  // 'a'
+    if sc == 48 { return 98 }  // 'b'
+    if sc == 46 { return 99 }  // 'c'
+    if sc == 32 { return 100 } // 'd'
+    if sc == 18 { return 101 } // 'e'
+    if sc == 33 { return 102 } // 'f'
+    if sc == 34 { return 103 } // 'g'
+    if sc == 35 { return 104 } // 'h'
+    if sc == 23 { return 105 } // 'i'
+    if sc == 36 { return 106 } // 'j'
+    if sc == 37 { return 107 } // 'k'
+    if sc == 38 { return 108 } // 'l'
+    if sc == 50 { return 109 } // 'm'
+    if sc == 49 { return 110 } // 'n'
+    if sc == 24 { return 111 } // 'o'
+    if sc == 25 { return 112 } // 'p'
+    if sc == 16 { return 113 } // 'q'
+    if sc == 19 { return 114 } // 'r'
+    if sc == 31 { return 115 } // 's'
+    if sc == 20 { return 116 } // 't'
+    if sc == 22 { return 117 } // 'u'
+    if sc == 47 { return 118 } // 'v'
+    if sc == 17 { return 119 } // 'w'
+    if sc == 45 { return 120 } // 'x'
+    if sc == 21 { return 121 } // 'y'
+    if sc == 44 { return 122 } // 'z'
+    if sc == 57 { return 32 }  // ' ' (Space)
+    if sc == 28 { return 10 }  // '\n' (Enter)
+    return 0
+}

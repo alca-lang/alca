@@ -1,0 +1,11 @@
+EXITCODE: 1
+--- STDOUT ---
+tensor([[1, 2]])
+
+--- STDERR ---
+
+error[RuntimeError]: [1 2] @ [1 2] (code 400)
+  --> tests/integration_test.al
+   = help: Review the logic on the referenced line.
+
+

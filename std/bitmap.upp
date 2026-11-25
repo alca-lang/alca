@@ -1,0 +1,40 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/bitmap.al - Physical Memory Frame Allocator Bitmap (1 bit per 4KB page)
+
+use std.mem
+
+// Sets bit at index in memory bitmap buffer
+pub func set_bit(bitmapAddr: int, bitIndex: int) {
+    byteOff := bitIndex / 8
+    bitOff := bitIndex % 8
+    cur := mem.read_u8(bitmapAddr, byteOff)
+    mem.write_u8(bitmapAddr, cur + (1 << bitOff), byteOff)
+}
+
+// Clears bit at index
+pub func clear_bit(bitmapAddr: int, bitIndex: int) {
+    byteOff := bitIndex / 8
+    bitOff := bitIndex % 8
+    cur := mem.read_u8(bitmapAddr, byteOff)
+    mem.write_u8(bitmapAddr, cur - (1 << bitOff), byteOff)
+}
+
+// Tests if bit is set
+pub func test_bit(bitmapAddr: int, bitIndex: int) -> bool {
+    byteOff := bitIndex / 8
+    bitOff := bitIndex % 8
+    cur := mem.read_u8(bitmapAddr, byteOff)
+    return ((cur / (1 << bitOff)) % 2) != 0
+}
+
+// Finds first free bit (0)
+pub func find_first_free(bitmapAddr: int, totalBits: int) -> int {
+    for i in 0..totalBits {
+        if not test_bit(bitmapAddr, i) {
+            return i
+        }
+    }
+    return -1
+}

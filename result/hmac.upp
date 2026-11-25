@@ -1,0 +1,19 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/hmac.al - Keyed-Hashing for Message Authentication (HMAC)
+
+use std.crypto
+
+pub func new_hmac_sha256(key: string, msg: string) -> string {
+    return crypto.hmac_sha256(key, msg)
+}
+
+pub func new_hmac_md5(key: string, msg: string) -> string {
+    inner := crypto.md5(key + msg)
+    return crypto.md5(key + inner)
+}
+
+pub func digest(key: string, msg: string) -> string {
+    return new_hmac_sha256(key, msg)
+}

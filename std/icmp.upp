@@ -1,0 +1,25 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/icmp.al - Internet Control Message Protocol (ICMP) parsing and building
+
+struct IcmpHeader {
+    msg_type: int
+    code: int
+    checksum: int
+    ident: int
+    sequence: int
+}
+
+pub func echo_reply() -> int { return 0 }
+pub func echo_request() -> int { return 8 }
+
+pub func parse(packet: list[int], offset: int) -> IcmpHeader {
+    mtype := packet[offset]
+    code := packet[offset + 1]
+    csum := packet[offset + 2] * 256 + packet[offset + 3]
+    id := packet[offset + 4] * 256 + packet[offset + 5]
+    seq := packet[offset + 6] * 256 + packet[offset + 7]
+
+    return IcmpHeader(mtype, code, csum, id, seq)
+}

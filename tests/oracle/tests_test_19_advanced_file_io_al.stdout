@@ -1,0 +1,179 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_19_advanced_file_io.al:21:24
+   |
+20 |         }
+21 |         chunk := string.substring(data, i, end)
+   |                        ^ type func(any) -> string has no field 'substring'
+22 |         io.append_file(filepath, chunk)
+   |
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_19_advanced_file_io.al:41:14
+   |
+40 | content := io.read_file(test_file)
+41 | assert string.contains(content, "Hello World")
+   |              ^ type func(any) -> string has no field 'contains'
+42 | assert string.contains(content, "Advanced I/O")
+   |
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_19_advanced_file_io.al:42:14
+   |
+41 | assert string.contains(content, "Hello World")
+42 | assert string.contains(content, "Advanced I/O")
+   |              ^ type func(any) -> string has no field 'contains'
+43 | 
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_19_advanced_file_io.al:48:28
+   |
+47 |     if len(data) > new_size {
+48 |         truncated := string.substring(data, 0, new_size)
+   |                            ^ type func(any) -> string has no field 'substring'
+49 |         io.write_file(filepath, truncated)
+   |
+
+error: module 'io' has no member 'create_dir'
+  --> tests/test_19_advanced_file_io.al:74:3
+   |
+73 | // 9. Directory creation
+74 | io.create_dir(test_dir) // Create if not exists
+   |   ^ module 'io' has no member 'create_dir'
+75 | assert io.dir_exists(test_dir)
+   |
+
+error: module 'io' has no member 'dir_exists'
+  --> tests/test_19_advanced_file_io.al:75:10
+   |
+74 | io.create_dir(test_dir) // Create if not exists
+75 | assert io.dir_exists(test_dir)
+   |          ^ module 'io' has no member 'dir_exists'
+76 | 
+   |
+
+error: module 'io' has no member 'create_dir'
+  --> tests/test_19_advanced_file_io.al:79:3
+   |
+78 | sub_dir := path.join(test_dir, "subdir")
+79 | io.create_dir(sub_dir)
+   |   ^ module 'io' has no member 'create_dir'
+80 | assert io.dir_exists(sub_dir)
+   |
+
+error: module 'io' has no member 'dir_exists'
+  --> tests/test_19_advanced_file_io.al:80:10
+   |
+79 | io.create_dir(sub_dir)
+80 | assert io.dir_exists(sub_dir)
+   |          ^ module 'io' has no member 'dir_exists'
+81 | 
+   |
+
+error: type func(any) -> string has no field 'starts_with'
+  --> tests/test_19_advanced_file_io.al:91:14
+   |
+90 |     // Simplified absolute path resolution
+91 |     if string.starts_with(p, "/") or string.starts_with(p, "C:") or string.starts_with(p, "D:") {
+   |              ^ type func(any) -> string has no field 'starts_with'
+92 |         return p
+   |
+
+error: type func(any) -> string has no field 'starts_with'
+  --> tests/test_19_advanced_file_io.al:91:44
+   |
+90 |     // Simplified absolute path resolution
+91 |     if string.starts_with(p, "/") or string.starts_with(p, "C:") or string.starts_with(p, "D:") {
+   |                                            ^ type func(any) -> string has no field 'starts_with'
+92 |         return p
+   |
+
+error: type func(any) -> string has no field 'starts_with'
+  --> tests/test_19_advanced_file_io.al:91:75
+   |
+90 |     // Simplified absolute path resolution
+91 |     if string.starts_with(p, "/") or string.starts_with(p, "C:") or string.starts_with(p, "D:") {
+   |                                                                           ^ type func(any) -> string has no field 'starts_with'
+92 |         return p
+   |
+
+error: type func(any) -> string has no field 'replace'
+  --> tests/test_19_advanced_file_io.al:103:21
+   |
+102 |     // Remove duplicate separators
+103 |     result := string.replace(p, "\\", "/")
+   |                     ^ type func(any) -> string has no field 'replace'
+104 |     result = string.replace(result, "//", "/")
+   |
+
+error: type func(any) -> string has no field 'replace'
+  --> tests/test_19_advanced_file_io.al:104:20
+   |
+103 |     result := string.replace(p, "\\", "/")
+104 |     result = string.replace(result, "//", "/")
+   |                    ^ type func(any) -> string has no field 'replace'
+105 |     return result
+   |
+
+error: 'content' is already declared; use assignment to update it
+  --> tests/test_19_advanced_file_io.al:128:5
+   |
+127 | func count_lines(filepath: string) -> int {
+128 |     content := io.read_file(filepath)
+   |     ^^^^^^^ 'content' is already declared; use assignment to update it
+129 |     lines := string.split(content, "\n")
+   |
+   = help: write 'content = value;' to update the existing variable, or choose a new name
+
+error: type func(any) -> string has no field 'split'
+  --> tests/test_19_advanced_file_io.al:129:20
+   |
+128 |     content := io.read_file(filepath)
+129 |     lines := string.split(content, "\n")
+   |                    ^ type func(any) -> string has no field 'split'
+130 |     return len(lines)
+   |
+
+error: len() needs a list, map, string or blob, got <invalid>
+  --> tests/test_19_advanced_file_io.al:130:16
+   |
+129 |     lines := string.split(content, "\n")
+130 |     return len(lines)
+   |                ^^^^^ len() needs a list, map, string or blob, got <invalid>
+131 | }
+   |
+
+error: module 'io' has no member 'delete_dir'
+  --> tests/test_19_advanced_file_io.al:196:3
+   |
+195 | io.delete_file(binary_file)
+196 | io.delete_dir(sub_dir)
+   |   ^ module 'io' has no member 'delete_dir'
+197 | io.delete_dir(test_dir)
+   |
+
+error: module 'io' has no member 'delete_dir'
+  --> tests/test_19_advanced_file_io.al:197:3
+   |
+196 | io.delete_dir(sub_dir)
+197 | io.delete_dir(test_dir)
+   |   ^ module 'io' has no member 'delete_dir'
+198 | 
+   |
+
+error: module 'io' has no member 'dir_exists'
+  --> tests/test_19_advanced_file_io.al:200:11
+   |
+199 | assert !io.file_exists(test_file)
+200 | assert !io.dir_exists(test_dir)
+   |           ^ module 'io' has no member 'dir_exists'
+201 | 
+   |
+
+Found 19 errors. Execution aborted.
+

@@ -1,0 +1,827 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: variable declaration requires an initial value
+  --> tests/test_14_complex_collections.al:5:22
+   |
+ 4 | // 1. Nested list operations
+ 5 | matrix: list[list[int]] = [
+   |                      ^ variable declaration requires an initial value
+ 6 |     [1, 2, 3],
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:5:23
+   |
+ 4 | // 1. Nested list operations
+ 5 | matrix: list[list[int]] = [
+   |                       ^ expected end of statement (newline)
+ 6 |     [1, 2, 3],
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:6:1
+   |
+ 5 | matrix: list[list[int]] = [
+ 6 |     [1, 2, 3],
+   | ^^^^^^ unexpected indentation
+ 7 |     [4, 5, 6],
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:7:14
+   |
+ 6 |     [1, 2, 3],
+ 7 |     [4, 5, 6],
+   |              ^ expected end of statement (newline)
+ 8 |     [7, 8, 9]
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:9:1
+   |
+ 8 |     [7, 8, 9]
+ 9 | ]
+   | ^^^^^^ unaligned dedent
+10 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_14_complex_collections.al:9:1
+   |
+ 8 |     [7, 8, 9]
+ 9 | ]
+   | ^ unexpected closing ']' without matching '['
+10 | 
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: variable declaration requires an initial value
+  --> tests/test_14_complex_collections.al:17:38
+   |
+16 | // 2. Nested map operations
+17 | users: map[string, map[string, string]] = {
+   |                                      ^ variable declaration requires an initial value
+18 |     "user1": {"name": "Alice", "role": "admin"},
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:17:39
+   |
+16 | // 2. Nested map operations
+17 | users: map[string, map[string, string]] = {
+   |                                       ^ expected end of statement (newline)
+18 |     "user1": {"name": "Alice", "role": "admin"},
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:18:1
+   |
+17 | users: map[string, map[string, string]] = {
+18 |     "user1": {"name": "Alice", "role": "admin"},
+   | ^^^^^^ unexpected indentation
+19 |     "user2": {"name": "Bob", "role": "editor"}
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:19:12
+   |
+18 |     "user1": {"name": "Alice", "role": "admin"},
+19 |     "user2": {"name": "Bob", "role": "editor"}
+   |            ^ expected end of statement (newline)
+20 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:19:46
+   |
+18 |     "user1": {"name": "Alice", "role": "admin"},
+19 |     "user2": {"name": "Bob", "role": "editor"}
+   |                                              ^ unexpected closing '}' without matching '{'
+20 | }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:20:1
+   |
+19 |     "user2": {"name": "Bob", "role": "editor"}
+20 | }
+   | ^^^^^^ unaligned dedent
+21 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:20:1
+   |
+19 |     "user2": {"name": "Bob", "role": "editor"}
+20 | }
+   | ^ unexpected closing '}' without matching '{'
+21 | 
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: variable declaration requires an initial value
+  --> tests/test_14_complex_collections.al:26:32
+   |
+25 | // 3. List of maps
+26 | employees: list[map[string, int]] = [
+   |                                ^ variable declaration requires an initial value
+27 |     {"id": 1, "salary": 50000},
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:26:33
+   |
+25 | // 3. List of maps
+26 | employees: list[map[string, int]] = [
+   |                                 ^ expected end of statement (newline)
+27 |     {"id": 1, "salary": 50000},
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:27:1
+   |
+26 | employees: list[map[string, int]] = [
+27 |     {"id": 1, "salary": 50000},
+   | ^^^^^^ unexpected indentation
+28 |     {"id": 2, "salary": 60000},
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:28:31
+   |
+27 |     {"id": 1, "salary": 50000},
+28 |     {"id": 2, "salary": 60000},
+   |                               ^ expected end of statement (newline)
+29 |     {"id": 3, "salary": 70000}
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:30:1
+   |
+29 |     {"id": 3, "salary": 70000}
+30 | ]
+   | ^^^^^^ unaligned dedent
+31 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_14_complex_collections.al:30:1
+   |
+29 |     {"id": 3, "salary": 70000}
+30 | ]
+   | ^ unexpected closing ']' without matching '['
+31 | 
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: variable declaration requires an initial value
+  --> tests/test_14_complex_collections.al:36:37
+   |
+35 | // 4. Map of lists
+36 | departments: map[string, list[string]] = {
+   |                                     ^ variable declaration requires an initial value
+37 |     "engineering": ["Alice", "Bob", "Charlie"],
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:36:38
+   |
+35 | // 4. Map of lists
+36 | departments: map[string, list[string]] = {
+   |                                      ^ expected end of statement (newline)
+37 |     "engineering": ["Alice", "Bob", "Charlie"],
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:37:1
+   |
+36 | departments: map[string, list[string]] = {
+37 |     "engineering": ["Alice", "Bob", "Charlie"],
+   | ^^^^^^ unexpected indentation
+38 |     "marketing": ["David", "Eve"]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:38:16
+   |
+37 |     "engineering": ["Alice", "Bob", "Charlie"],
+38 |     "marketing": ["David", "Eve"]
+   |                ^ expected end of statement (newline)
+39 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:39:1
+   |
+38 |     "marketing": ["David", "Eve"]
+39 | }
+   | ^^^^^^ unaligned dedent
+40 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:39:1
+   |
+38 |     "marketing": ["David", "Eve"]
+39 | }
+   | ^ unexpected closing '}' without matching '{'
+40 | 
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "]" (])
+  --> tests/test_14_complex_collections.al:73:34
+   |
+72 | // 7. Matrix operations - sum all elements
+73 | func matrix_sum(m: list[list[int]]) -> int {
+   |                                  ^ expected ')' to close parenthesis, got "]" (])
+74 |     total: int = 0
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_14_complex_collections.al:73:33
+   |
+72 | // 7. Matrix operations - sum all elements
+73 | func matrix_sum(m: list[list[int]]) -> int {
+   |                                 ^ expected '{' after function signature
+74 |     total: int = 0
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_14_complex_collections.al:73:34
+   |
+72 | // 7. Matrix operations - sum all elements
+73 | func matrix_sum(m: list[list[int]]) -> int {
+   |                                  ^ unexpected closing ']' without matching '['
+74 |     total: int = 0
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:74:1
+   |
+73 | func matrix_sum(m: list[list[int]]) -> int {
+74 |     total: int = 0
+   | ^^^^^^ unexpected indentation
+75 |     for row in m {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:81:1
+   |
+80 |     return total
+81 | }
+   | ^^^^^^ unaligned dedent
+82 | matrix_sum_val := matrix_sum(matrix)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:81:1
+   |
+80 |     return total
+81 | }
+   | ^ unexpected closing '}' without matching '{'
+82 | matrix_sum_val := matrix_sum(matrix)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "]" (])
+  --> tests/test_14_complex_collections.al:86:33
+   |
+85 | // 8. Matrix transpose
+86 | func transpose(m: list[list[int]]) -> list[list[int]] {
+   |                                 ^ expected ')' to close parenthesis, got "]" (])
+87 |     if len(m) == 0 {
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_14_complex_collections.al:86:32
+   |
+85 | // 8. Matrix transpose
+86 | func transpose(m: list[list[int]]) -> list[list[int]] {
+   |                                ^ expected '{' after function signature
+87 |     if len(m) == 0 {
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_14_complex_collections.al:86:33
+   |
+85 | // 8. Matrix transpose
+86 | func transpose(m: list[list[int]]) -> list[list[int]] {
+   |                                 ^ unexpected closing ']' without matching '['
+87 |     if len(m) == 0 {
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:87:1
+   |
+86 | func transpose(m: list[list[int]]) -> list[list[int]] {
+87 |     if len(m) == 0 {
+   | ^^^^^^ unexpected indentation
+88 |         return []
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:88:1
+   |
+87 |     if len(m) == 0 {
+88 |         return []
+   | ^^^^^^ unexpected indentation
+89 |     }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:89:1
+   |
+88 |         return []
+89 |     }
+   | ^^^^^^ unaligned dedent
+90 |     rows := len(m)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:89:5
+   |
+88 |         return []
+89 |     }
+   |     ^ unexpected closing '}' without matching '{'
+90 |     rows := len(m)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: variable declaration requires an initial value
+  --> tests/test_14_complex_collections.al:92:26
+   |
+91 |     cols := len(m[0])
+92 |     result: list[list[int]] = []
+   |                          ^ variable declaration requires an initial value
+93 |     i := 0
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:92:27
+   |
+91 |     cols := len(m[0])
+92 |     result: list[list[int]] = []
+   |                           ^ expected end of statement (newline)
+93 |     i := 0
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:105:1
+   |
+104 |     return result
+105 | }
+   | ^^^^^^ unaligned dedent
+106 | transposed := transpose(matrix)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:105:1
+   |
+104 |     return result
+105 | }
+   | ^ unexpected closing '}' without matching '{'
+106 | transposed := transpose(matrix)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "]" (])
+  --> tests/test_14_complex_collections.al:112:36
+   |
+111 | // 9. Flatten nested list
+112 | func flatten(nested: list[list[int]]) -> list[int] {
+   |                                    ^ expected ')' to close parenthesis, got "]" (])
+113 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_14_complex_collections.al:112:35
+   |
+111 | // 9. Flatten nested list
+112 | func flatten(nested: list[list[int]]) -> list[int] {
+   |                                   ^ expected '{' after function signature
+113 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_14_complex_collections.al:112:36
+   |
+111 | // 9. Flatten nested list
+112 | func flatten(nested: list[list[int]]) -> list[int] {
+   |                                    ^ unexpected closing ']' without matching '['
+113 |     result: list[int] = []
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:113:1
+   |
+112 | func flatten(nested: list[list[int]]) -> list[int] {
+113 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+114 |     for inner in nested {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:120:1
+   |
+119 |     return result
+120 | }
+   | ^^^^^^ unaligned dedent
+121 | nested_list := [[1, 2], [3, 4, 5], [6]]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:120:1
+   |
+119 |     return result
+120 | }
+   | ^ unexpected closing '}' without matching '{'
+121 | nested_list := [[1, 2], [3, 4, 5], [6]]
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "]" (])
+  --> tests/test_14_complex_collections.al:128:55
+   |
+127 | // 10. Filter nested structures
+128 | func filter_by_salary(employees: list[map[string, int]], min_salary: int) -> list[map[string, int]] {
+   |                                                       ^ expected ')' to close parenthesis, got "]" (])
+129 |     result: list[map[string, int]] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_14_complex_collections.al:128:54
+   |
+127 | // 10. Filter nested structures
+128 | func filter_by_salary(employees: list[map[string, int]], min_salary: int) -> list[map[string, int]] {
+   |                                                      ^ expected '{' after function signature
+129 |     result: list[map[string, int]] = []
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_14_complex_collections.al:128:55
+   |
+127 | // 10. Filter nested structures
+128 | func filter_by_salary(employees: list[map[string, int]], min_salary: int) -> list[map[string, int]] {
+   |                                                       ^ unexpected closing ']' without matching '['
+129 |     result: list[map[string, int]] = []
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:129:1
+   |
+128 | func filter_by_salary(employees: list[map[string, int]], min_salary: int) -> list[map[string, int]] {
+129 |     result: list[map[string, int]] = []
+   | ^^^^^^ unexpected indentation
+130 |     for emp in employees {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:136:1
+   |
+135 |     return result
+136 | }
+   | ^^^^^^ unaligned dedent
+137 | high_earners := filter_by_salary(employees, 60000)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:136:1
+   |
+135 |     return result
+136 | }
+   | ^ unexpected closing '}' without matching '{'
+137 | high_earners := filter_by_salary(employees, 60000)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "]" (])
+  --> tests/test_14_complex_collections.al:143:51
+   |
+142 | // 11. Group by operation
+143 | func group_by_role(users: list[map[string, string]]) -> map[string, list[string]] {
+   |                                                   ^ expected ')' to close parenthesis, got "]" (])
+144 |     result: map[string, list[string]] = {}
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_14_complex_collections.al:143:50
+   |
+142 | // 11. Group by operation
+143 | func group_by_role(users: list[map[string, string]]) -> map[string, list[string]] {
+   |                                                  ^ expected '{' after function signature
+144 |     result: map[string, list[string]] = {}
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_14_complex_collections.al:143:51
+   |
+142 | // 11. Group by operation
+143 | func group_by_role(users: list[map[string, string]]) -> map[string, list[string]] {
+   |                                                   ^ unexpected closing ']' without matching '['
+144 |     result: map[string, list[string]] = {}
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:144:1
+   |
+143 | func group_by_role(users: list[map[string, string]]) -> map[string, list[string]] {
+144 |     result: map[string, list[string]] = {}
+   | ^^^^^^ unexpected indentation
+145 |     for user in users {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:156:1
+   |
+155 |     return result
+156 | }
+   | ^^^^^^ unaligned dedent
+157 | user_list := [
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:156:1
+   |
+155 |     return result
+156 | }
+   | ^ unexpected closing '}' without matching '{'
+157 | user_list := [
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:158:1
+   |
+157 | user_list := [
+158 |     {"name": "Alice", "role": "admin"},
+   | ^^^^^^ unexpected indentation
+159 |     {"name": "Bob", "role": "editor"},
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected ']' to close list or index, got "{" ({)
+  --> tests/test_14_complex_collections.al:158:5
+   |
+157 | user_list := [
+158 |     {"name": "Alice", "role": "admin"},
+   |     ^ expected ']' to close list or index, got "{" ({)
+159 |     {"name": "Bob", "role": "editor"},
+   |
+   = help: did you forget a closing ']'?
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:158:7
+   |
+157 | user_list := [
+158 |     {"name": "Alice", "role": "admin"},
+   |       ^ expected end of statement (newline)
+159 |     {"name": "Bob", "role": "editor"},
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:158:38
+   |
+157 | user_list := [
+158 |     {"name": "Alice", "role": "admin"},
+   |                                      ^ unexpected closing '}' without matching '{'
+159 |     {"name": "Bob", "role": "editor"},
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected end of statement (newline)
+  --> tests/test_14_complex_collections.al:159:38
+   |
+158 |     {"name": "Alice", "role": "admin"},
+159 |     {"name": "Bob", "role": "editor"},
+   |                                      ^ expected end of statement (newline)
+160 |     {"name": "Charlie", "role": "admin"}
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:161:1
+   |
+160 |     {"name": "Charlie", "role": "admin"}
+161 | ]
+   | ^^^^^^ unaligned dedent
+162 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_14_complex_collections.al:161:1
+   |
+160 |     {"name": "Charlie", "role": "admin"}
+161 | ]
+   | ^ unexpected closing ']' without matching '['
+162 | 
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ')' to close parenthesis, got "]" (])
+  --> tests/test_14_complex_collections.al:200:41
+   |
+199 | // 14. Deep search in nested structure
+200 | func find_in_nested(data: list[list[int]], target: int) -> bool {
+   |                                         ^ expected ')' to close parenthesis, got "]" (])
+201 |     for inner in data {
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_14_complex_collections.al:200:40
+   |
+199 | // 14. Deep search in nested structure
+200 | func find_in_nested(data: list[list[int]], target: int) -> bool {
+   |                                        ^ expected '{' after function signature
+201 |     for inner in data {
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_14_complex_collections.al:200:41
+   |
+199 | // 14. Deep search in nested structure
+200 | func find_in_nested(data: list[list[int]], target: int) -> bool {
+   |                                         ^ unexpected closing ']' without matching '['
+201 |     for inner in data {
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:201:1
+   |
+200 | func find_in_nested(data: list[list[int]], target: int) -> bool {
+201 |     for inner in data {
+   | ^^^^^^ unexpected indentation
+202 |         for val in inner {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:202:1
+   |
+201 |     for inner in data {
+202 |         for val in inner {
+   | ^^^^^^ unexpected indentation
+203 |             if val == target {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:203:1
+   |
+202 |         for val in inner {
+203 |             if val == target {
+   | ^^^^^^ unexpected indentation
+204 |                 return true
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_14_complex_collections.al:204:1
+   |
+203 |             if val == target {
+204 |                 return true
+   | ^^^^^^ unexpected indentation
+205 |             }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:205:1
+   |
+204 |                 return true
+205 |             }
+   | ^^^^^^ unaligned dedent
+206 |         }
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:205:13
+   |
+204 |                 return true
+205 |             }
+   |             ^ unexpected closing '}' without matching '{'
+206 |         }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:206:1
+   |
+205 |             }
+206 |         }
+   | ^^^^^^ unaligned dedent
+207 |     }
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:206:9
+   |
+205 |             }
+206 |         }
+   |         ^ unexpected closing '}' without matching '{'
+207 |     }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:207:1
+   |
+206 |         }
+207 |     }
+   | ^^^^^^ unaligned dedent
+208 |     return false
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:207:5
+   |
+206 |         }
+207 |     }
+   |     ^ unexpected closing '}' without matching '{'
+208 |     return false
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_14_complex_collections.al:209:1
+   |
+208 |     return false
+209 | }
+   | ^^^^^^ unaligned dedent
+210 | assert find_in_nested(matrix, 5)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_14_complex_collections.al:209:1
+   |
+208 |     return false
+209 | }
+   | ^ unexpected closing '}' without matching '{'
+210 | assert find_in_nested(matrix, 5)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 82 errors. Execution aborted.
+

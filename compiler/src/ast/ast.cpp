@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <sstream>
 
-namespace pawl::ast {
+namespace ulang::ast {
 
 namespace {
 
@@ -516,4 +516,4 @@ std::string AwaitExpression::toString() const {
     return "(await " + e + ")";
 }
 
-} // namespace pawl::ast
+} // namespace ulang::ast

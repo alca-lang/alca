@@ -3,7 +3,7 @@
 
 #include "dunder/dunder.h"
 
-namespace pawl::dunder {
+namespace ulang::dunder {
 
 const std::unordered_map<std::string, Def>& registry() {
     static const std::unordered_map<std::string, Def> kRegistry = {
@@ -34,4 +34,4 @@ bool isPositional(std::string_view name) {
     return it != reg.end() && it->second.positional;
 }
 
-} // namespace pawl::dunder
+} // namespace ulang::dunder

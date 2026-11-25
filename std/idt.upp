@@ -1,0 +1,36 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/idt.al - Interrupt Descriptor Table (IDT) for x86-64
+
+use std.mem
+
+struct IDTGateDescriptor {
+    offset_low: int
+    selector: int
+    ist: int
+    type_attr: int
+    offset_mid: int
+    offset_high: int
+    reserved: int
+}
+
+// Encodes a 64-bit interrupt handler into raw IDT entry bytes
+pub func make_descriptor(handlerAddr: int, selector: int, typeAttr: int) -> IDTGateDescriptor {
+    offLow := handlerAddr % 65536
+    offMid := (handlerAddr / 65536) % 65536
+    offHigh := handlerAddr / 4294967296
+    return IDTGateDescriptor(offLow, selector, 0, typeAttr, offMid, offHigh, 0)
+}
+
+// Writes an IDT descriptor entry to memory table address
+pub func write_entry(tableAddr: int, index: int, desc: IDTGateDescriptor) {
+    offset := index * 16
+    mem.write_u16(tableAddr, desc.offset_low, offset + 0)
+    mem.write_u16(tableAddr, desc.selector, offset + 2)
+    mem.write_u8(tableAddr, desc.ist, offset + 4)
+    mem.write_u8(tableAddr, desc.type_attr, offset + 5)
+    mem.write_u16(tableAddr, desc.offset_mid, offset + 6)
+    mem.write_u32(tableAddr, desc.offset_high, offset + 8)
+    mem.write_u32(tableAddr, 0, offset + 12)
+}

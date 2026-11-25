@@ -1,0 +1,17 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: semicolons are not allowed in Pawl
+  --> tests/invalid/parse_missing_semicolon.al:6:8
+   |
+ 5 | // semicolon is a syntax error.
+ 6 | x := 10;
+   |        ^ semicolons are not allowed in Pawl
+ 7 | println(x)
+   |
+   = help: remove the ';', statements end at the newline
+
+Found 1 error. Execution aborted.
+

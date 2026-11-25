@@ -1,0 +1,7 @@
+EXITCODE: 0
+--- STDOUT ---
+✓ test_07_error_handling_resilience passed
+
+--- STDERR ---
+note: line 44: capture stream ('?>>>') used as a value is not supported by the VM backend; running on the interpreter
+

@@ -1,0 +1,77 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_75_functional_pipes.al:44:21
+   |
+43 | // 4. Function composition
+44 | func compose(f: func(int) -> int, g: func(int) -> int) -> func(int) -> int {
+   |                     ^ expected ')' to close parenthesis, got "(" (()
+45 |     return func(x: int) -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_75_functional_pipes.al:44:17
+   |
+43 | // 4. Function composition
+44 | func compose(f: func(int) -> int, g: func(int) -> int) -> func(int) -> int {
+   |                 ^^^^ expected '{' after function signature
+45 |     return func(x: int) -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_75_functional_pipes.al:44:26
+   |
+43 | // 4. Function composition
+44 | func compose(f: func(int) -> int, g: func(int) -> int) -> func(int) -> int {
+   |                          ^ expected end of statement (newline)
+45 |     return func(x: int) -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_75_functional_pipes.al:45:1
+   |
+44 | func compose(f: func(int) -> int, g: func(int) -> int) -> func(int) -> int {
+45 |     return func(x: int) -> int:
+   | ^^^^^^ unexpected indentation
+46 |         return f(g(x))
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_75_functional_pipes.al:46:1
+   |
+45 |     return func(x: int) -> int:
+46 |         return f(g(x))
+   | ^^^^^^ unexpected indentation
+47 | }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_75_functional_pipes.al:47:1
+   |
+46 |         return f(g(x))
+47 | }
+   | ^^^^^^ unaligned dedent
+48 | composed := compose(multiply_two, add_one)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_75_functional_pipes.al:47:1
+   |
+46 |         return f(g(x))
+47 | }
+   | ^ unexpected closing '}' without matching '{'
+48 | composed := compose(multiply_two, add_one)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 7 errors. Execution aborted.
+

@@ -7,7 +7,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace pawl::dunder {
+namespace ulang::dunder {
 
 struct Def {
     std::string type; // "string", "int", "bool" or "list[string]"
@@ -23,4 +23,4 @@ bool isReserved(std::string_view name);
 // IsPositional reports whether the value is resolved from the source token position.
 bool isPositional(std::string_view name);
 
-} // namespace pawl::dunder
+} // namespace ulang::dunder

@@ -1,0 +1,20 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/rbtree.al - Red-Black Balanced Binary Search Tree for Virtual Memory Areas
+
+COLOR_RED   := 0
+COLOR_BLACK := 1
+
+struct RBNode {
+    key: int
+    val: int
+    color: int
+    left: int
+    right: int
+    parent: int
+}
+
+pub func make_node(key: int, val: int) -> RBNode {
+    return RBNode(key, val, COLOR_RED, 0, 0, 0)
+}

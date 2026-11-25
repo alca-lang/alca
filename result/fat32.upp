@@ -1,0 +1,30 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/fat32.al - FAT32 Filesystem Driver (BIOS Parameter Block & Directory Entry)
+
+use std.mem
+
+struct BPB {
+    bytes_per_sector: int
+    sectors_per_cluster: int
+    reserved_sectors: int
+    num_fats: int
+    sectors_per_fat: int
+    root_cluster: int
+}
+
+pub func parse_bpb(sectorAddr: int) -> BPB {
+    bytesPerSec := mem.read_u16(sectorAddr, 11)
+    secPerClus := mem.read_u8(sectorAddr, 13)
+    reserved := mem.read_u16(sectorAddr, 14)
+    fats := mem.read_u8(sectorAddr, 16)
+    secPerFat := mem.read_u32(sectorAddr, 36)
+    rootClus := mem.read_u32(sectorAddr, 44)
+    return BPB(bytesPerSec, secPerClus, reserved, fats, secPerFat, rootClus)
+}
+
+pub func cluster_to_lba(bpb: BPB, cluster: int) -> int {
+    firstDataSector := bpb.reserved_sectors + (bpb.num_fats * bpb.sectors_per_fat)
+    return firstDataSector + ((cluster - 2) * bpb.sectors_per_cluster)
+}

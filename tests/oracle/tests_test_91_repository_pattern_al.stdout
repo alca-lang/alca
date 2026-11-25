@@ -1,0 +1,187 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected ')' to close parenthesis, got "DEDENT" (DEDENT)
+  --> tests/test_91_repository_pattern.al:107:1
+   |
+106 |         repo.users[id] = users[id]
+107 |     }
+   | ^^^^^^ expected ')' to close parenthesis, got "DEDENT" (DEDENT)
+108 |     return repo
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_91_repository_pattern.al:106:35
+   |
+105 |     for id in users {
+106 |         repo.users[id] = users[id]
+   |                                   ^ expected '{' after function signature
+107 |     }
+   |
+   = help: provide '{' to start the function body
+
+error: unaligned dedent
+  --> tests/test_91_repository_pattern.al:107:1
+   |
+106 |         repo.users[id] = users[id]
+107 |     }
+   | ^^^^^^ unaligned dedent
+108 |     return repo
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_91_repository_pattern.al:107:5
+   |
+106 |         repo.users[id] = users[id]
+107 |     }
+   |     ^ unexpected closing '}' without matching '{'
+108 |     return repo
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_91_repository_pattern.al:110:1
+   |
+109 | 
+110 | batch := {3: "Charlie", 4: "David"}
+   | ^^^^^^ unaligned dedent
+111 | repo3 = add_users_batch(repo3, batch)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_91_repository_pattern.al:115:56
+   |
+114 | // 10. Repository transaction simulation
+115 | func transaction(repo: UserRepository, operations: func(UserRepository) -> UserRepository) -> UserRepository {
+   |                                                        ^ expected ')' to close parenthesis, got "(" (()
+116 |     return operations(repo)
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_91_repository_pattern.al:115:52
+   |
+114 | // 10. Repository transaction simulation
+115 | func transaction(repo: UserRepository, operations: func(UserRepository) -> UserRepository) -> UserRepository {
+   |                                                    ^^^^ expected '{' after function signature
+116 |     return operations(repo)
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_91_repository_pattern.al:115:72
+   |
+114 | // 10. Repository transaction simulation
+115 | func transaction(repo: UserRepository, operations: func(UserRepository) -> UserRepository) -> UserRepository {
+   |                                                                        ^ expected end of statement (newline)
+116 |     return operations(repo)
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_91_repository_pattern.al:116:1
+   |
+115 | func transaction(repo: UserRepository, operations: func(UserRepository) -> UserRepository) -> UserRepository {
+116 |     return operations(repo)
+   | ^^^^^^ unexpected indentation
+117 | }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_91_repository_pattern.al:117:1
+   |
+116 |     return operations(repo)
+117 | }
+   | ^^^^^^ unaligned dedent
+118 | transacted := transaction(repo3, func(r: UserRepository) -> UserRepository:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_91_repository_pattern.al:117:1
+   |
+116 |     return operations(repo)
+117 | }
+   | ^ unexpected closing '}' without matching '{'
+118 | transacted := transaction(repo3, func(r: UserRepository) -> UserRepository:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_91_repository_pattern.al:118:34
+   |
+117 | }
+118 | transacted := transaction(repo3, func(r: UserRepository) -> UserRepository:
+   |                                  ^^^^ unexpected token "func" (func)
+119 |     r = add_user(r, 5, "Eve")
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_91_repository_pattern.al:118:38
+   |
+117 | }
+118 | transacted := transaction(repo3, func(r: UserRepository) -> UserRepository:
+   |                                      ^ expected ')' to close parenthesis, got "(" (()
+119 |     r = add_user(r, 5, "Eve")
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_91_repository_pattern.al:118:40
+   |
+117 | }
+118 | transacted := transaction(repo3, func(r: UserRepository) -> UserRepository:
+   |                                        ^ expected ')' to close parenthesis, got ":" (:)
+119 |     r = add_user(r, 5, "Eve")
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_91_repository_pattern.al:118:40
+   |
+117 | }
+118 | transacted := transaction(repo3, func(r: UserRepository) -> UserRepository:
+   |                                        ^ expected end of statement (newline)
+119 |     r = add_user(r, 5, "Eve")
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_91_repository_pattern.al:119:1
+   |
+118 | transacted := transaction(repo3, func(r: UserRepository) -> UserRepository:
+119 |     r = add_user(r, 5, "Eve")
+   | ^^^^^^ unexpected indentation
+120 |     return r
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_91_repository_pattern.al:121:1
+   |
+120 |     return r
+121 | )
+   | ^^^^^^ unaligned dedent
+122 | assert get_user(transacted, 5) == "Eve"
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_91_repository_pattern.al:121:1
+   |
+120 |     return r
+121 | )
+   | ^ unexpected closing ')' without matching '('
+122 | assert get_user(transacted, 5) == "Eve"
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+Found 18 errors. Execution aborted.
+

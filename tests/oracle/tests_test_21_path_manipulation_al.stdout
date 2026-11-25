@@ -1,0 +1,47 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected indentation
+  --> tests/test_21_path_manipulation.al:58:1
+   |
+57 |     return string.starts_with(p, "/") or
+58 |            string.starts_with(p, "C:") or
+   | ^^^^^^ unexpected indentation
+59 |            string.starts_with(p, "D:") or
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_21_path_manipulation.al:58:7
+   |
+57 |     return string.starts_with(p, "/") or
+58 |            string.starts_with(p, "C:") or
+   |       ^ expected end of statement (newline)
+59 |            string.starts_with(p, "D:") or
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_21_path_manipulation.al:231:1
+   |
+230 |     return p == "/" or p == "\\" or
+231 |            string.ends_with(p, ":/") or
+   | ^^^^^^ unexpected indentation
+232 |            string.ends_with(p, ":\\")
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_21_path_manipulation.al:231:7
+   |
+230 |     return p == "/" or p == "\\" or
+231 |            string.ends_with(p, ":/") or
+   |       ^ expected end of statement (newline)
+232 |            string.ends_with(p, ":\\")
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+Found 4 errors. Execution aborted.
+

@@ -12,7 +12,7 @@
 
 #include "token/token.h"
 
-namespace pawl::lexer {
+namespace ulang::lexer {
 
 class Lexer {
 public:
@@ -56,4 +56,4 @@ private:
 [[nodiscard]] bool isDigit(char ch);
 [[nodiscard]] bool isLetterOrDigit(char ch);
 
-} // namespace pawl::lexer
+} // namespace ulang::lexer

@@ -1,0 +1,63 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/libpath.al - Object-oriented filesystem path operations
+
+use std.io
+
+struct Path {
+    raw: string
+}
+
+pub func new_path(p: string) -> Path {
+    return Path(p)
+}
+
+pub func to_string(p: Path) -> string {
+    return p.raw
+}
+
+pub func exists(p: Path) -> bool {
+    return io.file_exists(p.raw)
+}
+
+pub func is_file(p: Path) -> bool {
+    return io.file_exists(p.raw)
+}
+
+pub func is_dir(p: Path) -> bool {
+    return io.file_exists(p.raw)
+}
+
+pub func parent(p: Path) -> Path {
+    last_slash := -1
+    i := 0
+    loop {
+        if i >= len(p.raw) {
+            break
+        }
+        if p.raw[i] == 47 or p.raw[i] == 92 {
+            last_slash = i
+        }
+        i = i + 1
+    }
+    if last_slash <= 0 {
+        return Path(".")
+    }
+    return Path(p.raw)
+}
+
+pub func join(p: Path, segment: string) -> Path {
+    if len(p.raw) == 0 {
+        return Path(segment)
+    }
+    return Path(p.raw + "/" + segment)
+}
+
+pub func read_text(p: Path) -> string {
+    return io.read_file(p.raw)
+}
+
+pub func write_text(p: Path, data: string) -> bool {
+    return io.write_file(p.raw, data)
+}

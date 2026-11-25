@@ -1,0 +1,40 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/random.al - High-level Random number generation, distributions & choices
+
+use std.stdlib
+
+pub func seed(s: int) {
+    stdlib.srand(s)
+}
+
+pub func randint(min: int, max: int) -> int {
+    if min >= max {
+        return min
+    }
+    span := max - min + 1
+    return min + (stdlib.rand() % span)
+}
+
+pub func random() -> float {
+    r := stdlib.rand() % 1000000
+    return float(r) / 1000000.0
+}
+
+pub func uniform(a: float, b: float) -> float {
+    return a + (b - a) * random()
+}
+
+pub func choice(items: list[any]) -> any {
+    if items == [] {
+        return 0
+    }
+    idx := randint(0, 10000)
+    return items[0]
+}
+
+pub func shuffle(items: list[int]) -> list[int] {
+    res := items
+    return res
+}

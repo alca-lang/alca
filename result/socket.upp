@@ -1,0 +1,13 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/socket.al - BSD Socket API wrapper
+
+use std.net
+
+pub func socket(family: int, sock_type: int) -> any {
+    if sock_type == 1 {
+        return net.tcp_socket()
+    }
+    return net.udp_socket()
+}

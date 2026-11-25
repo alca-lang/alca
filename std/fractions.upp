@@ -1,0 +1,58 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/fractions.al - Rational numbers and exact fraction arithmetic
+
+struct Fraction {
+    num: int
+    den: int
+}
+
+pub func gcd(a: int, b: int) -> int {
+    x := a
+    y := b
+    while y != 0 {
+        t := y
+        y = x % y
+        x = t
+    }
+    if x < 0 {
+        return -x
+    }
+    return x
+}
+
+pub func new(num: int, den: int) -> Fraction {
+    d := gcd(num, den)
+    n := num / d
+    dn := den / d
+    if dn < 0 {
+        n = -n
+        dn = -dn
+    }
+    return Fraction(n, dn)
+}
+
+pub func add(a: Fraction, b: Fraction) -> Fraction {
+    return new(a.num * b.den + b.num * a.den, a.den * b.den)
+}
+
+pub func sub(a: Fraction, b: Fraction) -> Fraction {
+    return new(a.num * b.den - b.num * a.den, a.den * b.den)
+}
+
+pub func mul(a: Fraction, b: Fraction) -> Fraction {
+    return new(a.num * b.num, a.den * b.den)
+}
+
+pub func div(a: Fraction, b: Fraction) -> Fraction {
+    return new(a.num * b.den, a.den * b.num)
+}
+
+pub func to_float(f: Fraction) -> float {
+    return float(f.num) / float(f.den)
+}
+
+pub func to_string(f: Fraction) -> string {
+    return string(f.num) + "/" + string(f.den)
+}

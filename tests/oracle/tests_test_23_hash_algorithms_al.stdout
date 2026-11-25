@@ -1,0 +1,25 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_23_hash_algorithms.al:180:18
+   |
+179 | func hash_prefix(hash: string, length: int) -> string {
+180 |     return string.substring(hash, 0, length)
+   |                  ^ type func(any) -> string has no field 'substring'
+181 | }
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_23_hash_algorithms.al:183:18
+   |
+182 | func hash_suffix(hash: string, length: int) -> string {
+183 |     return string.substring(hash, len(hash) - length, len(hash))
+   |                  ^ type func(any) -> string has no field 'substring'
+184 | }
+   |
+
+Found 2 errors. Execution aborted.
+

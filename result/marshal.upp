@@ -1,0 +1,22 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/marshal.al - Binary serialization & deserialization of primitive types
+
+use std.mem
+
+pub func dump_int64(val: int, dstAddr: int) {
+    mem.write_u64(dstAddr, val, 0)
+}
+
+pub func load_int64(srcAddr: int) -> int {
+    return mem.read_u64(srcAddr, 0)
+}
+
+pub func dump_int32(val: int, dstAddr: int) {
+    mem.write_u32(dstAddr, val, 0)
+}
+
+pub func load_int32(srcAddr: int) -> int {
+    return mem.read_u32(srcAddr, 0)
+}

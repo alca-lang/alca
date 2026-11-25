@@ -12,8 +12,8 @@
 #include <string>
 #include <vector>
 
-using namespace pawl;
-using namespace pawl::typecheck;
+using namespace ulang;
+using namespace ulang::typecheck;
 
 namespace {
 

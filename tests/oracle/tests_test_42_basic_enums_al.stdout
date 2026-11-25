@@ -1,0 +1,6 @@
+EXITCODE: 0
+--- STDOUT ---
+✓ test_42_basic_enums passed
+
+--- STDERR ---
+

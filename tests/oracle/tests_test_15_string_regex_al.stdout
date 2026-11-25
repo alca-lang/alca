@@ -1,0 +1,35 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: 'matches' is already declared; use assignment to update it
+  --> tests/test_15_string_regex.al:84:5
+   |
+83 |     domain_pattern := "@([a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})"
+84 |     matches := regex.find_all(email, domain_pattern)
+   |     ^^^^^^^ 'matches' is already declared; use assignment to update it
+85 |     if len(matches) > 0 {
+   |
+   = help: write 'matches = value;' to update the existing variable, or choose a new name
+
+error: module 'string' has no member 'substring'
+  --> tests/test_15_string_regex.al:87:22
+   |
+86 |         // Remove the @ prefix
+87 |         return string.substring(matches[0], 1, len(matches[0]))
+   |                      ^ module 'string' has no member 'substring'
+88 |     }
+   |
+
+error: module 'string' has no member 'substring'
+  --> tests/test_15_string_regex.al:135:28
+   |
+134 |     while i >= 0 {
+135 |         digit := int(string.substring(card, i, i + 1))
+   |                            ^ module 'string' has no member 'substring'
+136 |         if is_even {
+   |
+
+Found 3 errors. Execution aborted.
+

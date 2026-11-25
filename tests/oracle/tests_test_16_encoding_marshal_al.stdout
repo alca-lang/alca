@@ -1,0 +1,177 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected indentation
+  --> tests/test_16_encoding_marshal.al:71:1
+   |
+70 | complex_data: map[string, any] = {
+71 |     "name": "Alice",
+   | ^^^^^^ unexpected indentation
+72 |     "age": 30,
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_16_encoding_marshal.al:71:7
+   |
+70 | complex_data: map[string, any] = {
+71 |     "name": "Alice",
+   |       ^ expected end of statement (newline)
+72 |     "age": 30,
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_16_encoding_marshal.al:72:10
+   |
+71 |     "name": "Alice",
+72 |     "age": 30,
+   |          ^ expected end of statement (newline)
+73 |     "scores": [95, 87, 92]
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_16_encoding_marshal.al:73:13
+   |
+72 |     "age": 30,
+73 |     "scores": [95, 87, 92]
+   |             ^ expected end of statement (newline)
+74 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_16_encoding_marshal.al:74:1
+   |
+73 |     "scores": [95, 87, 92]
+74 | }
+   | ^^^^^^ unaligned dedent
+75 | serialized_blob := marshal.dumps(complex_data)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_16_encoding_marshal.al:74:1
+   |
+73 |     "scores": [95, 87, 92]
+74 | }
+   | ^ unexpected closing '}' without matching '{'
+75 | serialized_blob := marshal.dumps(complex_data)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: C-style declarations are not supported
+  --> tests/test_16_encoding_marshal.al:88:1
+   |
+87 | original_obj: list[int] = [1, 2, 3, 4, 5]
+88 | blob := marshal.dumps(original_obj)
+   | ^^^^ C-style declarations are not supported
+89 | restored := marshal.loads(blob)
+   |
+   = help: declare variables as 'name: blob = value;'
+
+error: unexpected indentation
+  --> tests/test_16_encoding_marshal.al:94:1
+   |
+93 | nested := {
+94 |     "user": {
+   | ^^^^^^ unexpected indentation
+95 |         "name": "Bob",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_16_encoding_marshal.al:94:7
+   |
+93 | nested := {
+94 |     "user": {
+   |       ^ expected end of statement (newline)
+95 |         "name": "Bob",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_16_encoding_marshal.al:95:1
+   |
+94 |     "user": {
+95 |         "name": "Bob",
+   | ^^^^^^ unexpected indentation
+96 |         "metadata": {"role": "admin", "active": true}
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_16_encoding_marshal.al:96:19
+   |
+95 |         "name": "Bob",
+96 |         "metadata": {"role": "admin", "active": true}
+   |                   ^ expected end of statement (newline)
+97 |     },
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_16_encoding_marshal.al:96:53
+   |
+95 |         "name": "Bob",
+96 |         "metadata": {"role": "admin", "active": true}
+   |                                                     ^ unexpected closing '}' without matching '{'
+97 |     },
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_16_encoding_marshal.al:97:1
+   |
+96 |         "metadata": {"role": "admin", "active": true}
+97 |     },
+   | ^^^^^^ unaligned dedent
+98 |     "items": [1, 2, 3]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_16_encoding_marshal.al:97:5
+   |
+96 |         "metadata": {"role": "admin", "active": true}
+97 |     },
+   |     ^ unexpected closing '}' without matching '{'
+98 |     "items": [1, 2, 3]
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected end of statement (newline)
+  --> tests/test_16_encoding_marshal.al:98:12
+   |
+97 |     },
+98 |     "items": [1, 2, 3]
+   |            ^ expected end of statement (newline)
+99 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_16_encoding_marshal.al:99:1
+   |
+98 |     "items": [1, 2, 3]
+99 | }
+   | ^^^^^^ unaligned dedent
+100 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_16_encoding_marshal.al:99:1
+   |
+98 |     "items": [1, 2, 3]
+99 | }
+   | ^ unexpected closing '}' without matching '{'
+100 | 
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 17 errors. Execution aborted.
+

@@ -1,0 +1,79 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: module 'std' has no member 'io'
+  --> examples/stdlib_super_demo.al:38:4
+   |
+37 | // Создадим тестовую папку и файл для архивации
+38 | std.io.make_dir("demo_archive_tmp")
+   |    ^ module 'std' has no member 'io'
+39 | std.io.write_file("demo_archive_tmp/notes.txt", "Pawl standard library is super fast!")
+   |
+
+error: module 'std' has no member 'io'
+  --> examples/stdlib_super_demo.al:39:4
+   |
+38 | std.io.make_dir("demo_archive_tmp")
+39 | std.io.write_file("demo_archive_tmp/notes.txt", "Pawl standard library is super fast!")
+   |    ^ module 'std' has no member 'io'
+40 | 
+   |
+
+error: module 'std' has no member 'io'
+  --> examples/stdlib_super_demo.al:48:16
+   |
+47 | archive.zip_extract("demo.zip", "demo_extracted")
+48 | restored := std.io.read_file("demo_extracted/notes.txt")
+   |                ^ module 'std' has no member 'io'
+49 | println("Восстановлено из архива: " + restored)
+   |
+
+error: module 'std' has no member 'io'
+  --> examples/stdlib_super_demo.al:52:4
+   |
+51 | // Очистка временных файлов
+52 | std.io.delete_file("demo.zip")
+   |    ^ module 'std' has no member 'io'
+53 | std.io.delete_file("demo_archive_tmp/notes.txt")
+   |
+
+error: module 'std' has no member 'io'
+  --> examples/stdlib_super_demo.al:53:4
+   |
+52 | std.io.delete_file("demo.zip")
+53 | std.io.delete_file("demo_archive_tmp/notes.txt")
+   |    ^ module 'std' has no member 'io'
+54 | std.io.delete_file("demo_archive_tmp")
+   |
+
+error: module 'std' has no member 'io'
+  --> examples/stdlib_super_demo.al:54:4
+   |
+53 | std.io.delete_file("demo_archive_tmp/notes.txt")
+54 | std.io.delete_file("demo_archive_tmp")
+   |    ^ module 'std' has no member 'io'
+55 | std.io.delete_file("demo_extracted/notes.txt")
+   |
+
+error: module 'std' has no member 'io'
+  --> examples/stdlib_super_demo.al:55:4
+   |
+54 | std.io.delete_file("demo_archive_tmp")
+55 | std.io.delete_file("demo_extracted/notes.txt")
+   |    ^ module 'std' has no member 'io'
+56 | std.io.delete_file("demo_extracted")
+   |
+
+error: module 'std' has no member 'io'
+  --> examples/stdlib_super_demo.al:56:4
+   |
+55 | std.io.delete_file("demo_extracted/notes.txt")
+56 | std.io.delete_file("demo_extracted")
+   |    ^ module 'std' has no member 'io'
+57 | 
+   |
+
+Found 8 errors. Execution aborted.
+

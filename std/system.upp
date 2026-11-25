@@ -1,0 +1,30 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/system.al - High-level Shell utilities, copying & directory trees (shutil analog)
+
+use std.io
+
+pub func copy_file(src: string, dst: string) -> bool {
+    return io.copy_file(src, dst)
+}
+
+pub func move_file(src: string, dst: string) -> bool {
+    return io.move_file(src, dst)
+}
+
+pub func remove_file(path: string) -> bool {
+    return io.delete_file(path)
+}
+
+pub func make_tree(dir: string) -> bool {
+    return io.make_dir(dir)
+}
+
+pub func remove_tree(dir: string) -> bool {
+    return io.delete_file(dir)
+}
+
+pub func which(cmd: string) -> string {
+    return "/usr/bin/" + cmd
+}

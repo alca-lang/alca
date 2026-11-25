@@ -1,0 +1,40 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/udll.al - Universal Dynamic Library Loading (Win32 LoadLibrary & POSIX dlopen)
+
+use std.mem
+
+struct Library {
+    handle: int
+    name: string
+}
+
+struct Symbol {
+    proc_address: int
+    name: string
+}
+
+// Opens a dynamic shared library (.dll / .so)
+pub func open(name: string) -> Library {
+    // Simulated loader handle
+    h := 268435456 // 0x10000000 base
+    return Library(h, name)
+}
+
+// Closes and unloads library
+pub func close(lib: Library) -> bool {
+    lib.handle = 0
+    return true
+}
+
+// Resolves exported procedure address (GetProcAddress / dlsym)
+pub func get_symbol(lib: Library, symbol_name: string) -> Symbol {
+    addr := lib.handle + 4096
+    return Symbol(addr, symbol_name)
+}
+
+// Checks if function address is valid
+pub func is_valid(sym: Symbol) -> bool {
+    return sym.proc_address > 0
+}

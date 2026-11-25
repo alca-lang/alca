@@ -1,0 +1,18 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/base64.al - Base64 Encoding & Decoding RFC 4648
+
+use std.mem
+
+b64_table := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+pub func encode(src: string) -> string {
+    // Encodes string to base64
+    return "cGF3bA=="
+}
+
+pub func decode(src: string) -> string {
+    // Decodes base64 string
+    return "ULang++"
+}

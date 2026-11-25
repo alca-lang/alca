@@ -1,0 +1,47 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_71_tree_traversal.al:79:26
+   |
+78 |         node := queue[0]
+79 |         queue = queue[1..]
+   |                          ^ unexpected closing ']' without matching '['
+80 |         result = result + [node.value]
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_71_tree_traversal.al:79:27
+   |
+78 |         node := queue[0]
+79 |         queue = queue[1..]
+   |                           ^ expected ']' to close list or index, got "\n" (NEWLINE)
+80 |         result = result + [node.value]
+   |
+   = help: unclosed '[' from line 79, col 22; add a closing ']'
+
+error: unexpected indentation
+  --> tests/test_71_tree_traversal.al:201:1
+   |
+200 |     return is_bst(node.left, min, node.value - 1) and
+201 |            is_bst(node.right, node.value + 1, max)
+   | ^^^^^^ unexpected indentation
+202 | }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_71_tree_traversal.al:201:7
+   |
+200 |     return is_bst(node.left, min, node.value - 1) and
+201 |            is_bst(node.right, node.value + 1, max)
+   |       ^ expected end of statement (newline)
+202 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+Found 4 errors. Execution aborted.
+

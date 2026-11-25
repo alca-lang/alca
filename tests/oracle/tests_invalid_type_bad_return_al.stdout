@@ -1,0 +1,17 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: function 'add' returns int, but the value has type string
+  --> tests/invalid/type_bad_return.al:6:12
+   |
+ 5 | func add(a: int, b: int) -> int {
+ 6 |     return "invalid return type"
+   |            ^^^^^^^^^^^^^^^^^^^ function 'add' returns int, but the value has type string
+ 7 | }
+   |
+   = help: use int(x) to convert
+
+Found 1 error. Execution aborted.
+

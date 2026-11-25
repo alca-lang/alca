@@ -1,0 +1,11 @@
+EXITCODE: 1
+--- STDOUT ---
+Открываю десктопное окно WebView...
+
+--- STDERR ---
+
+error[RuntimeError]: install Google Chrome or Chromium (code 500)
+  --> examples/interactive/webview.al
+   = help: Review the logic on the referenced line.
+
+

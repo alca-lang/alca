@@ -9,7 +9,7 @@
 #include <optional>
 #include <sstream>
 
-namespace pawl::typecheck {
+namespace ulang::typecheck {
 
 TypePtr getInt() { static auto t = std::make_shared<Basic>("int"); return t; }
 TypePtr getFloat() { static auto t = std::make_shared<Basic>("float"); return t; }
@@ -483,4 +483,4 @@ const std::unordered_map<std::string, TypePtr>& globalBuiltins() {
     return g;
 }
 
-} // namespace pawl::typecheck
+} // namespace ulang::typecheck

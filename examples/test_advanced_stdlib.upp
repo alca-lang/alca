@@ -1,0 +1,37 @@
+use std.itertools
+use std.asyncio
+use std.crypto
+use std.udll
+use std.net
+
+func main() {
+    // 1. Test itertools
+    r := itertools.range_step(0, 10, 2)
+    acc := itertools.accumulate([1, 2, 3, 4])
+    rev := itertools.reversed([10, 20, 30])
+
+    // 2. Test asyncio
+    evLoop := asyncio.new_event_loop()
+    task := asyncio.create_task(1)
+    asyncio.sleep_ms(5)
+
+    // 3. Test crypto
+    buf := 65536
+    c1 := crypto.crc32(buf, 16)
+    a1 := crypto.adler32(buf, 16)
+    f1 := crypto.fnv1a64(buf, 16)
+
+    // 4. Test udll
+    lib := udll.open("kernel32.dll")
+    sym := udll.get_symbol(lib, "Beep")
+    ok := udll.is_valid(sym)
+    udll.close(lib)
+
+    // 5. Test net
+    sock := net.tcp_socket()
+    net.bind(sock, 8080)
+    net.listen(sock, 128)
+    net.close(sock)
+}
+
+main()

@@ -1,0 +1,17 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/uuid.al - RFC 4122 UUID v4 generation and formatting
+
+use std.random
+
+struct UUID {
+    high: int
+    low: int
+}
+
+pub func v4() -> UUID {
+    h := random.randint(1000000, 9999999)
+    l := random.randint(1000000, 9999999)
+    return UUID(h, l)
+}

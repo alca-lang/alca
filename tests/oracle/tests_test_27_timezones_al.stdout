@@ -1,0 +1,137 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected indentation
+  --> tests/test_27_timezones.al:200:1
+   |
+199 |     return [
+200 |         "UTC",
+   | ^^^^^^ unexpected indentation
+201 |         "America/New_York",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected ']' to close list or index, got "UTC" (STRING)
+  --> tests/test_27_timezones.al:200:9
+   |
+199 |     return [
+200 |         "UTC",
+   |         ^^^ expected ']' to close list or index, got "UTC" (STRING)
+201 |         "America/New_York",
+   |
+   = help: did you forget a closing ']'?
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:200:7
+   |
+199 |     return [
+200 |         "UTC",
+   |       ^ expected end of statement (newline)
+201 |         "America/New_York",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:201:27
+   |
+200 |         "UTC",
+201 |         "America/New_York",
+   |                           ^ expected end of statement (newline)
+202 |         "America/Los_Angeles",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:202:30
+   |
+201 |         "America/New_York",
+202 |         "America/Los_Angeles",
+   |                              ^ expected end of statement (newline)
+203 |         "America/Chicago",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:203:26
+   |
+202 |         "America/Los_Angeles",
+203 |         "America/Chicago",
+   |                          ^ expected end of statement (newline)
+204 |         "Europe/London",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:204:24
+   |
+203 |         "America/Chicago",
+204 |         "Europe/London",
+   |                        ^ expected end of statement (newline)
+205 |         "Europe/Paris",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:205:23
+   |
+204 |         "Europe/London",
+205 |         "Europe/Paris",
+   |                       ^ expected end of statement (newline)
+206 |         "Europe/Berlin",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:206:24
+   |
+205 |         "Europe/Paris",
+206 |         "Europe/Berlin",
+   |                        ^ expected end of statement (newline)
+207 |         "Asia/Tokyo",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:207:21
+   |
+206 |         "Europe/Berlin",
+207 |         "Asia/Tokyo",
+   |                     ^ expected end of statement (newline)
+208 |         "Asia/Shanghai",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:208:24
+   |
+207 |         "Asia/Tokyo",
+208 |         "Asia/Shanghai",
+   |                        ^ expected end of statement (newline)
+209 |         "Asia/Singapore",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_27_timezones.al:209:25
+   |
+208 |         "Asia/Shanghai",
+209 |         "Asia/Singapore",
+   |                         ^ expected end of statement (newline)
+210 |         "Australia/Sydney"
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_27_timezones.al:211:5
+   |
+210 |         "Australia/Sydney"
+211 |     ]
+   |     ^ unexpected closing ']' without matching '['
+212 | }
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+Found 13 errors. Execution aborted.
+

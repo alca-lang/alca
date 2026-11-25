@@ -1,0 +1,30 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/elf_loader.al - Executable and Linkable Format (ELF64) Parser & Relocator
+
+use std.mem
+
+struct Elf64Header {
+    is_valid: bool
+    entry_point: int
+    ph_offset: int
+    ph_count: int
+}
+
+pub func parse_header(fileAddr: int) -> Elf64Header {
+    // Check ELF magic \x7F ELF
+    b0 := mem.read_u8(fileAddr, 0)
+    b1 := mem.read_u8(fileAddr, 1)
+    b2 := mem.read_u8(fileAddr, 2)
+    b3 := mem.read_u8(fileAddr, 3)
+
+    if b0 != 127 or b1 != 69 or b2 != 76 or b3 != 70 {
+        return Elf64Header(false, 0, 0, 0)
+    }
+
+    entry := mem.read_u64(fileAddr, 24)
+    phOff := mem.read_u64(fileAddr, 32)
+    phCount := mem.read_u16(fileAddr, 56)
+    return Elf64Header(true, entry, phOff, phCount)
+}

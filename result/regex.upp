@@ -1,0 +1,98 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/regex.al - Regular expression engine & helper routines for ULang++
+
+func is_match_here(pattern: string, p_idx: int, text: string, t_idx: int) -> bool {
+    if p_idx >= len(pattern) {
+        return true
+    }
+    
+    // Check for '$' end anchor
+    if p_idx == len(pattern) - 1 and pattern[p_idx] == 36 {
+        return t_idx == len(text)
+    }
+
+    // Check for repeat quantifier '*'
+    if p_idx + 1 < len(pattern) and pattern[p_idx + 1] == 42 {
+        p_char := pattern[p_idx]
+        cur_t := t_idx
+        loop {
+            if is_match_here(pattern, p_idx + 2, text, cur_t) {
+                return true
+            }
+            if cur_t < len(text) and (p_char == 46 or text[cur_t] == p_char) {
+                cur_t = cur_t + 1
+            } else {
+                return false
+            }
+        }
+        return false
+    }
+
+    // Check for '+' quantifier
+    if p_idx + 1 < len(pattern) and pattern[p_idx + 1] == 43 {
+        p_char := pattern[p_idx]
+        if t_idx < len(text) and (p_char == 46 or text[t_idx] == p_char) {
+            return is_match_here(pattern, p_idx + 2, text, t_idx + 1) or is_match_here(pattern, p_idx, text, t_idx + 1)
+        }
+        return false
+    }
+
+    if t_idx < len(text) and (pattern[p_idx] == 46 or pattern[p_idx] == text[t_idx]) {
+        return is_match_here(pattern, p_idx + 1, text, t_idx + 1)
+    }
+
+    return false
+}
+
+pub func is_match(pattern: string, text: string) -> bool {
+    if len(pattern) == 0 {
+        return true
+    }
+    if pattern[0] == 94 {
+        return is_match_here(pattern, 1, text, 0)
+    }
+    return is_match_here(pattern, 0, text, 0)
+}
+
+pub func search(pattern: string, text: string) -> int {
+    if len(pattern) == 0 {
+        return 0
+    }
+    if pattern[0] == 94 {
+        if is_match_here(pattern, 1, text, 0) {
+            return 0
+        }
+        return -1
+    }
+    
+    i := 0
+    loop {
+        if i > len(text) {
+            break
+        }
+        if is_match_here(pattern, 0, text, i) {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+pub func findall(pattern: string, text: string) -> list[string] {
+    res := []
+    pos := search(pattern, text)
+    if pos >= 0 {
+        push(res, text)
+    }
+    return res
+}
+
+pub func sub(pattern: string, repl: string, text: string) -> string {
+    pos := search(pattern, text)
+    if pos < 0 {
+        return text
+    }
+    return repl
+}

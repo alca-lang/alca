@@ -1,0 +1,407 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected indentation
+  --> tests/test_26_jwt_simulation.al:46:1
+   |
+45 |     payload_map := {
+46 |         "iss": iss,
+   | ^^^^^^ unexpected indentation
+47 |         "sub": sub,
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:46:7
+   |
+45 |     payload_map := {
+46 |         "iss": iss,
+   |       ^ expected end of statement (newline)
+47 |         "sub": sub,
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:47:14
+   |
+46 |         "iss": iss,
+47 |         "sub": sub,
+   |              ^ expected end of statement (newline)
+48 |         "exp": string(exp),
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:48:14
+   |
+47 |         "sub": sub,
+48 |         "exp": string(exp),
+   |              ^ expected end of statement (newline)
+49 |         "iat": string(iat)
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:49:14
+   |
+48 |         "exp": string(exp),
+49 |         "iat": string(iat)
+   |              ^ expected end of statement (newline)
+50 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_26_jwt_simulation.al:52:1
+   |
+51 |     return json.encode(payload_map)
+52 | }
+   | ^^^^^^ unaligned dedent
+53 | now := int(time.now())
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_26_jwt_simulation.al:52:1
+   |
+51 |     return json.encode(payload_map)
+52 | }
+   | ^ unexpected closing '}' without matching '{'
+53 | now := int(time.now())
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected indentation
+  --> tests/test_26_jwt_simulation.al:85:1
+   |
+84 |     return {
+85 |         "header": header_decoded,
+   | ^^^^^^ unexpected indentation
+86 |         "payload": payload_decoded,
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:85:7
+   |
+84 |     return {
+85 |         "header": header_decoded,
+   |       ^ expected end of statement (newline)
+86 |         "payload": payload_decoded,
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:86:18
+   |
+85 |         "header": header_decoded,
+86 |         "payload": payload_decoded,
+   |                  ^ expected end of statement (newline)
+87 |         "signature": parts[2]
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:87:20
+   |
+86 |         "payload": payload_decoded,
+87 |         "signature": parts[2]
+   |                    ^ expected end of statement (newline)
+88 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_26_jwt_simulation.al:89:1
+   |
+88 |     }
+89 | }
+   | ^^^^^^ unaligned dedent
+90 | decoded := decode_jwt(jwt_token)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_26_jwt_simulation.al:89:1
+   |
+88 |     }
+89 | }
+   | ^ unexpected closing '}' without matching '{'
+90 | decoded := decode_jwt(jwt_token)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected indentation
+  --> tests/test_26_jwt_simulation.al:143:1
+   |
+142 | custom_claims := {
+143 |     "user_id": "123",
+   | ^^^^^^ unexpected indentation
+144 |     "role": "admin",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:143:7
+   |
+142 | custom_claims := {
+143 |     "user_id": "123",
+   |       ^ expected end of statement (newline)
+144 |     "role": "admin",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:144:11
+   |
+143 |     "user_id": "123",
+144 |     "role": "admin",
+   |           ^ expected end of statement (newline)
+145 |     "permissions": "read,write"
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:145:18
+   |
+144 |     "role": "admin",
+145 |     "permissions": "read,write"
+   |                  ^ expected end of statement (newline)
+146 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_26_jwt_simulation.al:146:1
+   |
+145 |     "permissions": "read,write"
+146 | }
+   | ^^^^^^ unaligned dedent
+147 | custom_payload := create_custom_payload(custom_claims)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_26_jwt_simulation.al:146:1
+   |
+145 |     "permissions": "read,write"
+146 | }
+   | ^ unexpected closing '}' without matching '{'
+147 | custom_payload := create_custom_payload(custom_claims)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected indentation
+  --> tests/test_26_jwt_simulation.al:171:1
+   |
+170 |     payload_map := {
+171 |         "iss": iss,
+   | ^^^^^^ unexpected indentation
+172 |         "sub": sub,
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:171:7
+   |
+170 |     payload_map := {
+171 |         "iss": iss,
+   |       ^ expected end of statement (newline)
+172 |         "sub": sub,
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:172:14
+   |
+171 |         "iss": iss,
+172 |         "sub": sub,
+   |              ^ expected end of statement (newline)
+173 |         "aud": aud,
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:173:14
+   |
+172 |         "sub": sub,
+173 |         "aud": aud,
+   |              ^ expected end of statement (newline)
+174 |         "exp": string(exp)
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:174:14
+   |
+173 |         "aud": aud,
+174 |         "exp": string(exp)
+   |              ^ expected end of statement (newline)
+175 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_26_jwt_simulation.al:177:1
+   |
+176 |     return json.encode(payload_map)
+177 | }
+   | ^^^^^^ unaligned dedent
+178 | aud_payload := create_payload_with_aud("pawl-auth", "user123", "api.pawl.dev", now + 3600)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_26_jwt_simulation.al:177:1
+   |
+176 |     return json.encode(payload_map)
+177 | }
+   | ^ unexpected closing '}' without matching '{'
+178 | aud_payload := create_payload_with_aud("pawl-auth", "user123", "api.pawl.dev", now + 3600)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected indentation
+  --> tests/test_26_jwt_simulation.al:201:1
+   |
+200 |     payload_map := {
+201 |         "iss": iss,
+   | ^^^^^^ unexpected indentation
+202 |         "sub": sub,
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:201:7
+   |
+200 |     payload_map := {
+201 |         "iss": iss,
+   |       ^ expected end of statement (newline)
+202 |         "sub": sub,
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:202:14
+   |
+201 |         "iss": iss,
+202 |         "sub": sub,
+   |              ^ expected end of statement (newline)
+203 |         "jti": jti,
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:203:14
+   |
+202 |         "sub": sub,
+203 |         "jti": jti,
+   |              ^ expected end of statement (newline)
+204 |         "exp": string(exp)
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:204:14
+   |
+203 |         "jti": jti,
+204 |         "exp": string(exp)
+   |              ^ expected end of statement (newline)
+205 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_26_jwt_simulation.al:207:1
+   |
+206 |     return json.encode(payload_map)
+207 | }
+   | ^^^^^^ unaligned dedent
+208 | jti := crypto.uuid()
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_26_jwt_simulation.al:207:1
+   |
+206 |     return json.encode(payload_map)
+207 | }
+   | ^ unexpected closing '}' without matching '{'
+208 | jti := crypto.uuid()
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected indentation
+  --> tests/test_26_jwt_simulation.al:216:1
+   |
+215 |     payload_map := {
+216 |         "iss": iss,
+   | ^^^^^^ unexpected indentation
+217 |         "sub": sub,
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:216:7
+   |
+215 |     payload_map := {
+216 |         "iss": iss,
+   |       ^ expected end of statement (newline)
+217 |         "sub": sub,
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:217:14
+   |
+216 |         "iss": iss,
+217 |         "sub": sub,
+   |              ^ expected end of statement (newline)
+218 |         "nbf": string(nbf),
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:218:14
+   |
+217 |         "sub": sub,
+218 |         "nbf": string(nbf),
+   |              ^ expected end of statement (newline)
+219 |         "exp": string(exp)
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_26_jwt_simulation.al:219:14
+   |
+218 |         "nbf": string(nbf),
+219 |         "exp": string(exp)
+   |              ^ expected end of statement (newline)
+220 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_26_jwt_simulation.al:222:1
+   |
+221 |     return json.encode(payload_map)
+222 | }
+   | ^^^^^^ unaligned dedent
+223 | nbf_payload := create_payload_with_nbf("pawl-auth", "user123", now, now + 3600)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_26_jwt_simulation.al:222:1
+   |
+221 |     return json.encode(payload_map)
+222 | }
+   | ^ unexpected closing '}' without matching '{'
+223 | nbf_payload := create_payload_with_nbf("pawl-auth", "user123", now, now + 3600)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 40 errors. Execution aborted.
+

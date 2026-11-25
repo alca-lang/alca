@@ -1,0 +1,79 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_28_duration_arithmetic.al:114:14
+   |
+113 | dur_str := duration_to_string(dur)
+114 | assert string.contains(dur_str, "90m") // 90 minutes
+   |              ^ type func(any) -> string has no field 'contains'
+115 | 
+   |
+
+error: type func(any) -> string has no field 'split'
+  --> tests/test_28_duration_arithmetic.al:119:20
+   |
+118 |     // Simplified parsing for "Xh Ym Zs" format
+119 |     parts := string.split(dur_str, " ")
+   |                    ^ type func(any) -> string has no field 'split'
+120 |     total_secs := 0
+   |
+
+error: len() needs a list, map, string or blob, got <invalid>
+  --> tests/test_28_duration_arithmetic.al:122:16
+   |
+121 |     for part in parts {
+122 |         if len(part) > 0 {
+   |                ^^^^ len() needs a list, map, string or blob, got <invalid>
+123 |             unit := string.substring(part, len(part) - 1, len(part))
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_28_duration_arithmetic.al:123:27
+   |
+122 |         if len(part) > 0 {
+123 |             unit := string.substring(part, len(part) - 1, len(part))
+   |                           ^ type func(any) -> string has no field 'substring'
+124 |             val := int(string.substring(part, 0, len(part) - 1))
+   |
+
+error: len() needs a list, map, string or blob, got <invalid>
+  --> tests/test_28_duration_arithmetic.al:123:48
+   |
+122 |         if len(part) > 0 {
+123 |             unit := string.substring(part, len(part) - 1, len(part))
+   |                                                ^^^^ len() needs a list, map, string or blob, got <invalid>
+124 |             val := int(string.substring(part, 0, len(part) - 1))
+   |
+
+error: len() needs a list, map, string or blob, got <invalid>
+  --> tests/test_28_duration_arithmetic.al:123:63
+   |
+122 |         if len(part) > 0 {
+123 |             unit := string.substring(part, len(part) - 1, len(part))
+   |                                                               ^^^^ len() needs a list, map, string or blob, got <invalid>
+124 |             val := int(string.substring(part, 0, len(part) - 1))
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_28_duration_arithmetic.al:124:30
+   |
+123 |             unit := string.substring(part, len(part) - 1, len(part))
+124 |             val := int(string.substring(part, 0, len(part) - 1))
+   |                              ^ type func(any) -> string has no field 'substring'
+125 |             if unit == "h" {
+   |
+
+error: len() needs a list, map, string or blob, got <invalid>
+  --> tests/test_28_duration_arithmetic.al:124:54
+   |
+123 |             unit := string.substring(part, len(part) - 1, len(part))
+124 |             val := int(string.substring(part, 0, len(part) - 1))
+   |                                                      ^^^^ len() needs a list, map, string or blob, got <invalid>
+125 |             if unit == "h" {
+   |
+
+Found 8 errors. Execution aborted.
+

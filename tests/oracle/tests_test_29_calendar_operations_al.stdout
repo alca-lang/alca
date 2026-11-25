@@ -1,0 +1,57 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected indentation
+  --> tests/test_29_calendar_operations.al:162:1
+   |
+161 |     return date1["year"] == date2["year"] and
+162 |            date1["month"] == date2["month"] and
+   | ^^^^^^ unexpected indentation
+163 |            date1["day"] == date2["day"]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_29_calendar_operations.al:162:7
+   |
+161 |     return date1["year"] == date2["year"] and
+162 |            date1["month"] == date2["month"] and
+   |       ^ expected end of statement (newline)
+163 |            date1["day"] == date2["day"]
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_29_calendar_operations.al:177:1
+   |
+176 |     return date1["year"] == date2["year"] and
+177 |            date1["month"] == date2["month"]
+   | ^^^^^^ unexpected indentation
+178 | }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_29_calendar_operations.al:177:7
+   |
+176 |     return date1["year"] == date2["year"] and
+177 |            date1["month"] == date2["month"]
+   |       ^ expected end of statement (newline)
+178 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected '{' after if condition
+  --> tests/test_29_calendar_operations.al:256:98
+   |
+255 |     if current_date["month"] < birth_date["month"] or
+256 |        (current_date["month"] == birth_date["month"] and current_date["day"] < birth_date["day"]):
+   |                                                                                                  ^ expected '{' after if condition
+257 |         age = age - 1
+   |
+   = help: use '{' to open a block, not ':'
+
+Found 5 errors. Execution aborted.
+

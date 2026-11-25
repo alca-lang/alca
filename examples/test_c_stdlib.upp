@@ -1,0 +1,29 @@
+use std.string
+use std.ctype
+use std.stdlib
+use std.io
+use std.mem
+
+func main() {
+    // 1. Test ctype (<ctype.h>)
+    isNum := ctype.is_digit(53) // '5'
+    isLet := ctype.is_alpha(65) // 'A'
+    upper := ctype.to_upper(97) // 'a' -> 'A'
+
+    // 2. Test stdlib (<stdlib.h>)
+    val := stdlib.abs(-42)
+    stdlib.srand(12345)
+    r1 := stdlib.rand()
+
+    // 3. Test string (<string.h>) & io (<stdio.h>)
+    buf := 65536
+    string.memset(buf, 0, 32)
+    mem.write_u8(buf, 72, 0) // 'H'
+    mem.write_u8(buf, 105, 1) // 'i'
+    mem.write_u8(buf, 0, 2)   // '\0'
+
+    len := string.strlen(buf)
+    io.serial_putc(len + 48) // prints ASCII '2'
+}
+
+main()

@@ -1,0 +1,42 @@
+EXITCODE: 0
+--- STDOUT ---
+==================================================
+🚀 PAWL FULL CAPABILITIES & SECURITY AUDIT TEST
+==================================================
+
+[1] Проверка логирования ошибок доступа и аудита безопасности:
+Зафиксировано событий отказа в доступе: 1
+Последняя ошибка прав: операция=read_file, ресурс=C:\Windows\System32\config\SAM, админ=false
+
+[2] Проверка продвинутых файловых операций (Handle, Seek, Tell, Chmod):
+Позиция курсора после seek(0, 0): 0
+Считана 1-я строка: Первая строка потока
+Считан блок из 12 байт: Первая
+Права доступа к файлу: r=true, w=true, mode=-rw-rw-rw-, octal=0666
+
+[3] Проверка трекинга системы:
+Аптайм системы (сек): 31782.734
+Текущий пользователь: geekom (Хост: geekom, Права администратора: false)
+Всего активных процессов в ОС: 238
+Пример процесса: PID=0, Имя=[System Process]
+Обнаружено дисковых разделов: 1
+Раздел: C:\ (Всего: 475.92 GB, Свободно: 130.86 GB, Занято: 72.5%)
+
+[4] Проверка Foreign Function Interface (FFI):
+Native FFI вызов GetCurrentProcessId(): PID = 19860
+Native FFI вызов GetTickCount64(): Ticks = 31782734
+
+[5] Проверка ИИ-фреймворка и тензорных матричных вычислений:
+Результат matmul(2x2, 2x2): tensor([[12, 12], [12, 12]])
+Скалярное произведение векторов dot(): tensor(32)
+Softmax вероятности: tensor([0.09003057317038046, 0.24472847105479764, 0.6652409557748218])
+Прямой проход слоя нейросети (Dense Forward + ReLU): tensor([[0.95, 0]])
+
+==================================================
+✅ ВСЕ ВОЗМОЖНОСТИ УСПЕШНО ПРОТЕСТИРОВАНЫ И РАБОТАЮТ!
+==================================================
+
+--- STDERR ---
+2026-11-25 03:43:57 [ERROR] [SECURITY_AUDIT] Access denied: read_file on "C:\\Windows\\System32\\config\\SAM" (user=geekom, admin=false) err=Access is denied (insufficient privileges) category=ACCESS_DENIED op=read_file resource=C:\Windows\System32\config\SAM user=geekom is_admin=false
+2026-11-25 03:43:57 [ERROR] [AUDIT] SECURITY:ELEVATION_ATTEMPT on "C:\\Windows\\System32\\cmd.exe" -> denied resource=C:\Windows\System32\cmd.exe status=denied user=pawl_user admin=false code=403 category=SECURITY action=ELEVATION_ATTEMPT
+

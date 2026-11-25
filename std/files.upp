@@ -1,0 +1,26 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/files.al - File path inspectors, size & timestamp utilities
+
+use std.io
+
+pub func exists(path: string) -> bool {
+    return io.file_exists(path)
+}
+
+pub func size(path: string) -> int {
+    return io.file_size(path)
+}
+
+pub func read_text(path: string) -> string {
+    return io.read_file(path)
+}
+
+pub func write_text(path: string, content: string) -> bool {
+    return io.write_file(path, content)
+}
+
+pub func append_text(path: string, content: string) -> bool {
+    return io.append_file(path, content)
+}

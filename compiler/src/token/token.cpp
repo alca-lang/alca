@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pawl::token {
+namespace ulang::token {
 namespace {
 
 struct KeywordEntry {
@@ -309,4 +309,4 @@ std::ostream& operator<<(std::ostream& os, const Token& tok) {
     return os << tok.toString();
 }
 
-} // namespace pawl::token
+} // namespace ulang::token

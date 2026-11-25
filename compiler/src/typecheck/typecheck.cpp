@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <sstream>
 
-namespace pawl::typecheck {
+namespace ulang::typecheck {
 
 std::pair<std::shared_ptr<Symbol>, TypePtr> Scope::lookup(const std::string& name) {
     for (Scope* sc = this; sc != nullptr; sc = sc->outer_.get()) {
@@ -343,6 +343,9 @@ void Checker::stmt(const ast::StatementPtr& s, const std::shared_ptr<Scope>& sc)
         }
     } else if (auto useStmt = std::dynamic_pointer_cast<ast::UseStatement>(s)) {
         std::string modPath = useStmt->path;
+        if (modPath.front() == '"' && modPath.back() == '"' && modPath.size() >= 2) {
+            modPath = modPath.substr(1, modPath.size() - 2);
+        }
         if (modPath.rfind("std.", 0) == 0) modPath = modPath.substr(4);
         auto mod = moduleByName(modPath);
         std::string bindAs = useStmt->alias.empty() ? mod::bindingName(useStmt->path) : useStmt->alias;
@@ -606,4 +609,4 @@ TypePtr Checker::evalCall(const std::shared_ptr<ast::CallExpression>& call, cons
     return getJSON();
 }
 
-} // namespace pawl::typecheck
+} // namespace ulang::typecheck

@@ -9,8 +9,8 @@
 
 #include <string>
 
-using namespace pawl;
-using namespace pawl::ast;
+using namespace ulang;
+using namespace ulang::ast;
 
 MT_TEST(ast, statements) {
     // 1. Program & VarDeclaration

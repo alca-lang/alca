@@ -1,0 +1,79 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/ini.al - Simple INI / CFG configuration parser
+
+use std.string
+
+struct Section {
+    name: string
+    keys: list[string]
+    values: list[string]
+}
+
+struct Config {
+    sections: list[Section]
+}
+
+pub func parse(content: string) -> Config {
+    lines := string.split(content, "\n")
+    secs := []
+    conf := Config(secs)
+    k_init := []
+    v_init := []
+    cur_sec := Section("DEFAULT", k_init, v_init)
+    
+    i := 0
+    loop {
+        if i >= len(lines) {
+            break
+        }
+        line := string.trim(lines[i])
+        if len(line) > 0 and line[0] != 59 and line[0] != 35 {
+            if line[0] == 91 and line[len(line) - 1] == 93 {
+                if len(cur_sec.keys) > 0 {
+                    push(conf.sections, cur_sec)
+                }
+                sec_name := substr(line, 1, len(line) - 2)
+                k_list := []
+                v_list := []
+                cur_sec = Section(sec_name, k_list, v_list)
+            } else {
+                eq_idx := string.find(line, "=")
+                if eq_idx > 0 {
+                    k := string.trim(substr(line, 0, eq_idx))
+                    v := string.trim(substr(line, eq_idx + 1, len(line) - eq_idx - 1))
+                    push(cur_sec.keys, k)
+                    push(cur_sec.values, v)
+                }
+            }
+        }
+        i = i + 1
+    }
+    push(conf.sections, cur_sec)
+    return conf
+}
+
+pub func get(conf: Config, section: string, key: string) -> string {
+    s_idx := 0
+    loop {
+        if s_idx >= len(conf.sections) {
+            break
+        }
+        sec := conf.sections[s_idx]
+        if sec.name == section {
+            k_idx := 0
+            loop {
+                if k_idx >= len(sec.keys) {
+                    break
+                }
+                if sec.keys[k_idx] == key {
+                    return sec.values[k_idx]
+                }
+                k_idx = k_idx + 1
+            }
+        }
+        s_idx = s_idx + 1
+    }
+    return ""
+}

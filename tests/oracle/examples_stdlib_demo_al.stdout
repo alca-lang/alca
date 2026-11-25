@@ -1,0 +1,28 @@
+EXITCODE: 0
+--- STDOUT ---
+=== Pawl Extended Standard Library ===
+Current Timestamp: 1795571042
+Formatted Time: 2026-11-25 03:44:02
+Year: 2026, Weekday: Wednesday
+
+--- Path Module ---
+Joined Path: projects\pawl\main.al
+Directory: projects\pawl
+Filename: main.al
+Stem (no ext): main
+Extension: .al
+
+--- Crypto Module ---
+SHA-256: f648fd6174bde86366ac827bc17b5931331bb8ca9b483e320e46fe78f9304901
+MD5: 4b53e2c2b98a81f45ea8968a124f497f
+Base64 Encoded: QWRtaW46U2VjcmV0VG9rZW4=
+Base64 Decoded: Admin:SecretToken
+UUID v4: 8209a846-fc2b-47b3-ad87-6e680d674075
+Secure Token: lAvu9KozjkkPFCq36wW8zr8luugkCKA4
+Session ID length: 36
+Token length: 32
+
+=== All Standard Modules Verified Successfully! ===
+
+--- STDERR ---
+

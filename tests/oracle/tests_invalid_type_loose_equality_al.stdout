@@ -1,0 +1,17 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: cannot compare string and int with '=='
+  --> tests/invalid/type_loose_equality.al:7:8
+   |
+ 6 | 
+ 7 | if "1" == 1 {
+   |        ^^ cannot compare string and int with '=='
+ 8 |     println("This should not compile")
+   |
+   = help: use string(x) to convert
+
+Found 1 error. Execution aborted.
+

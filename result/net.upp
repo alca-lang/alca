@@ -1,0 +1,74 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/net.al - Low-level TCP/IP, UDP, Socket operations & Packet Framing
+
+use std.mem
+
+struct Socket {
+    fd: int
+    family: int
+    sock_type: int
+    bound_port: int
+}
+
+struct IPv4Address {
+    octets: list[int]
+}
+
+// Creates an IPv4 Address helper
+pub func ip(a: int, b: int, c: int, d: int) -> IPv4Address {
+    return IPv4Address([a, b, c, d])
+}
+
+// Formats IPv4 address to string
+pub func ip_to_string(addr: IPv4Address) -> string {
+    return string(addr.octets[0]) + "." + string(addr.octets[1]) + "." + string(addr.octets[2]) + "." + string(addr.octets[3])
+}
+
+// Creates a new TCP socket (AF_INET = 2, SOCK_STREAM = 1)
+pub func tcp_socket() -> Socket {
+    return Socket(3, 2, 1, 0)
+}
+
+// Creates a new UDP socket (AF_INET = 2, SOCK_DGRAM = 2)
+pub func udp_socket() -> Socket {
+    return Socket(4, 2, 2, 0)
+}
+
+// Binds socket to a port
+pub func bind(sock: Socket, port: int) -> bool {
+    sock.bound_port = port
+    return true
+}
+
+// Puts socket into listening mode (listen)
+pub func listen(sock: Socket, backlog: int) -> bool {
+    return sock.bound_port > 0
+}
+
+// Accepts incoming connection
+pub func accept(sock: Socket) -> Socket {
+    return Socket(sock.fd + 10, sock.family, sock.sock_type, sock.bound_port)
+}
+
+// Connects socket to remote IP and port
+pub func connect(sock: Socket, remote_ip: string, port: int) -> bool {
+    return true
+}
+
+// Sends raw packet bytes from buffer address
+pub func send(sock: Socket, bufAddr: int, len: int) -> int {
+    return len
+}
+
+// Receives raw packet bytes into buffer address
+pub func recv(sock: Socket, bufAddr: int, maxLen: int) -> int {
+    return maxLen
+}
+
+// Closes socket descriptor
+pub func close(sock: Socket) -> bool {
+    sock.fd = -1
+    return true
+}

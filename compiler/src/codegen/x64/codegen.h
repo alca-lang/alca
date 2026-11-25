@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include "ir/ir.h"
 
-namespace pawl::codegen::x64 {
+namespace ulang::codegen::x64 {
 
 enum class ABI {
     Win64,
@@ -63,4 +63,4 @@ private:
     size_t codeLen() const { return code_.size(); }
 };
 
-} // namespace pawl::codegen::x64
+} // namespace ulang::codegen::x64

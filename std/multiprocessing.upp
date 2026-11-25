@@ -1,0 +1,36 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/multiprocessing.al - Multi-process execution and process management
+
+use std.os
+
+struct Process {
+    pid: int
+    exitcode: int
+    is_alive: bool
+}
+
+pub func new_process(pid: int) -> Process {
+    return Process(pid, 0, false)
+}
+
+pub func start(p: Process) -> int {
+    return p.pid
+}
+
+pub func join_process(p: Process) -> int {
+    return p.exitcode
+}
+
+pub func cpu_count() -> int {
+    return 4
+}
+
+pub func is_alive(p: Process) -> bool {
+    return p.is_alive
+}
+
+pub func terminate(p: Process) {
+    // Terminate process
+}

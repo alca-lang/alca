@@ -12,7 +12,7 @@
 #include "link/elf/elf_writer.h"
 #include <fstream>
 
-using namespace pawl;
+using namespace ulang;
 
 MT_TEST(codegen, x64_generate_artifact) {
     std::string source = 
@@ -42,11 +42,23 @@ MT_TEST(codegen, x64_generate_artifact) {
     for (const auto& fix : art.callFixups) {
         std::printf("fixup: %s\n", fix.funcName.c_str());
     }
-    bool peOk = link::pe::linkPE(art, "compiler/build/test_out.exe", false);
+    bool peOk = link::pe::linkPE(art, "compiler/build_bin/test_out.exe", false);
     MT_CHECK_EQ(peOk, true);
 
-    bool elfOk = link::elf::linkELF(art, "compiler/build/test_out.elf");
+    bool elfOk = link::elf::linkELF(art, "compiler/build_bin/test_out.elf");
     MT_CHECK_EQ(elfOk, true);
+
+    // End-to-end execution verification: run the compiled binary and check stdout
+    FILE* pipe = _popen("compiler\\build_bin\\test_out.exe", "r");
+    MT_CHECK(pipe != nullptr);
+    char buf[128];
+    std::string runOut;
+    while (std::fgets(buf, sizeof(buf), pipe)) {
+        runOut += buf;
+    }
+    int exitCode = _pclose(pipe);
+    MT_CHECK_EQ(exitCode, 0);
+    MT_CHECK(runOut.find("30") != std::string::npos);
 }
 
 MT_TEST(codegen, x64_full_features_link) {
@@ -92,9 +104,9 @@ MT_TEST(codegen, x64_full_features_link) {
     auto art = cg.generate(*irRes.program);
     MT_CHECK(art.code.size() > 0);
 
-    bool peOk = link::pe::linkPE(art, "compiler/build/full_test.exe", false);
+    bool peOk = link::pe::linkPE(art, "compiler/build_bin/full_test.exe", false);
     MT_CHECK_EQ(peOk, true);
 
-    bool elfOk = link::elf::linkELF(art, "compiler/build/full_test.elf");
+    bool elfOk = link::elf::linkELF(art, "compiler/build_bin/full_test.elf");
     MT_CHECK_EQ(elfOk, true);
 }

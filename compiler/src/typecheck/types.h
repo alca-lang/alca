@@ -9,7 +9,7 @@
 #include <vector>
 #include <unordered_map>
 
-namespace pawl::typecheck {
+namespace ulang::typecheck {
 
 class Type {
 public:
@@ -181,4 +181,4 @@ std::shared_ptr<ModuleType> moduleByName(const std::string& name);
 std::shared_ptr<ModuleType> stdNamespace();
 const std::unordered_map<std::string, TypePtr>& globalBuiltins();
 
-} // namespace pawl::typecheck
+} // namespace ulang::typecheck

@@ -1,0 +1,124 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: module 'io' has no member 'create_dir'
+  --> tests/test_20_archive_operations.al:11:3
+   |
+10 | test_dir := "./test_archive"
+11 | io.create_dir(test_dir)
+   |   ^ module 'io' has no member 'create_dir'
+12 | 
+   |
+
+error: module 'io' has no member 'create_dir'
+  --> tests/test_20_archive_operations.al:45:7
+   |
+44 |     }
+45 |     io.create_dir(dest_dir)
+   |       ^ module 'io' has no member 'create_dir'
+46 |     return true
+   |
+
+error: module 'io' has no member 'dir_exists'
+  --> tests/test_20_archive_operations.al:93:14
+   |
+92 |     // Simulate TAR extraction
+93 |     return io.dir_exists(dest_dir)
+   |              ^ module 'io' has no member 'dir_exists'
+94 | }
+   |
+
+error: type func(any) -> string has no field 'ends_with'
+  --> tests/test_20_archive_operations.al:117:14
+   |
+116 | func detect_archive_format(filename: string) -> string {
+117 |     if string.ends_with(filename, ".zip") {
+   |              ^ type func(any) -> string has no field 'ends_with'
+118 |         return "zip"
+   |
+
+error: type func(any) -> string has no field 'ends_with'
+  --> tests/test_20_archive_operations.al:120:14
+   |
+119 |     }
+120 |     if string.ends_with(filename, ".tar") {
+   |              ^ type func(any) -> string has no field 'ends_with'
+121 |         return "tar"
+   |
+
+error: type func(any) -> string has no field 'ends_with'
+  --> tests/test_20_archive_operations.al:123:14
+   |
+122 |     }
+123 |     if string.ends_with(filename, ".tar.gz") or string.ends_with(filename, ".tgz") {
+   |              ^ type func(any) -> string has no field 'ends_with'
+124 |         return "tar.gz"
+   |
+
+error: type func(any) -> string has no field 'ends_with'
+  --> tests/test_20_archive_operations.al:123:55
+   |
+122 |     }
+123 |     if string.ends_with(filename, ".tar.gz") or string.ends_with(filename, ".tgz") {
+   |                                                       ^ type func(any) -> string has no field 'ends_with'
+124 |         return "tar.gz"
+   |
+
+error: type func(any) -> string has no field 'ends_with'
+  --> tests/test_20_archive_operations.al:126:14
+   |
+125 |     }
+126 |     if string.ends_with(filename, ".gz") {
+   |              ^ type func(any) -> string has no field 'ends_with'
+127 |         return "gzip"
+   |
+
+error: module 'io' has no member 'create_dir'
+  --> tests/test_20_archive_operations.al:168:3
+   |
+167 | nested_dir := "./test_archive/nested"
+168 | io.create_dir(nested_dir)
+   |   ^ module 'io' has no member 'create_dir'
+169 | nested_file := "./test_archive/nested/nested.txt"
+   |
+
+error: module 'io' has no member 'delete_dir'
+  --> tests/test_20_archive_operations.al:243:3
+   |
+242 | io.delete_file(nested_file)
+243 | io.delete_dir(nested_dir)
+   |   ^ module 'io' has no member 'delete_dir'
+244 | io.delete_dir(extract_dir)
+   |
+
+error: module 'io' has no member 'delete_dir'
+  --> tests/test_20_archive_operations.al:244:3
+   |
+243 | io.delete_dir(nested_dir)
+244 | io.delete_dir(extract_dir)
+   |   ^ module 'io' has no member 'delete_dir'
+245 | io.delete_dir(test_dir)
+   |
+
+error: module 'io' has no member 'delete_dir'
+  --> tests/test_20_archive_operations.al:245:3
+   |
+244 | io.delete_dir(extract_dir)
+245 | io.delete_dir(test_dir)
+   |   ^ module 'io' has no member 'delete_dir'
+246 | 
+   |
+
+error: module 'io' has no member 'dir_exists'
+  --> tests/test_20_archive_operations.al:247:11
+   |
+246 | 
+247 | assert !io.dir_exists(test_dir)
+   |           ^ module 'io' has no member 'dir_exists'
+248 | 
+   |
+
+Found 13 errors. Execution aborted.
+

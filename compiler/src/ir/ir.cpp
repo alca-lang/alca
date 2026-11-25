@@ -5,7 +5,7 @@
 #include <sstream>
 #include <iomanip>
 
-namespace pawl::ir {
+namespace ulang::ir {
 
 std::string_view typeToString(Type t) {
     switch (t) {
@@ -37,12 +37,25 @@ std::string_view opToString(Op op) {
     case Op::IntToStr:   return "int_to_str";
     case Op::IntToFloat: return "int_to_float";
     case Op::FloatToInt: return "float_to_int";
+    case Op::MathUnary:  return "math_unary";
+    case Op::MathBinary: return "math_binary";
     case Op::Alloc:      return "alloc";
     case Op::Load:       return "load";
     case Op::Store:      return "store";
     case Op::CallPtr:    return "call_ptr";
     case Op::SetErr:     return "set_err";
     case Op::GetErr:     return "get_err";
+    case Op::CpuCli:     return "cpu_cli";
+    case Op::CpuSti:     return "cpu_sti";
+    case Op::CpuHlt:     return "cpu_hlt";
+    case Op::CpuPause:   return "cpu_pause";
+    case Op::CpuIn:      return "cpu_in";
+    case Op::CpuOut:     return "cpu_out";
+    case Op::CpuReadCr:  return "cpu_read_cr";
+    case Op::CpuWriteCr: return "cpu_write_cr";
+    case Op::CpuInvlpg:  return "cpu_invlpg";
+    case Op::RawLoad:    return "raw_load";
+    case Op::RawStore:   return "raw_store";
     case Op::Copy:       return "copy";
     case Op::Add:        return "add";
     case Op::Sub:        return "sub";
@@ -110,6 +123,12 @@ std::string Instruction::toString() const {
     case Op::IntToFloat:
     case Op::FloatToInt:
         ss << "  " << dst.toString() << " = " << opToString(op) << " " << src1.toString();
+        break;
+    case Op::MathUnary:
+        ss << "  " << dst.toString() << " = " << callName << " " << src1.toString();
+        break;
+    case Op::MathBinary:
+        ss << "  " << dst.toString() << " = " << callName << " " << src1.toString() << ", " << src2.toString();
         break;
     case Op::Copy:
         ss << "  " << dst.toString() << " = copy " << src1.toString();
@@ -180,6 +199,33 @@ std::string Instruction::toString() const {
     case Op::GetErr:
         ss << "  " << dst.toString() << " = get_err";
         break;
+    case Op::CpuCli:
+    case Op::CpuSti:
+    case Op::CpuHlt:
+    case Op::CpuPause:
+        ss << "  " << opToString(op);
+        break;
+    case Op::CpuIn:
+        ss << "  " << dst.toString() << " = in" << intVal << " " << src1.toString();
+        break;
+    case Op::CpuOut:
+        ss << "  out" << intVal << " " << src1.toString() << ", " << src2.toString();
+        break;
+    case Op::CpuReadCr:
+        ss << "  " << dst.toString() << " = read_cr" << intVal;
+        break;
+    case Op::CpuWriteCr:
+        ss << "  write_cr" << intVal << " " << src1.toString();
+        break;
+    case Op::CpuInvlpg:
+        ss << "  invlpg " << src1.toString();
+        break;
+    case Op::RawLoad:
+        ss << "  " << dst.toString() << " = raw_load" << intVal << " [" << src1.toString() << "]";
+        break;
+    case Op::RawStore:
+        ss << "  raw_store" << intVal << " [" << src1.toString() << "] = " << src2.toString();
+        break;
     case Op::Ret:
         if (src1.type != Type::Void && src1.id >= 0) {
             ss << "  ret " << src1.toString();
@@ -220,4 +266,4 @@ std::string Program::toString() const {
     return ss.str();
 }
 
-} // namespace pawl::ir
+} // namespace ulang::ir

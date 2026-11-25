@@ -8,7 +8,7 @@
 #include <memory>
 #include <cstdint>
 
-namespace pawl::diag {
+namespace ulang::diag {
 
 struct SyntaxError {
     std::string filename;
@@ -28,4 +28,4 @@ std::string formatReport(const std::string& filename, const std::string& source,
 
 std::string generateSuggestion(const std::string& msg, const std::string& tok);
 
-} // namespace pawl::diag
+} // namespace ulang::diag

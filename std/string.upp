@@ -1,0 +1,76 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/string.al - C-style string & memory buffer operations (equivalent to <string.h>)
+
+use std.mem
+
+// Computes the length of a null-terminated string starting at raw pointer `addr` (strlen)
+pub func strlen(addr: int) -> int {
+    len := 0
+    while mem.read_u8(addr, len) != 0 {
+        len = len + 1
+    }
+    return len
+}
+
+// Compares two memory buffers byte-by-byte (memcmp)
+// Returns 0 if equal, positive if s1 > s2, negative if s1 < s2
+pub func memcmp(s1: int, s2: int, n: int) -> int {
+    for i in 0..n {
+        b1 := mem.read_u8(s1, i)
+        b2 := mem.read_u8(s2, i)
+        if b1 != b2 {
+            return b1 - b2
+        }
+    }
+    return 0
+}
+
+// Copies `n` bytes from source memory address `src` to destination `dst` (memcpy)
+pub func memcpy(dst: int, src: int, n: int) -> int {
+    for i in 0..n {
+        b := mem.read_u8(src, i)
+        mem.write_u8(dst, b, i)
+    }
+    return dst
+}
+
+// Sets `n` bytes of memory starting at `dst` to `val` (memset)
+pub func memset(dst: int, val: int, n: int) -> int {
+    for i in 0..n {
+        mem.write_u8(dst, val, i)
+    }
+    return dst
+}
+
+// Compares two null-terminated strings (strcmp)
+pub func strcmp(s1: int, s2: int) -> int {
+    i := 0
+    loop {
+        b1 := mem.read_u8(s1, i)
+        b2 := mem.read_u8(s2, i)
+        if b1 != b2 {
+            return b1 - b2
+        }
+        if b1 == 0 {
+            return 0
+        }
+        i = i + 1
+    }
+    return 0
+}
+
+// Copies null-terminated string `src` to `dst` including the null terminator (strcpy)
+pub func strcpy(dst: int, src: int) -> int {
+    i := 0
+    loop {
+        b := mem.read_u8(src, i)
+        mem.write_u8(dst, b, i)
+        if b == 0 {
+            break
+        }
+        i = i + 1
+    }
+    return dst
+}

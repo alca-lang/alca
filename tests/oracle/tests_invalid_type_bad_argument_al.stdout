@@ -1,0 +1,17 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: argument 2 'b' of add has type string, expected int
+  --> tests/invalid/type_bad_argument.al:8:17
+   |
+ 7 | }
+ 8 | println(add(10, "wrong argument"))
+   |                 ^^^^^^^^^^^^^^ argument 2 'b' of add has type string, expected int
+ 9 | 
+   |
+   = help: use int(x) to convert
+
+Found 1 error. Execution aborted.
+

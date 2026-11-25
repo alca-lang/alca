@@ -1,0 +1,43 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/ringbuf.al - Lock-free Fixed-capacity Ring Buffer for OS device queues
+
+struct RingBuffer {
+    capacity: int
+    head: int
+    tail: int
+    count: int
+}
+
+pub func new_ringbuf(capacity: int) -> RingBuffer {
+    return RingBuffer(capacity, 0, 0, 0)
+}
+
+pub func is_full(rb: RingBuffer) -> bool {
+    return rb.count >= rb.capacity
+}
+
+pub func is_empty(rb: RingBuffer) -> bool {
+    return rb.count == 0
+}
+
+pub func push_head(rb: RingBuffer) -> int {
+    if is_full(rb) {
+        return -1
+    }
+    slot := rb.head
+    rb.head = (rb.head + 1) % rb.capacity
+    rb.count = rb.count + 1
+    return slot
+}
+
+pub func pop_tail(rb: RingBuffer) -> int {
+    if is_empty(rb) {
+        return -1
+    }
+    slot := rb.tail
+    rb.tail = (rb.tail + 1) % rb.capacity
+    rb.count = rb.count - 1
+    return slot
+}

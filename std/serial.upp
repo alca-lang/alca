@@ -1,0 +1,32 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/serial.al - Hardware serial communications (UART / COM Ports)
+
+use std.cpu
+
+struct SerialPort {
+    port: int
+    baud_rate: int
+}
+
+pub func open(port: int, baud: int) -> SerialPort {
+    // 1. Disable all interrupts on COM port
+    cpu.out8(port + 1, 0)
+    // 2. Enable DLAB (set baud rate divisor)
+    cpu.out8(port + 3, 128)
+    divisor := 115200 / baud
+    cpu.out8(port + 0, divisor % 256)
+    cpu.out8(port + 1, divisor / 256)
+    // 3. 8 bits, no parity, one stop bit (8N1)
+    cpu.out8(port + 3, 3)
+    return SerialPort(port, baud)
+}
+
+pub func write_byte(sp: SerialPort, b: int) {
+    cpu.out8(sp.port, b)
+}
+
+pub func read_byte(sp: SerialPort) -> int {
+    return cpu.in8(sp.port)
+}

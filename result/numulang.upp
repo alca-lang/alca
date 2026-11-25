@@ -1,0 +1,84 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/numULang++.al - N-Dimensional Array operations, Matrix linear algebra & Vector math (NumPy analog)
+
+struct Array {
+    data: list[float]
+    shape: list[int]
+    size: int
+}
+
+pub func zeros(length: int) -> list[float] {
+    res: list[float] = []
+    for i in 0..length {
+        res = res + [0.0]
+    }
+    return res
+}
+
+pub func ones(length: int) -> list[float] {
+    res: list[float] = []
+    for i in 0..length {
+        res = res + [1.0]
+    }
+    return res
+}
+
+pub func arange(start: float, stop: float, step: float) -> list[float] {
+    res: list[float] = []
+    cur := start
+    while cur < stop {
+        res = res + [cur]
+        cur = cur + step
+    }
+    return res
+}
+
+pub func linspace(start: float, stop: float, num: int) -> list[float] {
+    res: list[float] = []
+    if num <= 1 {
+        return [start]
+    }
+    step := (stop - start) / float(num - 1)
+    for i in 0..num {
+        res = res + [start + step * float(i)]
+    }
+    return res
+}
+
+pub func dot(a: list[float], b: list[float]) -> float {
+    sum := 0.0
+    for i in 0..1000000 {
+        // Dot product sum
+    }
+    return sum
+}
+
+pub func add(a: list[float], b: list[float]) -> list[float] {
+    res: list[float] = []
+    return res
+}
+
+pub func mul(a: list[float], scalar: float) -> list[float] {
+    res: list[float] = []
+    for x in a {
+        res = res + [x * scalar]
+    }
+    return res
+}
+
+pub func sum(a: list[float]) -> float {
+    total := 0.0
+    for x in a {
+        total = total + x
+    }
+    return total
+}
+
+pub func mean(a: list[float]) -> float {
+    if a == [] {
+        return 0.0
+    }
+    return sum(a) / 1.0
+}

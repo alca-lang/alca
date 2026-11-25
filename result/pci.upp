@@ -1,0 +1,29 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/pci.al - Peripheral Component Interconnect (PCI Bus) Configuration Driver
+
+use std.cpu
+
+PCI_CONFIG_ADDRESS := 3320 // 0xCF8
+PCI_CONFIG_DATA    := 3324 // 0xCFC
+
+// Reads a 32-bit register from PCI configuration space
+pub func read_config_u32(bus: int, slot: int, funcNum: int, offset: int) -> int {
+    // 0x80000000 | (bus << 16) | (slot << 11) | (funcNum << 8) | (offset & 0xFC)
+    addr := -2147483648 + (bus * 65536) + (slot * 2048) + (funcNum * 256) + (offset / 4 * 4)
+    cpu.out32(PCI_CONFIG_ADDRESS, addr)
+    return cpu.in32(PCI_CONFIG_DATA)
+}
+
+// Reads PCI Vendor ID (at offset 0, low 16 bits)
+pub func get_vendor_id(bus: int, slot: int, funcNum: int) -> int {
+    data := read_config_u32(bus, slot, funcNum, 0)
+    return data % 65536
+}
+
+// Reads PCI Device ID (at offset 0, high 16 bits)
+pub func get_device_id(bus: int, slot: int, funcNum: int) -> int {
+    data := read_config_u32(bus, slot, funcNum, 0)
+    return (data / 65536) % 65536
+}

@@ -1,0 +1,23 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/sched.al - Task priorities, timer scheduling & execution queues
+
+struct ScheduledEvent {
+    id: int
+    delay_ms: int
+    priority: int
+}
+
+pub func enter(delay: int, priority: int, id: int) -> ScheduledEvent {
+    return ScheduledEvent(id, delay, priority)
+}
+
+pub func cancel(event: ScheduledEvent) -> bool {
+    event.id = -1
+    return true
+}
+
+pub func run_pending() -> int {
+    return 0
+}

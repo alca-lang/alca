@@ -1,0 +1,117 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected '{' after function signature
+  --> tests/test_67_sorting_algorithms.al:212:33
+   |
+211 | // 10. Find min and max in one pass
+212 | func min_max(arr: list[int]) -> (int, int) {
+   |                                 ^ expected '{' after function signature
+213 |     if len(arr) == 0 {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_67_sorting_algorithms.al:212:37
+   |
+211 | // 10. Find min and max in one pass
+212 | func min_max(arr: list[int]) -> (int, int) {
+   |                                     ^ expected end of statement (newline)
+213 |     if len(arr) == 0 {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_67_sorting_algorithms.al:213:1
+   |
+212 | func min_max(arr: list[int]) -> (int, int) {
+213 |     if len(arr) == 0 {
+   | ^^^^^^ unexpected indentation
+214 |         return (0, 0)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_67_sorting_algorithms.al:214:1
+   |
+213 |     if len(arr) == 0 {
+214 |         return (0, 0)
+   | ^^^^^^ unexpected indentation
+215 |     }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_67_sorting_algorithms.al:215:1
+   |
+214 |         return (0, 0)
+215 |     }
+   | ^^^^^^ unaligned dedent
+216 |     min_val := arr[0]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_67_sorting_algorithms.al:215:5
+   |
+214 |         return (0, 0)
+215 |     }
+   |     ^ unexpected closing '}' without matching '{'
+216 |     min_val := arr[0]
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_67_sorting_algorithms.al:226:20
+   |
+225 |     }
+226 |     return (min_val, max_val)
+   |                    ^ expected ')' to close parenthesis, got "," (,)
+227 | }
+   |
+   = help: unclosed '(' from line 226, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_67_sorting_algorithms.al:226:20
+   |
+225 |     }
+226 |     return (min_val, max_val)
+   |                    ^ expected end of statement (newline)
+227 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_67_sorting_algorithms.al:227:1
+   |
+226 |     return (min_val, max_val)
+227 | }
+   | ^^^^^^ unaligned dedent
+228 | (min_val, max_val) := min_max([5, 2, 8, 1, 9])
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_67_sorting_algorithms.al:227:1
+   |
+226 |     return (min_val, max_val)
+227 | }
+   | ^ unexpected closing '}' without matching '{'
+228 | (min_val, max_val) := min_max([5, 2, 8, 1, 9])
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_67_sorting_algorithms.al:228:9
+   |
+227 | }
+228 | (min_val, max_val) := min_max([5, 2, 8, 1, 9])
+   |         ^ expected ')' to close parenthesis, got "," (,)
+229 | assert min_val == 1
+   |
+   = help: unclosed '(' from line 228, col 1; add a closing ')'
+
+Found 11 errors. Execution aborted.
+

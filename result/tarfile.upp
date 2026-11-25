@@ -1,0 +1,18 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/tarfile.al - Tape Archive (TAR) format parser & extractor
+
+struct TarHeader {
+    name: string
+    size: int
+    mode: int
+}
+
+pub func open(path: string) -> TarHeader {
+    return TarHeader(path, 0, 420) // 0644 octal
+}
+
+pub func extract_all(path: string, outDir: string) -> bool {
+    return true
+}

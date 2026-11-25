@@ -1,0 +1,15 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/netrc.al - .netrc authentication configuration parser
+
+struct NetrcEntry {
+    machine: string
+    login: string
+    password: string
+}
+
+pub func parse(content: string) -> list[NetrcEntry] {
+    res: list[NetrcEntry] = []
+    return res
+}

@@ -1,0 +1,817 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:5:25
+   |
+ 4 | // 1. Simple decorator simulation
+ 5 | func add_logging(f: func(int) -> int) -> func(int) -> int {
+   |                         ^ expected ')' to close parenthesis, got "(" (()
+ 6 |     return func(x: int) -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:5:21
+   |
+ 4 | // 1. Simple decorator simulation
+ 5 | func add_logging(f: func(int) -> int) -> func(int) -> int {
+   |                     ^^^^ expected '{' after function signature
+ 6 |     return func(x: int) -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:5:30
+   |
+ 4 | // 1. Simple decorator simulation
+ 5 | func add_logging(f: func(int) -> int) -> func(int) -> int {
+   |                              ^ expected end of statement (newline)
+ 6 |     return func(x: int) -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:6:1
+   |
+ 5 | func add_logging(f: func(int) -> int) -> func(int) -> int {
+ 6 |     return func(x: int) -> int:
+   | ^^^^^^ unexpected indentation
+ 7 |         println("Calling function with " + string(x))
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:7:1
+   |
+ 6 |     return func(x: int) -> int:
+ 7 |         println("Calling function with " + string(x))
+   | ^^^^^^ unexpected indentation
+ 8 |         result := f(x)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:11:1
+   |
+10 |         return result
+11 | }
+   | ^^^^^^ unaligned dedent
+12 | original := func(n: int) -> int:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:11:1
+   |
+10 |         return result
+11 | }
+   | ^ unexpected closing '}' without matching '{'
+12 | original := func(n: int) -> int:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_90_decorator_pattern.al:12:13
+   |
+11 | }
+12 | original := func(n: int) -> int:
+   |             ^^^^ unexpected token "func" (func)
+13 |     return n * 2
+   |
+   = help: check the syntax around this token
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:12:17
+   |
+11 | }
+12 | original := func(n: int) -> int:
+   |                 ^ expected end of statement (newline)
+13 |     return n * 2
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:13:1
+   |
+12 | original := func(n: int) -> int:
+13 |     return n * 2
+   | ^^^^^^ unexpected indentation
+14 | 
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:15:1
+   |
+14 | 
+15 | decorated := add_logging(original)
+   | ^^^^^^ unaligned dedent
+16 | result := decorated(5)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:20:28
+   |
+19 | // 2. Decorator with validation
+20 | func validate_input(f: func(int) -> int) -> func(int) -> int {
+   |                            ^ expected ')' to close parenthesis, got "(" (()
+21 |     return func(x: int) -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:20:24
+   |
+19 | // 2. Decorator with validation
+20 | func validate_input(f: func(int) -> int) -> func(int) -> int {
+   |                        ^^^^ expected '{' after function signature
+21 |     return func(x: int) -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:20:33
+   |
+19 | // 2. Decorator with validation
+20 | func validate_input(f: func(int) -> int) -> func(int) -> int {
+   |                                 ^ expected end of statement (newline)
+21 |     return func(x: int) -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:21:1
+   |
+20 | func validate_input(f: func(int) -> int) -> func(int) -> int {
+21 |     return func(x: int) -> int:
+   | ^^^^^^ unexpected indentation
+22 |         if x < 0 {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:22:1
+   |
+21 |     return func(x: int) -> int:
+22 |         if x < 0 {
+   | ^^^^^^ unexpected indentation
+23 |             return 0
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:23:1
+   |
+22 |         if x < 0 {
+23 |             return 0
+   | ^^^^^^ unexpected indentation
+24 |         }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:24:1
+   |
+23 |             return 0
+24 |         }
+   | ^^^^^^ unaligned dedent
+25 |         return f(x)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:24:9
+   |
+23 |             return 0
+24 |         }
+   |         ^ unexpected closing '}' without matching '{'
+25 |         return f(x)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:26:1
+   |
+25 |         return f(x)
+26 | }
+   | ^^^^^^ unaligned dedent
+27 | validated := validate_input(original)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:26:1
+   |
+25 |         return f(x)
+26 | }
+   | ^ unexpected closing '}' without matching '{'
+27 | validated := validate_input(original)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:32:21
+   |
+31 | // 3. Decorator with timing
+32 | func time_it(f: func(int) -> int) -> func(int) -> int {
+   |                     ^ expected ')' to close parenthesis, got "(" (()
+33 |     return func(x: int) -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:32:17
+   |
+31 | // 3. Decorator with timing
+32 | func time_it(f: func(int) -> int) -> func(int) -> int {
+   |                 ^^^^ expected '{' after function signature
+33 |     return func(x: int) -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:32:26
+   |
+31 | // 3. Decorator with timing
+32 | func time_it(f: func(int) -> int) -> func(int) -> int {
+   |                          ^ expected end of statement (newline)
+33 |     return func(x: int) -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:33:1
+   |
+32 | func time_it(f: func(int) -> int) -> func(int) -> int {
+33 |     return func(x: int) -> int:
+   | ^^^^^^ unexpected indentation
+34 |         use std.time
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:34:1
+   |
+33 |     return func(x: int) -> int:
+34 |         use std.time
+   | ^^^^^^ unexpected indentation
+35 |         start := time.now()
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:40:1
+   |
+39 |         return result
+40 | }
+   | ^^^^^^ unaligned dedent
+41 | timed := time_it(original)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:40:1
+   |
+39 |         return result
+40 | }
+   | ^ unexpected closing '}' without matching '{'
+41 | timed := time_it(original)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:46:29
+   |
+45 | // 4. Decorator with retry
+46 | func retry_decorator(f: func(int) -> int, max_retries: int) -> func(int) -> int {
+   |                             ^ expected ')' to close parenthesis, got "(" (()
+47 |     return func(x: int) -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:46:25
+   |
+45 | // 4. Decorator with retry
+46 | func retry_decorator(f: func(int) -> int, max_retries: int) -> func(int) -> int {
+   |                         ^^^^ expected '{' after function signature
+47 |     return func(x: int) -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:46:34
+   |
+45 | // 4. Decorator with retry
+46 | func retry_decorator(f: func(int) -> int, max_retries: int) -> func(int) -> int {
+   |                                  ^ expected end of statement (newline)
+47 |     return func(x: int) -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:47:1
+   |
+46 | func retry_decorator(f: func(int) -> int, max_retries: int) -> func(int) -> int {
+47 |     return func(x: int) -> int:
+   | ^^^^^^ unexpected indentation
+48 |         attempts := 0
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:48:1
+   |
+47 |     return func(x: int) -> int:
+48 |         attempts := 0
+   | ^^^^^^ unexpected indentation
+49 |         while attempts < max_retries {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:57:1
+   |
+56 |         return 0
+57 | }
+   | ^^^^^^ unaligned dedent
+58 | retried := retry_decorator(original, 3)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:57:1
+   |
+56 |         return 0
+57 | }
+   | ^ unexpected closing '}' without matching '{'
+58 | retried := retry_decorator(original, 3)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:63:32
+   |
+62 | // 5. Decorator composition
+63 | func compose_decorators(f: func(int) -> int) -> func(int) -> int {
+   |                                ^ expected ')' to close parenthesis, got "(" (()
+64 |     return add_logging(validate_input(f))
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:63:28
+   |
+62 | // 5. Decorator composition
+63 | func compose_decorators(f: func(int) -> int) -> func(int) -> int {
+   |                            ^^^^ expected '{' after function signature
+64 |     return add_logging(validate_input(f))
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:63:37
+   |
+62 | // 5. Decorator composition
+63 | func compose_decorators(f: func(int) -> int) -> func(int) -> int {
+   |                                     ^ expected end of statement (newline)
+64 |     return add_logging(validate_input(f))
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:64:1
+   |
+63 | func compose_decorators(f: func(int) -> int) -> func(int) -> int {
+64 |     return add_logging(validate_input(f))
+   | ^^^^^^ unexpected indentation
+65 | }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:65:1
+   |
+64 |     return add_logging(validate_input(f))
+65 | }
+   | ^^^^^^ unaligned dedent
+66 | composed := compose_decorators(original)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:65:1
+   |
+64 |     return add_logging(validate_input(f))
+65 | }
+   | ^ unexpected closing '}' without matching '{'
+66 | composed := compose_decorators(original)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:73:29
+   |
+72 | 
+73 | func cache_decorator(f: func(int) -> int) -> func(int) -> int {
+   |                             ^ expected ')' to close parenthesis, got "(" (()
+74 |     return func(x: int) -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:73:25
+   |
+72 | 
+73 | func cache_decorator(f: func(int) -> int) -> func(int) -> int {
+   |                         ^^^^ expected '{' after function signature
+74 |     return func(x: int) -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:73:34
+   |
+72 | 
+73 | func cache_decorator(f: func(int) -> int) -> func(int) -> int {
+   |                                  ^ expected end of statement (newline)
+74 |     return func(x: int) -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:74:1
+   |
+73 | func cache_decorator(f: func(int) -> int) -> func(int) -> int {
+74 |     return func(x: int) -> int:
+   | ^^^^^^ unexpected indentation
+75 |         if x in cache {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:75:1
+   |
+74 |     return func(x: int) -> int:
+75 |         if x in cache {
+   | ^^^^^^ unexpected indentation
+76 |             return cache[x]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:76:1
+   |
+75 |         if x in cache {
+76 |             return cache[x]
+   | ^^^^^^ unexpected indentation
+77 |         }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:77:1
+   |
+76 |             return cache[x]
+77 |         }
+   | ^^^^^^ unaligned dedent
+78 |         result := f(x)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:77:9
+   |
+76 |             return cache[x]
+77 |         }
+   |         ^ unexpected closing '}' without matching '{'
+78 |         result := f(x)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:81:1
+   |
+80 |         return result
+81 | }
+   | ^^^^^^ unaligned dedent
+82 | cached := cache_decorator(original)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:81:1
+   |
+80 |         return result
+81 | }
+   | ^ unexpected closing '}' without matching '{'
+82 | cached := cache_decorator(original)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:88:22
+   |
+87 | // 7. Decorator with pre/post processing
+88 | func pre_post(f: func(int) -> int) -> func(int) -> int {
+   |                      ^ expected ')' to close parenthesis, got "(" (()
+89 |     return func(x: int) -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:88:18
+   |
+87 | // 7. Decorator with pre/post processing
+88 | func pre_post(f: func(int) -> int) -> func(int) -> int {
+   |                  ^^^^ expected '{' after function signature
+89 |     return func(x: int) -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:88:27
+   |
+87 | // 7. Decorator with pre/post processing
+88 | func pre_post(f: func(int) -> int) -> func(int) -> int {
+   |                           ^ expected end of statement (newline)
+89 |     return func(x: int) -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:89:1
+   |
+88 | func pre_post(f: func(int) -> int) -> func(int) -> int {
+89 |     return func(x: int) -> int:
+   | ^^^^^^ unexpected indentation
+90 |         println("Pre: " + string(x))
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:90:1
+   |
+89 |     return func(x: int) -> int:
+90 |         println("Pre: " + string(x))
+   | ^^^^^^ unexpected indentation
+91 |         result := f(x)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:94:1
+   |
+93 |         return result
+94 | }
+   | ^^^^^^ unaligned dedent
+95 | pre_posted := pre_post(original)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:94:1
+   |
+93 |         return result
+94 | }
+   | ^ unexpected closing '}' without matching '{'
+95 | pre_posted := pre_post(original)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:100:24
+   |
+99 | // 8. Decorator with argument modification
+100 | func double_arg(f: func(int) -> int) -> func(int) -> int {
+   |                        ^ expected ')' to close parenthesis, got "(" (()
+101 |     return func(x: int) -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:100:20
+   |
+99 | // 8. Decorator with argument modification
+100 | func double_arg(f: func(int) -> int) -> func(int) -> int {
+   |                    ^^^^ expected '{' after function signature
+101 |     return func(x: int) -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:100:29
+   |
+99 | // 8. Decorator with argument modification
+100 | func double_arg(f: func(int) -> int) -> func(int) -> int {
+   |                             ^ expected end of statement (newline)
+101 |     return func(x: int) -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:101:1
+   |
+100 | func double_arg(f: func(int) -> int) -> func(int) -> int {
+101 |     return func(x: int) -> int:
+   | ^^^^^^ unexpected indentation
+102 |         return f(x * 2)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:102:1
+   |
+101 |     return func(x: int) -> int:
+102 |         return f(x * 2)
+   | ^^^^^^ unexpected indentation
+103 | }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:103:1
+   |
+102 |         return f(x * 2)
+103 | }
+   | ^^^^^^ unaligned dedent
+104 | doubled_arg := double_arg(original)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:103:1
+   |
+102 |         return f(x * 2)
+103 | }
+   | ^ unexpected closing '}' without matching '{'
+104 | doubled_arg := double_arg(original)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:109:27
+   |
+108 | // 9. Decorator with result modification
+109 | func double_result(f: func(int) -> int) -> func(int) -> int {
+   |                           ^ expected ')' to close parenthesis, got "(" (()
+110 |     return func(x: int) -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:109:23
+   |
+108 | // 9. Decorator with result modification
+109 | func double_result(f: func(int) -> int) -> func(int) -> int {
+   |                       ^^^^ expected '{' after function signature
+110 |     return func(x: int) -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:109:32
+   |
+108 | // 9. Decorator with result modification
+109 | func double_result(f: func(int) -> int) -> func(int) -> int {
+   |                                ^ expected end of statement (newline)
+110 |     return func(x: int) -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:110:1
+   |
+109 | func double_result(f: func(int) -> int) -> func(int) -> int {
+110 |     return func(x: int) -> int:
+   | ^^^^^^ unexpected indentation
+111 |         return f(x) * 2
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:111:1
+   |
+110 |     return func(x: int) -> int:
+111 |         return f(x) * 2
+   | ^^^^^^ unexpected indentation
+112 | }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:112:1
+   |
+111 |         return f(x) * 2
+112 | }
+   | ^^^^^^ unaligned dedent
+113 | doubled_result := double_result(original)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:112:1
+   |
+111 |         return f(x) * 2
+112 | }
+   | ^ unexpected closing '}' without matching '{'
+113 | doubled_result := double_result(original)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_90_decorator_pattern.al:118:52
+   |
+117 | // 10. Conditional decorator
+118 | func conditional_decorator(condition: bool, f: func(int) -> int) -> func(int) -> int {
+   |                                                    ^ expected ')' to close parenthesis, got "(" (()
+119 |     if condition {
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_90_decorator_pattern.al:118:48
+   |
+117 | // 10. Conditional decorator
+118 | func conditional_decorator(condition: bool, f: func(int) -> int) -> func(int) -> int {
+   |                                                ^^^^ expected '{' after function signature
+119 |     if condition {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_90_decorator_pattern.al:118:57
+   |
+117 | // 10. Conditional decorator
+118 | func conditional_decorator(condition: bool, f: func(int) -> int) -> func(int) -> int {
+   |                                                         ^ expected end of statement (newline)
+119 |     if condition {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:119:1
+   |
+118 | func conditional_decorator(condition: bool, f: func(int) -> int) -> func(int) -> int {
+119 |     if condition {
+   | ^^^^^^ unexpected indentation
+120 |         return add_logging(f)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_90_decorator_pattern.al:120:1
+   |
+119 |     if condition {
+120 |         return add_logging(f)
+   | ^^^^^^ unexpected indentation
+121 |     }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:121:1
+   |
+120 |         return add_logging(f)
+121 |     }
+   | ^^^^^^ unaligned dedent
+122 |     return f
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:121:5
+   |
+120 |         return add_logging(f)
+121 |     }
+   |     ^ unexpected closing '}' without matching '{'
+122 |     return f
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_90_decorator_pattern.al:123:1
+   |
+122 |     return f
+123 | }
+   | ^^^^^^ unaligned dedent
+124 | conditional := conditional_decorator(true, original)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_90_decorator_pattern.al:123:1
+   |
+122 |     return f
+123 | }
+   | ^ unexpected closing '}' without matching '{'
+124 | conditional := conditional_decorator(true, original)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 81 errors. Execution aborted.
+

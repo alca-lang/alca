@@ -1,0 +1,17 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected '{' after if condition
+  --> tests/invalid/parse_missing_colon.al:6:9
+   |
+ 5 | x := 10
+ 6 | if x > 5
+   |         ^ expected '{' after if condition
+ 7 |     println("big")
+   |
+   = help: add '{' after 'if condition' to begin the block
+
+Found 1 error. Execution aborted.
+

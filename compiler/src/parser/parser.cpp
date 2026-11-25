@@ -7,7 +7,7 @@
 #include <charconv>
 #include <sstream>
 
-namespace pawl::parser {
+namespace ulang::parser {
 
 namespace {
 
@@ -423,6 +423,18 @@ void Parser::skipPeekNewlines() {
     }
 }
 
+void Parser::skipExpressionContinuation() {
+    bool hadNewline = false;
+    while (curTokenIs(token::NEWLINE)) {
+        hadNewline = true;
+        nextToken();
+    }
+    if (hadNewline && curTokenIs(token::INDENT)) {
+        nextToken();
+        ++continuationDedents_;
+    }
+}
+
 void Parser::consumeStatementEnd() {
     if (peekTokenIs(token::SEMICOLON)) {
         reportAt(peekToken_, "remove the ';', statements end at the newline", "semicolons are not allowed in Pawl");
@@ -433,6 +445,14 @@ void Parser::consumeStatementEnd() {
     if (peekTokenIs(token::NEWLINE) || peekTokenIs(token::EOF_TOKEN) ||
         peekTokenIs(token::DEDENT) || peekTokenIs(token::RBRACE)) {
         nextToken(); // cur = terminator
+        while (continuationDedents_ > 0) {
+            if (curTokenIs(token::NEWLINE) && peekTokenIs(token::DEDENT)) {
+                nextToken(); // cur = continuation DEDENT
+            }
+            if (!curTokenIs(token::DEDENT)) break;
+            nextToken();
+            --continuationDedents_;
+        }
         return;
     }
 
@@ -2645,7 +2665,7 @@ ast::ExpressionPtr Parser::parseInfixExpression(ast::ExpressionPtr left) {
     int precedence = curPrecedence();
 
     nextToken();
-    skipNewlines();
+    skipExpressionContinuation();
     auto right = parseExpression(precedence);
 
     auto infix = std::make_shared<ast::InfixExpression>();
@@ -2659,7 +2679,7 @@ ast::ExpressionPtr Parser::parseInfixExpression(ast::ExpressionPtr left) {
 ast::ExpressionPtr Parser::parsePowerExpression(ast::ExpressionPtr left) {
     auto tok = curToken_;
     nextToken();
-    skipNewlines();
+    skipExpressionContinuation();
     auto right = parseExpression(POWER - 1);
 
     auto infix = std::make_shared<ast::InfixExpression>();
@@ -2673,7 +2693,7 @@ ast::ExpressionPtr Parser::parsePowerExpression(ast::ExpressionPtr left) {
 ast::ExpressionPtr Parser::parseAssignExpression(ast::ExpressionPtr left) {
     auto tok = curToken_;
     nextToken();
-    skipNewlines();
+    skipExpressionContinuation();
     auto right = parseExpression(ASSIGN - 1);
 
     auto assign = std::make_shared<ast::AssignExpression>();
@@ -2686,7 +2706,7 @@ ast::ExpressionPtr Parser::parseAssignExpression(ast::ExpressionPtr left) {
 ast::ExpressionPtr Parser::parsePipeExpression(ast::ExpressionPtr left) {
     auto tok = curToken_;
     nextToken();
-    skipNewlines();
+    skipExpressionContinuation();
     auto right = parseExpression(PIPE);
 
     auto pipe = std::make_shared<ast::PipeExpression>();
@@ -2699,7 +2719,7 @@ ast::ExpressionPtr Parser::parsePipeExpression(ast::ExpressionPtr left) {
 ast::ExpressionPtr Parser::parseTimeoutExpression(ast::ExpressionPtr left) {
     auto tok = curToken_;
     nextToken();
-    skipNewlines();
+    skipExpressionContinuation();
     auto duration = parseExpression(TIMEOUT);
 
     auto timeout = std::make_shared<ast::TimeoutExpression>();
@@ -2713,7 +2733,7 @@ ast::ExpressionPtr Parser::parseStreamExpression(ast::ExpressionPtr left) {
     auto tok = curToken_;
     std::string op = tok.literal;
     nextToken();
-    skipNewlines();
+    skipExpressionContinuation();
     auto target = parseExpression(STREAM);
 
     auto stream = std::make_shared<ast::StreamExpression>();
@@ -2728,7 +2748,7 @@ ast::ExpressionPtr Parser::parseRangeExpression(ast::ExpressionPtr left) {
     auto tok = curToken_;
     bool inclusive = (tok.type == token::DOTDOTEQ);
     nextToken();
-    skipNewlines();
+    skipExpressionContinuation();
     auto right = parseExpression(RANGE);
 
     auto range = std::make_shared<ast::RangeLiteral>();
@@ -2848,4 +2868,4 @@ ast::ExpressionPtr Parser::parseDotExpression(ast::ExpressionPtr left) {
     return dot;
 }
 
-} // namespace pawl::parser
+} // namespace ulang::parser

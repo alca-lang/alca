@@ -1,0 +1,55 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/pic.al - 8259 Programmable Interrupt Controller (PIC) Driver
+
+use std.cpu
+
+PIC1_CMD  := 32  // 0x20
+PIC1_DATA := 33  // 0x21
+PIC2_CMD  := 160 // 0xA0
+PIC2_DATA := 161 // 0xA1
+
+PIC_EOI   := 32  // 0x20 End of Interrupt
+
+// Remaps PIC1 (Master) to offset1 and PIC2 (Slave) to offset2 (typically 0x20 and 0x28)
+pub func remap(offset1: int, offset2: int) {
+    // 1. ICW1: Start initialization in cascade mode
+    cpu.out8(PIC1_CMD, 17) // 0x11
+    cpu.out8(PIC2_CMD, 17)
+
+    // 2. ICW2: Vector offsets
+    cpu.out8(PIC1_DATA, offset1)
+    cpu.out8(PIC2_DATA, offset2)
+
+    // 3. ICW3: Cascade wiring
+    cpu.out8(PIC1_DATA, 4) // Master has slave at IRQ2
+    cpu.out8(PIC2_DATA, 2) // Slave cascade identity
+
+    // 4. ICW4: 8086/88 mode
+    cpu.out8(PIC1_DATA, 1)
+    cpu.out8(PIC2_DATA, 1)
+
+    // Mask all by default (0xFF)
+    cpu.out8(PIC1_DATA, 0)
+    cpu.out8(PIC2_DATA, 0)
+}
+
+// Sends End of Interrupt (EOI) acknowledgment
+pub func send_eoi(irq: int) {
+    if irq >= 8 {
+        cpu.out8(PIC2_CMD, PIC_EOI)
+    }
+    cpu.out8(PIC1_CMD, PIC_EOI)
+}
+
+pub func mask_irq(irq: int) {
+    port := PIC1_DATA
+    curIrq := irq
+    if curIrq >= 8 {
+        port = PIC2_DATA
+        curIrq = curIrq - 8
+    }
+    mask := cpu.in8(port)
+    cpu.out8(port, (mask + (1 << curIrq)) % 256)
+}

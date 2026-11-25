@@ -1,0 +1,47 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected end of statement (newline)
+  --> tests/test_86_observer_pattern.al:7:19
+   |
+ 6 |     id: int
+ 7 |     callback: func(string) -> void = null
+   |                   ^ expected end of statement (newline)
+ 8 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_86_observer_pattern.al:59:45
+   |
+58 | struct EventEmitter {
+59 |     listeners: map[EventType, list[Observer]] = {}
+   |                                             ^ expected end of statement (newline)
+60 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_86_observer_pattern.al:60:1
+   |
+59 |     listeners: map[EventType, list[Observer]] = {}
+60 | }
+   | ^^^^^^ unaligned dedent
+61 | func add_listener(emitter: EventEmitter, event: EventType, obs: Observer) -> EventEmitter {
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_86_observer_pattern.al:60:1
+   |
+59 |     listeners: map[EventType, list[Observer]] = {}
+60 | }
+   | ^ unexpected closing '}' without matching '{'
+61 | func add_listener(emitter: EventEmitter, event: EventType, obs: Observer) -> EventEmitter {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 4 errors. Execution aborted.
+

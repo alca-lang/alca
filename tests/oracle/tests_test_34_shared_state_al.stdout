@@ -1,0 +1,67 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_34_shared_state.al:129:26
+   |
+128 |         item := queue[0]
+129 |         queue = queue[1..]
+   |                          ^ unexpected closing ']' without matching '['
+130 |         return item
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_34_shared_state.al:129:27
+   |
+128 |         item := queue[0]
+129 |         queue = queue[1..]
+   |                           ^ expected ']' to close list or index, got "\n" (NEWLINE)
+130 |         return item
+   |
+   = help: unclosed '[' from line 129, col 22; add a closing ']'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_34_shared_state.al:176:28
+   |
+175 |         item := buffer[0]
+176 |         buffer = buffer[1..]
+   |                            ^ unexpected closing ']' without matching '['
+177 |         return item
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_34_shared_state.al:176:29
+   |
+175 |         item := buffer[0]
+176 |         buffer = buffer[1..]
+   |                             ^ expected ']' to close list or index, got "\n" (NEWLINE)
+177 |         return item
+   |
+   = help: unclosed '[' from line 176, col 24; add a closing ']'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_34_shared_state.al:224:24
+   |
+223 |         item := pool[0]
+224 |         pool = pool[1..]
+   |                        ^ unexpected closing ']' without matching '['
+225 |         return item
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_34_shared_state.al:224:25
+   |
+223 |         item := pool[0]
+224 |         pool = pool[1..]
+   |                         ^ expected ']' to close list or index, got "\n" (NEWLINE)
+225 |         return item
+   |
+   = help: unclosed '[' from line 224, col 20; add a closing ']'
+
+Found 6 errors. Execution aborted.
+

@@ -1,0 +1,10 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error[RuntimeError]: assertion failed (line 88) (code 500)
+  --> tests/test_88_memoization.al
+   = help: Review the logic on the referenced line.
+
+

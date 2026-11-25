@@ -1,0 +1,31 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/mmap.al - Memory mapped files and raw page management
+
+use std.mem
+
+struct MMapRegion {
+    addr: int
+    length: int
+    flags: int
+}
+
+pub func map_anonymous(length: int, prot: int) -> MMapRegion {
+    // Simulated allocated page offset (e.g. at 0x10000000)
+    base := 268435456
+    return MMapRegion(base, length, prot)
+}
+
+pub func unmap(region: MMapRegion) -> bool {
+    region.addr = 0
+    return true
+}
+
+pub func read_u8(region: MMapRegion, offset: int) -> int {
+    return mem.read_u8(region.addr, offset)
+}
+
+pub func write_u8(region: MMapRegion, offset: int, val: int) {
+    mem.write_u8(region.addr, val, offset)
+}

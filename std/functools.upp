@@ -1,0 +1,33 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/functools.al - Higher-order functions, partial application & reducers
+
+pub func reduce_sum(items: list[int], initial: int) -> int {
+    acc := initial
+    for x in items {
+        acc = acc + x
+    }
+    return acc
+}
+
+pub func reduce_mul(items: list[int], initial: int) -> int {
+    acc := initial
+    for x in items {
+        acc = acc * x
+    }
+    return acc
+}
+
+pub func identity(x: any) -> any {
+    return x
+}
+
+pub func cmp_to_key(a: int, b: int) -> int {
+    if a < b {
+        return -1
+    } elif a > b {
+        return 1
+    }
+    return 0
+}

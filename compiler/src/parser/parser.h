@@ -14,7 +14,7 @@
 #include "lexer/lexer.h"
 #include "token/token.h"
 
-namespace pawl::parser {
+namespace ulang::parser {
 
 // Precedence levels for Pawl expressions (from lowest to highest).
 enum Precedence {
@@ -140,6 +140,7 @@ private:
     std::pair<std::vector<ast::ExpressionPtr>, std::map<std::string, ast::ExpressionPtr>> parseCallArguments();
     ast::ExpressionPtr parseIndexExpression(ast::ExpressionPtr left);
     ast::ExpressionPtr parseDotExpression(ast::ExpressionPtr left);
+    void skipExpressionContinuation();
 
     std::unique_ptr<lexer::Lexer> ownedLexer_;
     lexer::Lexer* l_ = nullptr;
@@ -147,10 +148,11 @@ private:
     token::Token peekToken_;
     std::vector<std::string> errors_;
     std::vector<std::shared_ptr<diag::SyntaxError>> syntaxErrors_;
+    int continuationDedents_ = 0;
 
     std::map<token::Kind, PrefixParseFn> prefixParseFns_;
     std::map<token::Kind, InfixParseFn> infixParseFns_;
     std::map<token::Kind, int> precedences_;
 };
 
-} // namespace pawl::parser
+} // namespace ulang::parser

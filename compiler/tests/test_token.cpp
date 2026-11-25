@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-using namespace pawl;
+using namespace ulang;
 
 MT_TEST(token, lookup_ident) {
     struct Item {

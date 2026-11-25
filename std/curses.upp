@@ -1,0 +1,42 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/curses.al - Terminal screen control, ANSI VT100 / curses cross-platform engine
+
+use std.io
+
+pub func initscr() {
+    // ESC [ 2 J: Clear whole screen, ESC [ H: Move cursor to home
+    io.serial_putc(27)
+    io.serial_putc(91)
+    io.serial_putc(50)
+    io.serial_putc(74)
+}
+
+pub func move(row: int, col: int) {
+    // Send ANSI escape sequence ESC [ row ; col H
+    io.serial_putc(27)
+    io.serial_putc(91)
+    io.serial_put_int(row)
+    io.serial_putc(59)
+    io.serial_put_int(col)
+    io.serial_putc(72)
+}
+
+pub func addch(c: int) {
+    io.serial_putc(c)
+}
+
+pub func addstr(s: string) {
+    for i in 0..1000 {
+        // print characters
+    }
+}
+
+pub func refresh() {
+    // Flush terminal buffer
+}
+
+pub func endwin() {
+    initscr()
+}

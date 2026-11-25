@@ -1,0 +1,259 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:6:20
+   |
+ 5 | func parse_xml_tag(xml: string) -> string {
+ 6 |     start := string.index_of(xml, "<")
+   |                    ^ type func(any) -> string has no field 'index_of'
+ 7 |     end := string.index_of(xml, ">")
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:7:18
+   |
+ 6 |     start := string.index_of(xml, "<")
+ 7 |     end := string.index_of(xml, ">")
+   |                  ^ type func(any) -> string has no field 'index_of'
+ 8 |     if start >= 0 and end > start {
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_81_xml_parsing.al:9:22
+   |
+ 8 |     if start >= 0 and end > start {
+ 9 |         return string.substring(xml, start + 1, end)
+   |                      ^ type func(any) -> string has no field 'substring'
+10 |     }
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:19:20
+   |
+18 |     attr_pattern := attr + "=\""
+19 |     start := string.index_of(xml, attr_pattern)
+   |                    ^ type func(any) -> string has no field 'index_of'
+20 |     if start >= 0 {
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:22:22
+   |
+21 |         start = start + len(attr_pattern)
+22 |         end := string.index_of(xml, "\"", start)
+   |                      ^ type func(any) -> string has no field 'index_of'
+23 |         if end > start {
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_81_xml_parsing.al:24:26
+   |
+23 |         if end > start {
+24 |             return string.substring(xml, start, end)
+   |                          ^ type func(any) -> string has no field 'substring'
+25 |         }
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:35:20
+   |
+34 | func extract_content(xml: string) -> string {
+35 |     start := string.index_of(xml, ">") + 1
+   |                    ^ type func(any) -> string has no field 'index_of'
+36 |     end := string.index_of(xml, "<", start)
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:36:18
+   |
+35 |     start := string.index_of(xml, ">") + 1
+36 |     end := string.index_of(xml, "<", start)
+   |                  ^ type func(any) -> string has no field 'index_of'
+37 |     if start > 0 and end > start {
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_81_xml_parsing.al:38:22
+   |
+37 |     if start > 0 and end > start {
+38 |         return string.substring(xml, start, end)
+   |                      ^ type func(any) -> string has no field 'substring'
+39 |     }
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:49:20
+   |
+48 |     close_tag := "</" + tag + ">"
+49 |     start := string.index_of(xml, open_tag)
+   |                    ^ type func(any) -> string has no field 'index_of'
+50 |     if start >= 0 {
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:52:22
+   |
+51 |         start = start + len(open_tag)
+52 |         end := string.index_of(xml, close_tag, start)
+   |                      ^ type func(any) -> string has no field 'index_of'
+53 |         if end > start {
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_81_xml_parsing.al:54:26
+   |
+53 |         if end > start {
+54 |             return string.substring(xml, start, end)
+   |                          ^ type func(any) -> string has no field 'substring'
+55 |         }
+   |
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_81_xml_parsing.al:64:23
+   |
+63 | func is_valid_xml(xml: string) -> bool {
+64 |     has_open := string.contains(xml, "<")
+   |                       ^ type func(any) -> string has no field 'contains'
+65 |     has_close := string.contains(xml, ">")
+   |
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_81_xml_parsing.al:65:24
+   |
+64 |     has_open := string.contains(xml, "<")
+65 |     has_close := string.contains(xml, ">")
+   |                        ^ type func(any) -> string has no field 'contains'
+66 |     return has_open and has_close
+   |
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_81_xml_parsing.al:73:18
+   |
+72 | func is_self_closing(xml: string) -> bool {
+73 |     return string.contains(xml, "/>")
+   |                  ^ type func(any) -> string has no field 'contains'
+74 | }
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:80:20
+   |
+79 | func parse_comment(xml: string) -> string {
+80 |     start := string.index_of(xml, "<!--")
+   |                    ^ type func(any) -> string has no field 'index_of'
+81 |     end := string.index_of(xml, "-->")
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:81:18
+   |
+80 |     start := string.index_of(xml, "<!--")
+81 |     end := string.index_of(xml, "-->")
+   |                  ^ type func(any) -> string has no field 'index_of'
+82 |     if start >= 0 and end > start {
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_81_xml_parsing.al:83:22
+   |
+82 |     if start >= 0 and end > start {
+83 |         return string.substring(xml, start + 4, end)
+   |                      ^ type func(any) -> string has no field 'substring'
+84 |     }
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:92:20
+   |
+91 | func parse_cdata(xml: string) -> string {
+92 |     start := string.index_of(xml, "<![CDATA[")
+   |                    ^ type func(any) -> string has no field 'index_of'
+93 |     end := string.index_of(xml, "]]>")
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:93:18
+   |
+92 |     start := string.index_of(xml, "<![CDATA[")
+93 |     end := string.index_of(xml, "]]>")
+   |                  ^ type func(any) -> string has no field 'index_of'
+94 |     if start >= 0 and end > start {
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_81_xml_parsing.al:95:22
+   |
+94 |     if start >= 0 and end > start {
+95 |         return string.substring(xml, start + 9, end)
+   |                      ^ type func(any) -> string has no field 'substring'
+96 |     }
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:104:20
+   |
+103 | func parse_declaration(xml: string) -> string {
+104 |     start := string.index_of(xml, "<?xml")
+   |                    ^ type func(any) -> string has no field 'index_of'
+105 |     end := string.index_of(xml, "?>")
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:105:18
+   |
+104 |     start := string.index_of(xml, "<?xml")
+105 |     end := string.index_of(xml, "?>")
+   |                  ^ type func(any) -> string has no field 'index_of'
+106 |     if start >= 0 and end > start {
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_81_xml_parsing.al:107:22
+   |
+106 |     if start >= 0 and end > start {
+107 |         return string.substring(xml, start, end + 2)
+   |                      ^ type func(any) -> string has no field 'substring'
+108 |     }
+   |
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_81_xml_parsing.al:112:14
+   |
+111 | decl := parse_declaration("<?xml version=\"1.0\"?>")
+112 | assert string.contains(decl, "xml")
+   |              ^ type func(any) -> string has no field 'contains'
+113 | 
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:117:20
+   |
+116 |     ns_pattern := "xmlns=\""
+117 |     start := string.index_of(xml, ns_pattern)
+   |                    ^ type func(any) -> string has no field 'index_of'
+118 |     if start >= 0 {
+   |
+
+error: type func(any) -> string has no field 'index_of'
+  --> tests/test_81_xml_parsing.al:120:22
+   |
+119 |         start = start + len(ns_pattern)
+120 |         end := string.index_of(xml, "\"", start)
+   |                      ^ type func(any) -> string has no field 'index_of'
+121 |         if end > start {
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_81_xml_parsing.al:122:26
+   |
+121 |         if end > start {
+122 |             return string.substring(xml, start, end)
+   |                          ^ type func(any) -> string has no field 'substring'
+123 |         }
+   |
+
+Found 28 errors. Execution aborted.
+

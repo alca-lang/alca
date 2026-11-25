@@ -1,0 +1,197 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_70_graph_algorithms.al:28:26
+   |
+27 |         node := queue[0]
+28 |         queue = queue[1..]
+   |                          ^ unexpected closing ']' without matching '['
+29 |         if !(node in visited) {
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_70_graph_algorithms.al:28:27
+   |
+27 |         node := queue[0]
+28 |         queue = queue[1..]
+   |                           ^ expected ']' to close list or index, got "\n" (NEWLINE)
+29 |         if !(node in visited) {
+   |
+   = help: unclosed '[' from line 28, col 22; add a closing ']'
+
+error: expected ')' to close parenthesis, got "queue" (IDENT)
+  --> tests/test_70_graph_algorithms.al:77:5
+   |
+76 |     visited: list[int] = []
+77 |     queue: list[int] = [start]
+   |     ^^^^^ expected ')' to close parenthesis, got "queue" (IDENT)
+78 |     while len(queue) > 0 {
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_70_graph_algorithms.al:76:28
+   |
+75 |     }
+76 |     visited: list[int] = []
+   |                            ^ expected '{' after function signature
+77 |     queue: list[int] = [start]
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_70_graph_algorithms.al:80:26
+   |
+79 |         node := queue[0]
+80 |         queue = queue[1..]
+   |                          ^ unexpected closing ']' without matching '['
+81 |         if node == end {
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_70_graph_algorithms.al:80:27
+   |
+79 |         node := queue[0]
+80 |         queue = queue[1..]
+   |                           ^ expected ']' to close list or index, got "\n" (NEWLINE)
+81 |         if node == end {
+   |
+   = help: unclosed '[' from line 80, col 22; add a closing ']'
+
+error: unaligned dedent
+  --> tests/test_70_graph_algorithms.al:97:1
+   |
+96 | 
+97 | assert has_path(graph, 0, 3)
+   | ^^^^^^ unaligned dedent
+98 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_70_graph_algorithms.al:100:70
+   |
+99 | // 6. Get neighbors
+100 | func get_neighbors(graph: map[int, GraphNode, node: int) -> list[int]:
+   |                                                                      ^ expected ')' to close parenthesis, got ":" (:)
+101 |     if node in graph {
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_70_graph_algorithms.al:100:70
+   |
+99 | // 6. Get neighbors
+100 | func get_neighbors(graph: map[int, GraphNode, node: int) -> list[int]:
+   |                                                                      ^ expected '{' after function signature
+101 |     if node in graph {
+   |
+   = help: use '{' to open a function body, not ':'
+
+error: expected ')' to close parenthesis, got "." (.)
+  --> tests/test_70_graph_algorithms.al:123:39
+   |
+122 |     for key in graph {
+123 |         count = count + len(graph[key].neighbors)
+   |                                       ^ expected ')' to close parenthesis, got "." (.)
+124 |     }
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_70_graph_algorithms.al:123:38
+   |
+122 |     for key in graph {
+123 |         count = count + len(graph[key].neighbors)
+   |                                      ^ expected '{' after function signature
+124 |     }
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected token "." (.)
+  --> tests/test_70_graph_algorithms.al:123:39
+   |
+122 |     for key in graph {
+123 |         count = count + len(graph[key].neighbors)
+   |                                       ^ unexpected token "." (.)
+124 |     }
+   |
+   = help: check the syntax around this token
+
+error: unaligned dedent
+  --> tests/test_70_graph_algorithms.al:124:1
+   |
+123 |         count = count + len(graph[key].neighbors)
+124 |     }
+   | ^^^^^^ unaligned dedent
+125 |     return count / 2 // Undirected graph
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_70_graph_algorithms.al:124:5
+   |
+123 |         count = count + len(graph[key].neighbors)
+124 |     }
+   |     ^ unexpected closing '}' without matching '{'
+125 |     return count / 2 // Undirected graph
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_70_graph_algorithms.al:127:1
+   |
+126 | 
+127 | assert count_edges(graph) == 4
+   | ^^^^^^ unaligned dedent
+128 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_70_graph_algorithms.al:130:84
+   |
+129 | // 9. Add edge
+130 | func add_edge(graph: map[int, GraphNode, from: int, to: int) -> map[int, GraphNode]:
+   |                                                                                    ^ expected ')' to close parenthesis, got ":" (:)
+131 |     if from in graph {
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_70_graph_algorithms.al:130:84
+   |
+129 | // 9. Add edge
+130 | func add_edge(graph: map[int, GraphNode, from: int, to: int) -> map[int, GraphNode]:
+   |                                                                                    ^ expected '{' after function signature
+131 |     if from in graph {
+   |
+   = help: use '{' to open a function body, not ':'
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_70_graph_algorithms.al:144:87
+   |
+143 | // 10. Remove edge simulation
+144 | func remove_edge(graph: map[int, GraphNode, from: int, to: int) -> map[int, GraphNode]:
+   |                                                                                       ^ expected ')' to close parenthesis, got ":" (:)
+145 |     if from in graph {
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_70_graph_algorithms.al:144:87
+   |
+143 | // 10. Remove edge simulation
+144 | func remove_edge(graph: map[int, GraphNode, from: int, to: int) -> map[int, GraphNode]:
+   |                                                                                       ^ expected '{' after function signature
+145 |     if from in graph {
+   |
+   = help: use '{' to open a function body, not ':'
+
+Found 19 errors. Execution aborted.
+

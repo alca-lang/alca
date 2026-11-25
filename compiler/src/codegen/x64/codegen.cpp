@@ -5,7 +5,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace pawl::codegen::x64 {
+namespace ulang::codegen::x64 {
 
 namespace {
 
@@ -404,7 +404,7 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
             }
             case ir::Op::Print:
             case ir::Op::Println: {
-                std::string rtName = (inst->op == ir::Op::Print) ? "pawl_print" : "pawl_println";
+                std::string rtName = (inst->op == ir::Op::Print) ? "ulang_print" : "ulang_println";
                 int aDisp = -ctx.slotOffsets[inst->src1.id];
                 if (abi_ == ABI::Win64) {
                     emitBytes({0x48, 0x8B, 0x8D}); // mov rcx, [rbp + aDisp]
@@ -433,7 +433,7 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 emitByte(0xE8);
                 size_t patch = codeLen();
                 emitUint32(0);
-                funcCalls_.push_back({"pawl_concat_str", patch, patch + 4});
+                funcCalls_.push_back({"ulang_concat_str", patch, patch + 4});
                 emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dst)); // mov [dst], rax
                 break;
             }
@@ -448,7 +448,7 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 emitByte(0xE8);
                 size_t patch = codeLen();
                 emitUint32(0);
-                funcCalls_.push_back({"pawl_int_to_str", patch, patch + 4});
+                funcCalls_.push_back({"ulang_int_to_str", patch, patch + 4});
                 emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dst)); // mov [dst], rax
                 break;
             }
@@ -468,6 +468,90 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dst));
                 break;
             }
+            case ir::Op::MathUnary: {
+                int s1 = -ctx.slotOffsets[inst->src1.id];
+                int dst = -ctx.slotOffsets[inst->dst.id];
+                const std::string& name = inst->callName;
+                if (name == "sqrt") {
+                    emitBytes({0xF2, 0x0F, 0x10, 0x85}); emitUint32(static_cast<uint32_t>(s1)); // movsd xmm0,[s1]
+                    emitBytes({0xF2, 0x0F, 0x51, 0xC0});                                         // sqrtsd xmm0,xmm0
+                    emitBytes({0xF2, 0x0F, 0x11, 0x85}); emitUint32(static_cast<uint32_t>(dst));
+                } else if (name == "floor" || name == "ceil" || name == "round") {
+                    uint8_t mode = name == "floor" ? 1 : (name == "ceil" ? 2 : 0);
+                    emitBytes({0xF2, 0x0F, 0x10, 0x85}); emitUint32(static_cast<uint32_t>(s1));
+                    emitBytes({0x66, 0x0F, 0x3A, 0x0B, 0xC0, mode}); // roundsd xmm0,xmm0,imm
+                    emitBytes({0xF2, 0x0F, 0x11, 0x85}); emitUint32(static_cast<uint32_t>(dst));
+                } else if (name == "abs") {
+                    emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(s1)); // mov rax,[s1]
+                    emitBytes({0x48, 0x0F, 0xBA, 0xF0, 0x3F});                           // btr rax,63
+                    emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dst));
+                } else if (name == "sin" || name == "cos" || name == "tan") {
+                    emitBytes({0xDD, 0x85}); emitUint32(static_cast<uint32_t>(s1)); // fld qword [s1]
+                    if (name == "sin") emitBytes({0xD9, 0xFE});                    // fsin
+                    else if (name == "cos") emitBytes({0xD9, 0xFF});               // fcos
+                    else {
+                        emitBytes({0xD9, 0xF2}); // fptan
+                        emitBytes({0xDD, 0xD8}); // fstp st(0)
+                    }
+                    emitBytes({0xDD, 0x9D}); emitUint32(static_cast<uint32_t>(dst)); // fstp qword [dst]
+                } else if (name == "log" || name == "log10") {
+                    emitBytes({0xD9, static_cast<uint8_t>(name == "log" ? 0xED : 0xEC)}); // fldln2 / fldlg2
+                    emitBytes({0xDD, 0x85}); emitUint32(static_cast<uint32_t>(s1)); // fld qword [s1]
+                    emitBytes({0xD9, 0xF1});                                       // fyl2x
+                    emitBytes({0xDD, 0x9D}); emitUint32(static_cast<uint32_t>(dst));
+                } else if (name == "atan") {
+                    emitBytes({0xDD, 0x85}); emitUint32(static_cast<uint32_t>(s1)); // fld x
+                    emitBytes({0xD9, 0xE8});                                       // fld1
+                    emitBytes({0xD9, 0xF3});                                       // fpatan
+                    emitBytes({0xDD, 0x9D}); emitUint32(static_cast<uint32_t>(dst));
+                } else if (name == "asin" || name == "acos") {
+                    emitBytes({0xDD, 0x85}); emitUint32(static_cast<uint32_t>(s1)); // fld x
+                    emitBytes({0xD9, 0xC0});                                       // fld st0
+                    emitBytes({0xD8, 0xC8});                                       // fmul st0,st0
+                    emitBytes({0xD9, 0xE8});                                       // fld1
+                    emitBytes({0xD9, 0xC9});                                       // fxch st1
+                    emitBytes({0xDE, 0xE9});                                       // fsubp st1,st0 => 1-x*x
+                    emitBytes({0xD9, 0xFA});                                       // fsqrt
+                    if (name == "acos") emitBytes({0xD9, 0xC9});                   // fxch st1
+                    emitBytes({0xD9, 0xF3});                                       // fpatan
+                    emitBytes({0xDD, 0x9D}); emitUint32(static_cast<uint32_t>(dst));
+                } else {
+                    emitBytes({0x90});
+                }
+                break;
+            }
+            case ir::Op::MathBinary: {
+                int s1 = -ctx.slotOffsets[inst->src1.id];
+                int s2 = -ctx.slotOffsets[inst->src2.id];
+                int dst = -ctx.slotOffsets[inst->dst.id];
+                const std::string& name = inst->callName;
+                if (name == "hypot") {
+                    emitBytes({0xF2, 0x0F, 0x10, 0x85}); emitUint32(static_cast<uint32_t>(s1)); // movsd xmm0,[s1]
+                    emitBytes({0xF2, 0x0F, 0x59, 0xC0});                                         // mulsd xmm0,xmm0
+                    emitBytes({0xF2, 0x0F, 0x10, 0x8D}); emitUint32(static_cast<uint32_t>(s2)); // movsd xmm1,[s2]
+                    emitBytes({0xF2, 0x0F, 0x59, 0xC9});                                         // mulsd xmm1,xmm1
+                    emitBytes({0xF2, 0x0F, 0x58, 0xC1});                                         // addsd xmm0,xmm1
+                    emitBytes({0xF2, 0x0F, 0x51, 0xC0});                                         // sqrtsd xmm0,xmm0
+                    emitBytes({0xF2, 0x0F, 0x11, 0x85}); emitUint32(static_cast<uint32_t>(dst));
+                } else if (name == "pow") {
+                    emitBytes({0xDD, 0x85}); emitUint32(static_cast<uint32_t>(s2)); // fld y
+                    emitBytes({0xDD, 0x85}); emitUint32(static_cast<uint32_t>(s1)); // fld x
+                    emitBytes({0xD9, 0xF1});                                       // fyl2x => z
+                    emitBytes({0xD9, 0xC0});                                       // fld st0
+                    emitBytes({0xD9, 0xFC});                                       // frndint
+                    emitBytes({0xD9, 0xC9});                                       // fxch st1
+                    emitBytes({0xD8, 0xE1});                                       // fsub st0,st1
+                    emitBytes({0xD9, 0xF0});                                       // f2xm1
+                    emitBytes({0xD9, 0xE8});                                       // fld1
+                    emitBytes({0xDE, 0xC1});                                       // faddp
+                    emitBytes({0xD9, 0xFD});                                       // fscale
+                    emitBytes({0xDD, 0xD9});                                       // fstp st1
+                    emitBytes({0xDD, 0x9D}); emitUint32(static_cast<uint32_t>(dst));
+                } else {
+                    emitBytes({0x90});
+                }
+                break;
+            }
             case ir::Op::Alloc: {
                 int s1 = -ctx.slotOffsets[inst->src1.id];
                 int dst = -ctx.slotOffsets[inst->dst.id];
@@ -479,7 +563,7 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 emitByte(0xE8);
                 size_t patch = codeLen();
                 emitUint32(0);
-                funcCalls_.push_back({"pawl_alloc", patch, patch + 4});
+                funcCalls_.push_back({"ulang_alloc", patch, patch + 4});
                 emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dst)); // mov [dst], rax
                 break;
             }
@@ -549,6 +633,116 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 emitUint32(static_cast<uint32_t>(dDisp));
                 break;
             }
+            case ir::Op::CpuCli: {
+                emitByte(0xFA); // cli
+                break;
+            }
+            case ir::Op::CpuSti: {
+                emitByte(0xFB); // sti
+                break;
+            }
+            case ir::Op::CpuHlt: {
+                emitByte(0xF4); // hlt
+                break;
+            }
+            case ir::Op::CpuPause: {
+                emitBytes({0xF3, 0x90}); // pause
+                break;
+            }
+            case ir::Op::CpuIn: {
+                // src1 = port (in dx)
+                int portDisp = -ctx.slotOffsets[inst->src1.id];
+                int dstDisp = -ctx.slotOffsets[inst->dst.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(portDisp)); // mov rax, [port]
+                emitBytes({0x66, 0x89, 0xC2}); // mov dx, ax
+                if (inst->intVal == 8) {
+                    emitBytes({0x31, 0xC0}); // xor eax, eax
+                    emitBytes({0xEC});       // in al, dx
+                } else if (inst->intVal == 16) {
+                    emitBytes({0x31, 0xC0}); // xor eax, eax
+                    emitBytes({0x66, 0xED}); // in ax, dx
+                } else {
+                    emitBytes({0xED});       // in eax, dx
+                }
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dstDisp)); // mov [dst], rax
+                break;
+            }
+            case ir::Op::CpuOut: {
+                // src1 = port, src2 = value
+                int portDisp = -ctx.slotOffsets[inst->src1.id];
+                int valDisp = -ctx.slotOffsets[inst->src2.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(portDisp)); // mov rax, [port]
+                emitBytes({0x66, 0x89, 0xC2}); // mov dx, ax
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(valDisp));  // mov rax, [val]
+                if (inst->intVal == 8) {
+                    emitBytes({0xEE});       // out dx, al
+                } else if (inst->intVal == 16) {
+                    emitBytes({0x66, 0xEF}); // out dx, ax
+                } else {
+                    emitBytes({0xEF});       // out dx, eax
+                }
+                break;
+            }
+            case ir::Op::CpuReadCr: {
+                int dstDisp = -ctx.slotOffsets[inst->dst.id];
+                if (inst->intVal == 0) {
+                    emitBytes({0x0F, 0x20, 0xC0}); // mov rax, cr0
+                } else if (inst->intVal == 2) {
+                    emitBytes({0x0F, 0x20, 0xD0}); // mov rax, cr2
+                } else if (inst->intVal == 3) {
+                    emitBytes({0x0F, 0x20, 0xD8}); // mov rax, cr3
+                }
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dstDisp)); // mov [dst], rax
+                break;
+            }
+            case ir::Op::CpuWriteCr: {
+                int valDisp = -ctx.slotOffsets[inst->src1.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(valDisp)); // mov rax, [val]
+                if (inst->intVal == 0) {
+                    emitBytes({0x0F, 0x22, 0xC0}); // mov cr0, rax
+                } else if (inst->intVal == 3) {
+                    emitBytes({0x0F, 0x22, 0xD8}); // mov cr3, rax
+                }
+                break;
+            }
+            case ir::Op::CpuInvlpg: {
+                int addrDisp = -ctx.slotOffsets[inst->src1.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(addrDisp)); // mov rax, [addr]
+                emitBytes({0x0F, 0x01, 0x38}); // invlpg [rax]
+                break;
+            }
+            case ir::Op::RawLoad: {
+                int addrDisp = -ctx.slotOffsets[inst->src1.id];
+                int dstDisp = -ctx.slotOffsets[inst->dst.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(addrDisp)); // mov rax, [addr]
+                if (inst->intVal == 8) {
+                    emitBytes({0x0F, 0xB6, 0x00}); // movzx eax, byte ptr [rax]
+                } else if (inst->intVal == 16) {
+                    emitBytes({0x0F, 0xB7, 0x00}); // movzx eax, word ptr [rax]
+                } else if (inst->intVal == 32) {
+                    emitBytes({0x8B, 0x00});       // mov eax, dword ptr [rax]
+                } else {
+                    emitBytes({0x48, 0x8B, 0x00}); // mov rax, qword ptr [rax]
+                }
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dstDisp)); // mov [dst], rax
+                break;
+            }
+            case ir::Op::RawStore: {
+                int addrDisp = -ctx.slotOffsets[inst->src1.id];
+                int valDisp = -ctx.slotOffsets[inst->src2.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(addrDisp)); // mov rax, [addr]
+                emitBytes({0x48, 0x8B, 0x8D}); emitUint32(static_cast<uint32_t>(valDisp));  // mov rcx, [val]
+                if (inst->intVal == 8) {
+                    emitBytes({0x88, 0x08});       // mov [rax], cl
+                } else if (inst->intVal == 16) {
+                    emitBytes({0x66, 0x89, 0x08}); // mov [rax], cx
+                } else if (inst->intVal == 32) {
+                    emitBytes({0x89, 0x08});       // mov [rax], ecx
+                } else {
+                    emitBytes({0x48, 0x89, 0x08}); // mov [rax], rcx
+                }
+                break;
+            }
             case ir::Op::Ret: {
                 if (inst->src1.type != ir::Type::Void && inst->src1.id >= 0) {
                     int sDisp = -ctx.slotOffsets[inst->src1.id];
@@ -574,4 +768,4 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
     }
 }
 
-} // namespace pawl::codegen::x64
+} // namespace ulang::codegen::x64

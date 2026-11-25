@@ -11,7 +11,7 @@
 
 #include "token/token.h"
 
-namespace pawl::ast {
+namespace ulang::ast {
 
 // Base interface for all AST nodes
 class Node {
@@ -845,4 +845,4 @@ public:
     std::string toString() const override;
 };
 
-} // namespace pawl::ast
+} // namespace ulang::ast

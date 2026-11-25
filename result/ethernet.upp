@@ -1,0 +1,37 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/ethernet.al - Ethernet II frame definition and parsing
+
+struct EthernetHeader {
+    dest_mac: list[int]
+    src_mac: list[int]
+    ethertype: int
+}
+
+pub func ethertype_ipv4() -> int { return 2048 }   // 0x0800
+pub func ethertype_arp() -> int { return 2054 }    // 0x0806
+pub func ethertype_ipv6() -> int { return 34525 }  // 0x86DD
+
+pub func parse_header(packet: list[int]) -> EthernetHeader {
+    dest := [packet[0], packet[1], packet[2], packet[3], packet[4], packet[5]]
+    src := [packet[6], packet[7], packet[8], packet[9], packet[10], packet[11]]
+    etype := packet[12] * 256 + packet[13]
+    return EthernetHeader(dest, src, etype)
+}
+
+pub func format_mac(mac: list[int]) -> string {
+    res := ""
+    i := 0
+    loop {
+        if i >= len(mac) {
+            break
+        }
+        if i > 0 {
+            res = res + ":"
+        }
+        res = res + str(mac[i])
+        i = i + 1
+    }
+    return res
+}

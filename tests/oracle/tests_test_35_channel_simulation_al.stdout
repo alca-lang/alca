@@ -1,0 +1,1067 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:13:26
+   |
+12 |         item := queue[0]
+13 |         queue = queue[1..]
+   |                          ^ unexpected closing ']' without matching '['
+14 |         return item
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:13:27
+   |
+12 |         item := queue[0]
+13 |         queue = queue[1..]
+   |                           ^ expected ']' to close list or index, got "\n" (NEWLINE)
+14 |         return item
+   |
+   = help: unclosed '[' from line 13, col 22; add a closing ']'
+
+error: expected '{' after function signature
+  --> tests/test_35_channel_simulation.al:36:42
+   |
+35 | }
+36 | func bounded_dequeue(q: BoundedQueue) -> (BoundedQueue, int) {
+   |                                          ^ expected '{' after function signature
+37 |     if len(q.data) > 0 {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:36:55
+   |
+35 | }
+36 | func bounded_dequeue(q: BoundedQueue) -> (BoundedQueue, int) {
+   |                                                       ^ expected end of statement (newline)
+37 |     if len(q.data) > 0 {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:37:1
+   |
+36 | func bounded_dequeue(q: BoundedQueue) -> (BoundedQueue, int) {
+37 |     if len(q.data) > 0 {
+   | ^^^^^^ unexpected indentation
+38 |         item := q.data[0]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:38:1
+   |
+37 |     if len(q.data) > 0 {
+38 |         item := q.data[0]
+   | ^^^^^^ unexpected indentation
+39 |         q.data = q.data[1..]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:39:28
+   |
+38 |         item := q.data[0]
+39 |         q.data = q.data[1..]
+   |                            ^ unexpected closing ']' without matching '['
+40 |         return (q, item)
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:39:29
+   |
+38 |         item := q.data[0]
+39 |         q.data = q.data[1..]
+   |                             ^ expected ']' to close list or index, got "\n" (NEWLINE)
+40 |         return (q, item)
+   |
+   = help: unclosed '[' from line 39, col 24; add a closing ']'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:40:18
+   |
+39 |         q.data = q.data[1..]
+40 |         return (q, item)
+   |                  ^ expected ')' to close parenthesis, got "," (,)
+41 |     }
+   |
+   = help: unclosed '(' from line 40, col 16; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:40:18
+   |
+39 |         q.data = q.data[1..]
+40 |         return (q, item)
+   |                  ^ expected end of statement (newline)
+41 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:41:1
+   |
+40 |         return (q, item)
+41 |     }
+   | ^^^^^^ unaligned dedent
+42 |     return (q, 0)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:41:5
+   |
+40 |         return (q, item)
+41 |     }
+   |     ^ unexpected closing '}' without matching '{'
+42 |     return (q, 0)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:42:14
+   |
+41 |     }
+42 |     return (q, 0)
+   |              ^ expected ')' to close parenthesis, got "," (,)
+43 | }
+   |
+   = help: unclosed '(' from line 42, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:42:14
+   |
+41 |     }
+42 |     return (q, 0)
+   |              ^ expected end of statement (newline)
+43 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:43:1
+   |
+42 |     return (q, 0)
+43 | }
+   | ^^^^^^ unaligned dedent
+44 | bq := BoundedQueue([], 5)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:43:1
+   |
+42 |     return (q, 0)
+43 | }
+   | ^ unexpected closing '}' without matching '{'
+44 | bq := BoundedQueue([], 5)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:47:4
+   |
+46 | bq = bounded_enqueue(bq, 2)
+47 | (bq, item) := bounded_dequeue(bq)
+   |    ^ expected ')' to close parenthesis, got "," (,)
+48 | assert item == 1
+   |
+   = help: unclosed '(' from line 47, col 1; add a closing ')'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:63:44
+   |
+62 |         item := producer_queue[0]
+63 |         producer_queue = producer_queue[1..]
+   |                                            ^ unexpected closing ']' without matching '['
+64 |         return item
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:63:45
+   |
+62 |         item := producer_queue[0]
+63 |         producer_queue = producer_queue[1..]
+   |                                             ^ expected ']' to close list or index, got "\n" (NEWLINE)
+64 |         return item
+   |
+   = help: unclosed '[' from line 63, col 40; add a closing ']'
+
+error: expected '{' after function signature
+  --> tests/test_35_channel_simulation.al:97:50
+   |
+96 | }
+97 | func priority_dequeue(pq: list[PriorityItem]) -> (list[PriorityItem], PriorityItem) {
+   |                                                  ^ expected '{' after function signature
+98 |     if len(pq) > 0 {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:97:69
+   |
+96 | }
+97 | func priority_dequeue(pq: list[PriorityItem]) -> (list[PriorityItem], PriorityItem) {
+   |                                                                     ^ expected end of statement (newline)
+98 |     if len(pq) > 0 {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:98:1
+   |
+97 | func priority_dequeue(pq: list[PriorityItem]) -> (list[PriorityItem], PriorityItem) {
+98 |     if len(pq) > 0 {
+   | ^^^^^^ unexpected indentation
+99 |         item := pq[0]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:99:1
+   |
+98 |     if len(pq) > 0 {
+99 |         item := pq[0]
+   | ^^^^^^ unexpected indentation
+100 |         pq = pq[1..]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:100:20
+   |
+99 |         item := pq[0]
+100 |         pq = pq[1..]
+   |                    ^ unexpected closing ']' without matching '['
+101 |         return (pq, item)
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:100:21
+   |
+99 |         item := pq[0]
+100 |         pq = pq[1..]
+   |                     ^ expected ']' to close list or index, got "\n" (NEWLINE)
+101 |         return (pq, item)
+   |
+   = help: unclosed '[' from line 100, col 16; add a closing ']'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:101:19
+   |
+100 |         pq = pq[1..]
+101 |         return (pq, item)
+   |                   ^ expected ')' to close parenthesis, got "," (,)
+102 |     }
+   |
+   = help: unclosed '(' from line 101, col 16; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:101:19
+   |
+100 |         pq = pq[1..]
+101 |         return (pq, item)
+   |                   ^ expected end of statement (newline)
+102 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:102:1
+   |
+101 |         return (pq, item)
+102 |     }
+   | ^^^^^^ unaligned dedent
+103 |     return (pq, PriorityItem(0, 0))
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:102:5
+   |
+101 |         return (pq, item)
+102 |     }
+   |     ^ unexpected closing '}' without matching '{'
+103 |     return (pq, PriorityItem(0, 0))
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:103:15
+   |
+102 |     }
+103 |     return (pq, PriorityItem(0, 0))
+   |               ^ expected ')' to close parenthesis, got "," (,)
+104 | }
+   |
+   = help: unclosed '(' from line 103, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:103:15
+   |
+102 |     }
+103 |     return (pq, PriorityItem(0, 0))
+   |               ^ expected end of statement (newline)
+104 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:104:1
+   |
+103 |     return (pq, PriorityItem(0, 0))
+104 | }
+   | ^^^^^^ unaligned dedent
+105 | priority_queue = priority_enqueue(priority_queue, PriorityItem(10, 1))
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:104:1
+   |
+103 |     return (pq, PriorityItem(0, 0))
+104 | }
+   | ^ unexpected closing '}' without matching '{'
+105 | priority_queue = priority_enqueue(priority_queue, PriorityItem(10, 1))
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:109:16
+   |
+108 | 
+109 | (priority_queue, high_prio) := priority_dequeue(priority_queue)
+   |                ^ expected ')' to close parenthesis, got "," (,)
+110 | assert high_prio.priority == 3
+   |
+   = help: unclosed '(' from line 109, col 1; add a closing ')'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:121:38
+   |
+120 |         msg := message_bus[0]
+121 |         message_bus = message_bus[1..]
+   |                                      ^ unexpected closing ']' without matching '['
+122 |         return msg
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:121:39
+   |
+120 |         msg := message_bus[0]
+121 |         message_bus = message_bus[1..]
+   |                                       ^ expected ']' to close list or index, got "\n" (NEWLINE)
+122 |         return msg
+   |
+   = help: unclosed '[' from line 121, col 34; add a closing ']'
+
+error: variable declaration requires an initial value
+  --> tests/test_35_channel_simulation.al:132:30
+   |
+131 | // 6. Broadcast channel
+132 | subscribers: list[list[string]] = []
+   |                              ^ variable declaration requires an initial value
+133 | 
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:132:31
+   |
+131 | // 6. Broadcast channel
+132 | subscribers: list[list[string]] = []
+   |                               ^ expected end of statement (newline)
+133 | 
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected '{' after function signature
+  --> tests/test_35_channel_simulation.al:169:35
+   |
+168 | }
+169 | func ring_read(rb: RingBuffer) -> (RingBuffer, int) {
+   |                                   ^ expected '{' after function signature
+170 |     if len(rb.data) > 0 {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:169:46
+   |
+168 | }
+169 | func ring_read(rb: RingBuffer) -> (RingBuffer, int) {
+   |                                              ^ expected end of statement (newline)
+170 |     if len(rb.data) > 0 {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:170:1
+   |
+169 | func ring_read(rb: RingBuffer) -> (RingBuffer, int) {
+170 |     if len(rb.data) > 0 {
+   | ^^^^^^ unexpected indentation
+171 |         item := rb.data[rb.head]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:171:1
+   |
+170 |     if len(rb.data) > 0 {
+171 |         item := rb.data[rb.head]
+   | ^^^^^^ unexpected indentation
+172 |         rb.head = (rb.head + 1) % rb.size
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:173:19
+   |
+172 |         rb.head = (rb.head + 1) % rb.size
+173 |         return (rb, item)
+   |                   ^ expected ')' to close parenthesis, got "," (,)
+174 |     }
+   |
+   = help: unclosed '(' from line 173, col 16; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:173:19
+   |
+172 |         rb.head = (rb.head + 1) % rb.size
+173 |         return (rb, item)
+   |                   ^ expected end of statement (newline)
+174 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:174:1
+   |
+173 |         return (rb, item)
+174 |     }
+   | ^^^^^^ unaligned dedent
+175 |     return (rb, 0)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:174:5
+   |
+173 |         return (rb, item)
+174 |     }
+   |     ^ unexpected closing '}' without matching '{'
+175 |     return (rb, 0)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:175:15
+   |
+174 |     }
+175 |     return (rb, 0)
+   |               ^ expected ')' to close parenthesis, got "," (,)
+176 | }
+   |
+   = help: unclosed '(' from line 175, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:175:15
+   |
+174 |     }
+175 |     return (rb, 0)
+   |               ^ expected end of statement (newline)
+176 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:176:1
+   |
+175 |     return (rb, 0)
+176 | }
+   | ^^^^^^ unaligned dedent
+177 | ring := RingBuffer([], 5)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:176:1
+   |
+175 |     return (rb, 0)
+176 | }
+   | ^ unexpected closing '}' without matching '{'
+177 | ring := RingBuffer([], 5)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:180:6
+   |
+179 | ring = ring_write(ring, 2)
+180 | (ring, val) := ring_read(ring)
+   |      ^ expected ')' to close parenthesis, got "," (,)
+181 | assert val == 1
+   |
+   = help: unclosed '(' from line 180, col 1; add a closing ')'
+
+error: expected '{' after function signature
+  --> tests/test_35_channel_simulation.al:184:57
+   |
+183 | // 8. Fan-out pattern
+184 | func fan_out(source: list[int], n: int) -> list[list[int]] {
+   |                                                         ^ expected '{' after function signature
+185 |     result: list[list[int]] = []
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:184:58
+   |
+183 | // 8. Fan-out pattern
+184 | func fan_out(source: list[int], n: int) -> list[list[int]] {
+   |                                                          ^ unexpected closing ']' without matching '['
+185 |     result: list[list[int]] = []
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:185:1
+   |
+184 | func fan_out(source: list[int], n: int) -> list[list[int]] {
+185 |     result: list[list[int]] = []
+   | ^^^^^^ unexpected indentation
+186 |     i := 0
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:197:1
+   |
+196 |     return result
+197 | }
+   | ^^^^^^ unaligned dedent
+198 | source_data := [1, 2, 3, 4, 5, 6]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:197:1
+   |
+196 |     return result
+197 | }
+   | ^ unexpected closing '}' without matching '{'
+198 | source_data := [1, 2, 3, 4, 5, 6]
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "]" (])
+  --> tests/test_35_channel_simulation.al:203:37
+   |
+202 | // 9. Fan-in pattern
+203 | func fan_in(channels: list[list[int]]) -> list[int] {
+   |                                     ^ expected ')' to close parenthesis, got "]" (])
+204 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_35_channel_simulation.al:203:36
+   |
+202 | // 9. Fan-in pattern
+203 | func fan_in(channels: list[list[int]]) -> list[int] {
+   |                                    ^ expected '{' after function signature
+204 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:203:37
+   |
+202 | // 9. Fan-in pattern
+203 | func fan_in(channels: list[list[int]]) -> list[int] {
+   |                                     ^ unexpected closing ']' without matching '['
+204 |     result: list[int] = []
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:204:1
+   |
+203 | func fan_in(channels: list[list[int]]) -> list[int] {
+204 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+205 |     for ch in channels {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:211:1
+   |
+210 |     return result
+211 | }
+   | ^^^^^^ unaligned dedent
+212 | ch1 := [1, 2]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:211:1
+   |
+210 |     return result
+211 | }
+   | ^ unexpected closing '}' without matching '{'
+212 | ch1 := [1, 2]
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after function signature
+  --> tests/test_35_channel_simulation.al:230:53
+   |
+229 | // 11. Select pattern simulation
+230 | func select_case(ch1: list[int], ch2: list[int]) -> (int, string) {
+   |                                                     ^ expected '{' after function signature
+231 |     if len(ch1) > 0 {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:230:57
+   |
+229 | // 11. Select pattern simulation
+230 | func select_case(ch1: list[int], ch2: list[int]) -> (int, string) {
+   |                                                         ^ expected end of statement (newline)
+231 |     if len(ch1) > 0 {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:231:1
+   |
+230 | func select_case(ch1: list[int], ch2: list[int]) -> (int, string) {
+231 |     if len(ch1) > 0 {
+   | ^^^^^^ unexpected indentation
+232 |         return (ch1[0], "ch1")
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:232:1
+   |
+231 |     if len(ch1) > 0 {
+232 |         return (ch1[0], "ch1")
+   | ^^^^^^ unexpected indentation
+233 |     }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:233:1
+   |
+232 |         return (ch1[0], "ch1")
+233 |     }
+   | ^^^^^^ unaligned dedent
+234 |     if len(ch2) > 0 {
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:233:5
+   |
+232 |         return (ch1[0], "ch1")
+233 |     }
+   |     ^ unexpected closing '}' without matching '{'
+234 |     if len(ch2) > 0 {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:235:23
+   |
+234 |     if len(ch2) > 0 {
+235 |         return (ch2[0], "ch2")
+   |                       ^ expected ')' to close parenthesis, got "," (,)
+236 |     }
+   |
+   = help: unclosed '(' from line 235, col 16; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:235:23
+   |
+234 |     if len(ch2) > 0 {
+235 |         return (ch2[0], "ch2")
+   |                       ^ expected end of statement (newline)
+236 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:237:14
+   |
+236 |     }
+237 |     return (0, "none")
+   |              ^ expected ')' to close parenthesis, got "," (,)
+238 | }
+   |
+   = help: unclosed '(' from line 237, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:237:14
+   |
+236 |     }
+237 |     return (0, "none")
+   |              ^ expected end of statement (newline)
+238 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:238:1
+   |
+237 |     return (0, "none")
+238 | }
+   | ^^^^^^ unaligned dedent
+239 | chan1 := [10]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:238:1
+   |
+237 |     return (0, "none")
+238 | }
+   | ^ unexpected closing '}' without matching '{'
+239 | chan1 := [10]
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:241:5
+   |
+240 | chan2 := []
+241 | (val, source) := select_case(chan1, chan2)
+   |     ^ expected ')' to close parenthesis, got "," (,)
+242 | assert val == 10
+   |
+   = help: unclosed '(' from line 241, col 1; add a closing ')'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:259:48
+   |
+258 |         item := buffered_channel[0]
+259 |         buffered_channel = buffered_channel[1..]
+   |                                                ^ unexpected closing ']' without matching '['
+260 |         return item
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:259:49
+   |
+258 |         item := buffered_channel[0]
+259 |         buffered_channel = buffered_channel[1..]
+   |                                                 ^ expected ']' to close list or index, got "\n" (NEWLINE)
+260 |         return item
+   |
+   = help: unclosed '[' from line 259, col 44; add a closing ']'
+
+error: expected '{' after function signature
+  --> tests/test_35_channel_simulation.al:281:35
+   |
+280 | }
+281 | func channel_recv(ch: Channel) -> (Channel, int) {
+   |                                   ^ expected '{' after function signature
+282 |     if len(ch.data) > 0 {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:281:43
+   |
+280 | }
+281 | func channel_recv(ch: Channel) -> (Channel, int) {
+   |                                           ^ expected end of statement (newline)
+282 |     if len(ch.data) > 0 {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:282:1
+   |
+281 | func channel_recv(ch: Channel) -> (Channel, int) {
+282 |     if len(ch.data) > 0 {
+   | ^^^^^^ unexpected indentation
+283 |         item := ch.data[0]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:283:1
+   |
+282 |     if len(ch.data) > 0 {
+283 |         item := ch.data[0]
+   | ^^^^^^ unexpected indentation
+284 |         ch.data = ch.data[1..]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:284:30
+   |
+283 |         item := ch.data[0]
+284 |         ch.data = ch.data[1..]
+   |                              ^ unexpected closing ']' without matching '['
+285 |         return (ch, item)
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:284:31
+   |
+283 |         item := ch.data[0]
+284 |         ch.data = ch.data[1..]
+   |                               ^ expected ']' to close list or index, got "\n" (NEWLINE)
+285 |         return (ch, item)
+   |
+   = help: unclosed '[' from line 284, col 26; add a closing ']'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:285:19
+   |
+284 |         ch.data = ch.data[1..]
+285 |         return (ch, item)
+   |                   ^ expected ')' to close parenthesis, got "," (,)
+286 |     }
+   |
+   = help: unclosed '(' from line 285, col 16; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:285:19
+   |
+284 |         ch.data = ch.data[1..]
+285 |         return (ch, item)
+   |                   ^ expected end of statement (newline)
+286 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:286:1
+   |
+285 |         return (ch, item)
+286 |     }
+   | ^^^^^^ unaligned dedent
+287 |     return (ch, 0)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:286:5
+   |
+285 |         return (ch, item)
+286 |     }
+   |     ^ unexpected closing '}' without matching '{'
+287 |     return (ch, 0)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:287:15
+   |
+286 |     }
+287 |     return (ch, 0)
+   |               ^ expected ')' to close parenthesis, got "," (,)
+288 | }
+   |
+   = help: unclosed '(' from line 287, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_35_channel_simulation.al:287:15
+   |
+286 |     }
+287 |     return (ch, 0)
+   |               ^ expected end of statement (newline)
+288 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:288:1
+   |
+287 |     return (ch, 0)
+288 | }
+   | ^^^^^^ unaligned dedent
+289 | chan = channel_send(chan, 1)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:288:1
+   |
+287 |     return (ch, 0)
+288 | }
+   | ^ unexpected closing '}' without matching '{'
+289 | chan = channel_send(chan, 1)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_35_channel_simulation.al:291:6
+   |
+290 | chan = channel_send(chan, 2)
+291 | (chan, item) := channel_recv(chan)
+   |      ^ expected ')' to close parenthesis, got "," (,)
+292 | assert item == 1
+   |
+   = help: unclosed '(' from line 291, col 1; add a closing ')'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:304:44
+   |
+303 |         item := recv_only_chan[0]
+304 |         recv_only_chan = recv_only_chan[1..]
+   |                                            ^ unexpected closing ']' without matching '['
+305 |         return item
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:304:45
+   |
+303 |         item := recv_only_chan[0]
+304 |         recv_only_chan = recv_only_chan[1..]
+   |                                             ^ expected ']' to close list or index, got "\n" (NEWLINE)
+305 |         return item
+   |
+   = help: unclosed '[' from line 304, col 40; add a closing ']'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:333:26
+   |
+332 |         task := tasks[0]
+333 |         tasks = tasks[1..]
+   |                          ^ unexpected closing ']' without matching '['
+334 |         results = results + [task * 2]
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:333:27
+   |
+332 |         task := tasks[0]
+333 |         tasks = tasks[1..]
+   |                           ^ expected ']' to close list or index, got "\n" (NEWLINE)
+334 |         results = results + [task * 2]
+   |
+   = help: unclosed '[' from line 333, col 22; add a closing ']'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:353:34
+   |
+352 |     if len(sync_chan) > 0 {
+353 |         sync_chan = sync_chan[1..]
+   |                                  ^ unexpected closing ']' without matching '['
+354 |     }
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:353:35
+   |
+352 |     if len(sync_chan) > 0 {
+353 |         sync_chan = sync_chan[1..]
+   |                                   ^ expected ']' to close list or index, got "\n" (NEWLINE)
+354 |     }
+   |
+   = help: unclosed '[' from line 353, col 30; add a closing ']'
+
+error: expected ')' to close parenthesis, got "]" (])
+  --> tests/test_35_channel_simulation.al:362:40
+   |
+361 | // 18. Channel multiplexing
+362 | func multiplex(channels: list[list[int]]) -> list[int] {
+   |                                        ^ expected ')' to close parenthesis, got "]" (])
+363 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_35_channel_simulation.al:362:39
+   |
+361 | // 18. Channel multiplexing
+362 | func multiplex(channels: list[list[int]]) -> list[int] {
+   |                                       ^ expected '{' after function signature
+363 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:362:40
+   |
+361 | // 18. Channel multiplexing
+362 | func multiplex(channels: list[list[int]]) -> list[int] {
+   |                                        ^ unexpected closing ']' without matching '['
+363 |     result: list[int] = []
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_35_channel_simulation.al:363:1
+   |
+362 | func multiplex(channels: list[list[int]]) -> list[int] {
+363 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+364 |     for ch in channels {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_35_channel_simulation.al:370:1
+   |
+369 |     return result
+370 | }
+   | ^^^^^^ unaligned dedent
+371 | multi1 := [1, 2]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_35_channel_simulation.al:370:1
+   |
+369 |     return result
+370 | }
+   | ^ unexpected closing '}' without matching '{'
+371 | multi1 := [1, 2]
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_35_channel_simulation.al:390:20
+   |
+389 |         result = result + [ch[0]]
+390 |         ch = ch[1..]
+   |                    ^ unexpected closing ']' without matching '['
+391 |     }
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_35_channel_simulation.al:390:21
+   |
+389 |         result = result + [ch[0]]
+390 |         ch = ch[1..]
+   |                     ^ expected ']' to close list or index, got "\n" (NEWLINE)
+391 |     }
+   |
+   = help: unclosed '[' from line 390, col 16; add a closing ']'
+
+Found 106 errors. Execution aborted.
+

@@ -1,0 +1,8 @@
+EXITCODE: 0
+--- STDOUT ---
+Thread completed work
+✓ test_32_thread_pools passed
+
+--- STDERR ---
+note: line 160: capture stream ('?>>>') used as a value is not supported by the VM backend; running on the interpreter
+

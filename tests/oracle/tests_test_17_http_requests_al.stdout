@@ -1,0 +1,467 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected indentation
+  --> tests/test_17_http_requests.al:15:1
+   |
+14 |         return {
+15 |             "status": 200,
+   | ^^^^^^ unexpected indentation
+16 |             "body": "{\"message\": \"success\"}",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:15:7
+   |
+14 |         return {
+15 |             "status": 200,
+   |       ^ expected end of statement (newline)
+16 |             "body": "{\"message\": \"success\"}",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:16:19
+   |
+15 |             "status": 200,
+16 |             "body": "{\"message\": \"success\"}",
+   |                   ^ expected end of statement (newline)
+17 |             "headers": {"content-type": "application/json"}
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:17:22
+   |
+16 |             "body": "{\"message\": \"success\"}",
+17 |             "headers": {"content-type": "application/json"}
+   |                      ^ expected end of statement (newline)
+18 |         }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_17_http_requests.al:19:1
+   |
+18 |         }
+19 |     }
+   | ^^^^^^ unaligned dedent
+20 |     else {
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:19:5
+   |
+18 |         }
+19 |     }
+   |     ^ unexpected closing '}' without matching '{'
+20 |     else {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: 'else' clause without a preceding 'if'
+  --> tests/test_17_http_requests.al:20:5
+   |
+19 |     }
+20 |     else {
+   |     ^^^^ 'else' clause without a preceding 'if'
+21 |         return {
+   |
+   = help: ensure this 'else' matches an 'if' at the same indentation level
+
+error: unexpected indentation
+  --> tests/test_17_http_requests.al:21:1
+   |
+20 |     else {
+21 |         return {
+   | ^^^^^^ unexpected indentation
+22 |             "status": 404,
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_17_http_requests.al:22:1
+   |
+21 |         return {
+22 |             "status": 404,
+   | ^^^^^^ unexpected indentation
+23 |             "body": "Not Found",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:23:19
+   |
+22 |             "status": 404,
+23 |             "body": "Not Found",
+   |                   ^ expected end of statement (newline)
+24 |             "headers": {"content-type": "text/plain"}
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:24:22
+   |
+23 |             "body": "Not Found",
+24 |             "headers": {"content-type": "text/plain"}
+   |                      ^ expected end of statement (newline)
+25 |         }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:24:53
+   |
+23 |             "body": "Not Found",
+24 |             "headers": {"content-type": "text/plain"}
+   |                                                     ^ unexpected closing '}' without matching '{'
+25 |         }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_17_http_requests.al:25:1
+   |
+24 |             "headers": {"content-type": "text/plain"}
+25 |         }
+   | ^^^^^^ unaligned dedent
+26 |     }
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:25:9
+   |
+24 |             "headers": {"content-type": "text/plain"}
+25 |         }
+   |         ^ unexpected closing '}' without matching '{'
+26 |     }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_17_http_requests.al:26:1
+   |
+25 |         }
+26 |     }
+   | ^^^^^^ unaligned dedent
+27 | }
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:26:5
+   |
+25 |         }
+26 |     }
+   |     ^ unexpected closing '}' without matching '{'
+27 | }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_17_http_requests.al:27:1
+   |
+26 |     }
+27 | }
+   | ^^^^^^ unaligned dedent
+28 | response := http_get_simulation("https://example.com/api")
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:27:1
+   |
+26 |     }
+27 | }
+   | ^ unexpected closing '}' without matching '{'
+28 | response := http_get_simulation("https://example.com/api")
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected indentation
+  --> tests/test_17_http_requests.al:36:1
+   |
+35 |         return {
+36 |             "status": 201,
+   | ^^^^^^ unexpected indentation
+37 |             "body": "{\"id\": 123, \"created\": true}",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:36:7
+   |
+35 |         return {
+36 |             "status": 201,
+   |       ^ expected end of statement (newline)
+37 |             "body": "{\"id\": 123, \"created\": true}",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:37:19
+   |
+36 |             "status": 201,
+37 |             "body": "{\"id\": 123, \"created\": true}",
+   |                   ^ expected end of statement (newline)
+38 |             "headers": {"content-type": "application/json"}
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:38:22
+   |
+37 |             "body": "{\"id\": 123, \"created\": true}",
+38 |             "headers": {"content-type": "application/json"}
+   |                      ^ expected end of statement (newline)
+39 |         }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_17_http_requests.al:40:1
+   |
+39 |         }
+40 |     }
+   | ^^^^^^ unaligned dedent
+41 |     else {
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:40:5
+   |
+39 |         }
+40 |     }
+   |     ^ unexpected closing '}' without matching '{'
+41 |     else {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: 'else' clause without a preceding 'if'
+  --> tests/test_17_http_requests.al:41:5
+   |
+40 |     }
+41 |     else {
+   |     ^^^^ 'else' clause without a preceding 'if'
+42 |         return {
+   |
+   = help: ensure this 'else' matches an 'if' at the same indentation level
+
+error: unexpected indentation
+  --> tests/test_17_http_requests.al:42:1
+   |
+41 |     else {
+42 |         return {
+   | ^^^^^^ unexpected indentation
+43 |             "status": 400,
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_17_http_requests.al:43:1
+   |
+42 |         return {
+43 |             "status": 400,
+   | ^^^^^^ unexpected indentation
+44 |             "body": "Bad Request",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:44:19
+   |
+43 |             "status": 400,
+44 |             "body": "Bad Request",
+   |                   ^ expected end of statement (newline)
+45 |             "headers": {"content-type": "text/plain"}
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:45:22
+   |
+44 |             "body": "Bad Request",
+45 |             "headers": {"content-type": "text/plain"}
+   |                      ^ expected end of statement (newline)
+46 |         }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:45:53
+   |
+44 |             "body": "Bad Request",
+45 |             "headers": {"content-type": "text/plain"}
+   |                                                     ^ unexpected closing '}' without matching '{'
+46 |         }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_17_http_requests.al:46:1
+   |
+45 |             "headers": {"content-type": "text/plain"}
+46 |         }
+   | ^^^^^^ unaligned dedent
+47 |     }
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:46:9
+   |
+45 |             "headers": {"content-type": "text/plain"}
+46 |         }
+   |         ^ unexpected closing '}' without matching '{'
+47 |     }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_17_http_requests.al:47:1
+   |
+46 |         }
+47 |     }
+   | ^^^^^^ unaligned dedent
+48 | }
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:47:5
+   |
+46 |         }
+47 |     }
+   |     ^ unexpected closing '}' without matching '{'
+48 | }
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_17_http_requests.al:48:1
+   |
+47 |     }
+48 | }
+   | ^^^^^^ unaligned dedent
+49 | post_response := http_post_simulation("https://api.example.com/create", "{\"name\": \"test\"}")
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:48:1
+   |
+47 |     }
+48 | }
+   | ^ unexpected closing '}' without matching '{'
+49 | post_response := http_post_simulation("https://api.example.com/create", "{\"name\": \"test\"}")
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_17_http_requests.al:113:62
+   |
+112 |             result["host"] = path_parts[0]
+113 |             result["path"] = "/" + string.join(path_parts[1..], "/")
+   |                                                              ^ unexpected closing ']' without matching '['
+114 |         }
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "," (,)
+  --> tests/test_17_http_requests.al:113:63
+   |
+112 |             result["host"] = path_parts[0]
+113 |             result["path"] = "/" + string.join(path_parts[1..], "/")
+   |                                                               ^ expected ']' to close list or index, got "," (,)
+114 |         }
+   |
+   = help: unclosed '[' from line 113, col 58; add a closing ']'
+
+error: unexpected indentation
+  --> tests/test_17_http_requests.al:198:1
+   |
+197 |     types := {
+198 |         ".json": "application/json",
+   | ^^^^^^ unexpected indentation
+199 |         ".xml": "application/xml",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:198:7
+   |
+197 |     types := {
+198 |         ".json": "application/json",
+   |       ^ expected end of statement (newline)
+199 |         ".xml": "application/xml",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:199:15
+   |
+198 |         ".json": "application/json",
+199 |         ".xml": "application/xml",
+   |               ^ expected end of statement (newline)
+200 |         ".html": "text/html",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:200:16
+   |
+199 |         ".xml": "application/xml",
+200 |         ".html": "text/html",
+   |                ^ expected end of statement (newline)
+201 |         ".txt": "text/plain",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:201:15
+   |
+200 |         ".html": "text/html",
+201 |         ".txt": "text/plain",
+   |               ^ expected end of statement (newline)
+202 |         ".pdf": "application/pdf"
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_17_http_requests.al:202:15
+   |
+201 |         ".txt": "text/plain",
+202 |         ".pdf": "application/pdf"
+   |               ^ expected end of statement (newline)
+203 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_17_http_requests.al:208:1
+   |
+207 |     return "application/octet-stream"
+208 | }
+   | ^^^^^^ unaligned dedent
+209 | assert get_content_type(".json") == "application/json"
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_17_http_requests.al:208:1
+   |
+207 |     return "application/octet-stream"
+208 | }
+   | ^ unexpected closing '}' without matching '{'
+209 | assert get_content_type(".json") == "application/json"
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 46 errors. Execution aborted.
+

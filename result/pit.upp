@@ -1,0 +1,19 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/pit.al - 8253/8254 Programmable Interval Timer (PIT) Driver
+
+use std.cpu
+
+PIT_CHANNEL0_DATA := 64 // 0x40
+PIT_COMMAND       := 67 // 0x43
+
+// Initializes PIT Channel 0 in Mode 3 (Square Wave Generator) with frequency in Hz
+pub func init(freqHz: int) {
+    baseFreq := 1193180 // 1.193180 MHz internal clock
+    divisor := baseFreq / freqHz
+    // 0x36: Channel 0, lobyte/hibyte, Mode 3, 16-bit binary
+    cpu.out8(PIT_COMMAND, 54) // 0x36
+    cpu.out8(PIT_CHANNEL0_DATA, divisor % 256)
+    cpu.out8(PIT_CHANNEL0_DATA, (divisor / 256) % 256)
+}

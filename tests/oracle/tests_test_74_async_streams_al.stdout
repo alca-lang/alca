@@ -1,0 +1,337 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:5:10
+   |
+ 4 | // 1. Async stream processing simulation
+ 5 | async def process_async_stream():
+   |          ^ expected end of statement (newline)
+ 6 |     result := ""
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:6:1
+   |
+ 5 | async def process_async_stream():
+ 6 |     result := ""
+   | ^^^^^^ unexpected indentation
+ 7 |     input := "async data"
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:12:1
+   |
+11 | // 2. Async stream buffering
+12 | async def buffer_stream():
+   | ^^^^^^ unaligned dedent
+13 |     buffer: list[string] = []
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:12:10
+   |
+11 | // 2. Async stream buffering
+12 | async def buffer_stream():
+   |          ^ expected end of statement (newline)
+13 |     buffer: list[string] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:13:1
+   |
+12 | async def buffer_stream():
+13 |     buffer: list[string] = []
+   | ^^^^^^ unexpected indentation
+14 |     buffer = buffer + ["chunk1"]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:19:1
+   |
+18 | // 3. Async stream error handling
+19 | async def stream_with_error():
+   | ^^^^^^ unaligned dedent
+20 |     err_slot: error | null = null
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:19:10
+   |
+18 | // 3. Async stream error handling
+19 | async def stream_with_error():
+   |          ^ expected end of statement (newline)
+20 |     err_slot: error | null = null
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:20:1
+   |
+19 | async def stream_with_error():
+20 |     err_slot: error | null = null
+   | ^^^^^^ unexpected indentation
+21 |     result := 10 / 0 ?>>> err_slot
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:28:1
+   |
+27 | // 4. Async stream timeout
+28 | async def timeout_stream():
+   | ^^^^^^ unaligned dedent
+29 |     use std.time
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:28:10
+   |
+27 | // 4. Async stream timeout
+28 | async def timeout_stream():
+   |          ^ expected end of statement (newline)
+29 |     use std.time
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:29:1
+   |
+28 | async def timeout_stream():
+29 |     use std.time
+   | ^^^^^^ unexpected indentation
+30 |     start := time.now()
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:38:1
+   |
+37 | // 5. Async stream transformation
+38 | async def transform_stream_async(data: string) -> string:
+   | ^^^^^^ unaligned dedent
+39 |     use std.string
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:38:10
+   |
+37 | // 5. Async stream transformation
+38 | async def transform_stream_async(data: string) -> string:
+   |          ^ expected end of statement (newline)
+39 |     use std.string
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:39:1
+   |
+38 | async def transform_stream_async(data: string) -> string:
+39 |     use std.string
+   | ^^^^^^ unexpected indentation
+40 |     return string.upper(data)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:43:1
+   |
+42 | // 6. Async stream filtering
+43 | async def filter_stream_async(items: list[int]) -> list[int]:
+   | ^^^^^^ unaligned dedent
+44 |     result: list[int] = []
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:43:10
+   |
+42 | // 6. Async stream filtering
+43 | async def filter_stream_async(items: list[int]) -> list[int]:
+   |          ^ expected end of statement (newline)
+44 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:44:1
+   |
+43 | async def filter_stream_async(items: list[int]) -> list[int]:
+44 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+45 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:53:1
+   |
+52 | // 7. Async stream aggregation
+53 | async def aggregate_stream_async(items: list[int]) -> int:
+   | ^^^^^^ unaligned dedent
+54 |     total := 0
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:53:10
+   |
+52 | // 7. Async stream aggregation
+53 | async def aggregate_stream_async(items: list[int]) -> int:
+   |          ^ expected end of statement (newline)
+54 |     total := 0
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:54:1
+   |
+53 | async def aggregate_stream_async(items: list[int]) -> int:
+54 |     total := 0
+   | ^^^^^^ unexpected indentation
+55 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:61:1
+   |
+60 | // 8. Async stream batch processing
+61 | async def process_batch(items: list[int]) -> list[int]:
+   | ^^^^^^ unaligned dedent
+62 |     result: list[int] = []
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:61:10
+   |
+60 | // 8. Async stream batch processing
+61 | async def process_batch(items: list[int]) -> list[int]:
+   |          ^ expected end of statement (newline)
+62 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:62:1
+   |
+61 | async def process_batch(items: list[int]) -> list[int]:
+62 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+63 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:69:1
+   |
+68 | // 9. Async stream ordering
+69 | async def ordered_stream(items: list[int]) -> list[int]:
+   | ^^^^^^ unaligned dedent
+70 |     // Simulate ordered processing
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:69:10
+   |
+68 | // 9. Async stream ordering
+69 | async def ordered_stream(items: list[int]) -> list[int]:
+   |          ^ expected end of statement (newline)
+70 |     // Simulate ordered processing
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:71:1
+   |
+70 |     // Simulate ordered processing
+71 |     return items
+   | ^^^^^^ unexpected indentation
+72 | 
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:74:1
+   |
+73 | // 10. Async stream cancellation simulation
+74 | cancelled := false
+   | ^^^^^^ unaligned dedent
+75 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected end of statement (newline)
+  --> tests/test_74_async_streams.al:76:10
+   |
+75 | 
+76 | async def cancellable_stream():
+   |          ^ expected end of statement (newline)
+77 |     if cancelled {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:77:1
+   |
+76 | async def cancellable_stream():
+77 |     if cancelled {
+   | ^^^^^^ unexpected indentation
+78 |         return "cancelled"
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_74_async_streams.al:78:1
+   |
+77 |     if cancelled {
+78 |         return "cancelled"
+   | ^^^^^^ unexpected indentation
+79 |     }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:79:1
+   |
+78 |         return "cancelled"
+79 |     }
+   | ^^^^^^ unaligned dedent
+80 |     return "completed"
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_74_async_streams.al:79:5
+   |
+78 |         return "cancelled"
+79 |     }
+   |     ^ unexpected closing '}' without matching '{'
+80 |     return "completed"
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_74_async_streams.al:82:1
+   |
+81 | 
+82 | println("✓ test_74_async_streams passed")
+   | ^^^^^^ unaligned dedent
+83 | 
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+Found 33 errors. Execution aborted.
+

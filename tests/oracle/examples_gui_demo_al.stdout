@@ -1,0 +1,16 @@
+EXITCODE: 0
+--- STDOUT ---
+=== Pawl GUI Module Loaded ===
+1. Native dialogs API ready: gui.alert, gui.confirm, gui.prompt, gui.open_file, gui.save_file, gui.notify
+2. Desktop WebView API ready: gui.webview(title, htmlOrURL, width, height)
+3. Native Windows & Widgets API ready: win = gui.window(title, w, h)
+   - win.add_label(text)
+   - win.add_button(text, callback)
+   - win.add_input(placeholder)
+   - win.add_checkbox(text, checked)
+   - win.add_progress(percent)
+   - win.show() / win.run()
+=== GUI Verification Complete ===
+
+--- STDERR ---
+

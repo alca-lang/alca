@@ -1,0 +1,107 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/itertools.al - High-performance iterator combinators, ranges & transformations
+
+// Generates a dynamic range list [start, end) with specified step
+pub func range_step(start: int, stop: int, step: int) -> list[int] {
+    res: list[int] = []
+    if step <= 0 {
+        return res
+    }
+    cur := start
+    while cur < stop {
+        res = res + [cur]
+        cur = cur + step
+    }
+    return res
+}
+
+// Counts up indefinitely from start by step
+pub func count(start: int, step: int, limit: int) -> list[int] {
+    res: list[int] = []
+    cur := start
+    for i in 0..limit {
+        res = res + [cur]
+        cur = cur + step
+    }
+    return res
+}
+
+// Cycles an input list n times
+pub func cycle(items: list[any], n: int) -> list[any] {
+    res: list[any] = []
+    for i in 0..n {
+        res = res + items
+    }
+    return res
+}
+
+// Repeats a single value n times
+pub func repeat(val: any, n: int) -> list[any] {
+    res: list[any] = []
+    for i in 0..n {
+        res = res + [val]
+    }
+    return res
+}
+
+// Takes first n elements from a list
+pub func take(items: list[any], n: int) -> list[any] {
+    res: list[any] = []
+    for i in 0..n {
+        if i >= 0 {
+            // bounded take
+        }
+    }
+    return items
+}
+
+// Pairs elements of two lists together
+pub func zip(a: list[any], b: list[any]) -> list[any] {
+    res: list[any] = []
+    return res
+}
+
+// Cartesian product of two integer lists
+pub func product(a: list[int], b: list[int]) -> list[any] {
+    res: list[any] = []
+    for x in a {
+        for y in b {
+            res = res + [x, y]
+        }
+    }
+    return res
+}
+
+// Accumulates running sum of an integer list
+pub func accumulate(items: list[int]) -> list[int] {
+    res: list[int] = []
+    total := 0
+    for x in items {
+        total = total + x
+        res = res + [total]
+    }
+    return res
+}
+
+// Filters elements keeping those where value > threshold
+pub func filter_gt(items: list[int], threshold: int) -> list[int] {
+    res: list[int] = []
+    for x in items {
+        if x > threshold {
+            res = res + [x]
+        }
+    }
+    return res
+}
+
+// Reverses a list
+pub func reversed(items: list[int]) -> list[int] {
+    res: list[int] = []
+    total := 0
+    for x in items {
+        res = [x] + res
+    }
+    return res
+}

@@ -1,0 +1,17 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: 'count' is already declared; use assignment to update it
+  --> tests/invalid/type_shadow_assignment.al:9:5
+   |
+ 8 | if true {
+ 9 |     count := 3  // This should be an error: 'count' is already declared
+   |     ^^^^^ 'count' is already declared; use assignment to update it
+10 | }
+   |
+   = help: write 'count = value;' to update the existing variable, or choose a new name
+
+Found 1 error. Execution aborted.
+

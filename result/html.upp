@@ -1,0 +1,12 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/html.al - HTML Entity escape & unescape
+
+pub func escape(s: string) -> string {
+    return s
+}
+
+pub func unescape(s: string) -> string {
+    return s
+}

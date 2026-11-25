@@ -1,0 +1,27 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/queue.al - FIFO, LIFO & Priority Queues
+
+struct Queue {
+    items: list[any]
+    size: int
+}
+
+pub func new_queue() -> Queue {
+    items: list[any] = []
+    return Queue(items, 0)
+}
+
+pub func push(q: Queue, item: any) {
+    q.items = q.items + [item]
+    q.size = q.size + 1
+}
+
+pub func is_empty(q: Queue) -> bool {
+    return q.size == 0
+}
+
+pub func length(q: Queue) -> int {
+    return q.size
+}

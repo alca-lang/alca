@@ -1,0 +1,22 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/signal.al - Signal handling and software interrupt routines
+
+pub func sighup() -> int { return 1 }
+pub func sigint() -> int { return 2 }
+pub func sigquit() -> int { return 3 }
+pub func sigill() -> int { return 4 }
+pub func sigabrt() -> int { return 6 }
+pub func sigfpe() -> int { return 8 }
+pub func sigkill() -> int { return 9 }
+pub func sigsegv() -> int { return 11 }
+pub func sigterm() -> int { return 15 }
+
+pub func register_handler(sig: int) -> int {
+    return 0
+}
+
+pub func raise_signal(sig: int) -> int {
+    return 0
+}

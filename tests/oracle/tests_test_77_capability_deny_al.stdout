@@ -1,0 +1,16 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_77_capability_deny.al:72:14
+   |
+71 | error_msg := permission_error("read_file")
+72 | assert string.contains(error_msg, "Permission denied")
+   |              ^ type func(any) -> string has no field 'contains'
+73 | 
+   |
+
+Found 1 error. Execution aborted.
+

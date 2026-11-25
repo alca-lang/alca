@@ -1,0 +1,27 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected indentation
+  --> tests/test_30_timestamp_formats.al:182:1
+   |
+181 |     return string(hours) + ":" + string(minutes / 10) + string(minutes % 10) + ":" +
+182 |            string(seconds / 10) + string(seconds % 10)
+   | ^^^^^^ unexpected indentation
+183 | }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_30_timestamp_formats.al:182:7
+   |
+181 |     return string(hours) + ":" + string(minutes / 10) + string(minutes % 10) + ":" +
+182 |            string(seconds / 10) + string(seconds % 10)
+   |       ^ expected end of statement (newline)
+183 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+Found 2 errors. Execution aborted.
+

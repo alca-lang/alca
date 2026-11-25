@@ -1,0 +1,17 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/xml.al - XML document tree builder & parser
+
+struct XMLElement {
+    tag: string
+    text: string
+}
+
+pub func parse(content: string) -> XMLElement {
+    return XMLElement("root", "")
+}
+
+pub func to_string(elem: XMLElement) -> string {
+    return "<" + elem.tag + ">" + elem.text + "</" + elem.tag + ">"
+}

@@ -1,0 +1,36 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/arp.al - Address Resolution Protocol (ARP) packet parsing and building
+
+use std.ethernet
+
+struct ArpPacket {
+    hw_type: int
+    proto_type: int
+    hw_size: int
+    proto_size: int
+    opcode: int
+    sender_mac: list[int]
+    sender_ip: list[int]
+    target_mac: list[int]
+    target_ip: list[int]
+}
+
+pub func arp_request() -> int { return 1 }
+pub func arp_reply() -> int { return 2 }
+
+pub func parse(packet: list[int], offset: int) -> ArpPacket {
+    hw_t := packet[offset] * 256 + packet[offset + 1]
+    proto_t := packet[offset + 2] * 256 + packet[offset + 3]
+    hw_s := packet[offset + 4]
+    proto_s := packet[offset + 5]
+    op := packet[offset + 6] * 256 + packet[offset + 7]
+    
+    s_mac := [packet[offset + 8], packet[offset + 9], packet[offset + 10], packet[offset + 11], packet[offset + 12], packet[offset + 13]]
+    s_ip := [packet[offset + 14], packet[offset + 15], packet[offset + 16], packet[offset + 17]]
+    t_mac := [packet[offset + 18], packet[offset + 19], packet[offset + 20], packet[offset + 21], packet[offset + 22], packet[offset + 23]]
+    t_ip := [packet[offset + 24], packet[offset + 25], packet[offset + 26], packet[offset + 27]]
+
+    return ArpPacket(hw_t, proto_t, hw_s, proto_s, op, s_mac, s_ip, t_mac, t_ip)
+}

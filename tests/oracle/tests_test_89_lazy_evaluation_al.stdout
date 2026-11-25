@@ -1,0 +1,407 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_89_lazy_evaluation.al:45:24
+   |
+44 | // 4. Lazy function application
+45 | func lazy_apply(f: func(int) -> int, x: int) -> func() -> int {
+   |                        ^ expected ')' to close parenthesis, got "(" (()
+46 |     return func() -> int:
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_89_lazy_evaluation.al:45:20
+   |
+44 | // 4. Lazy function application
+45 | func lazy_apply(f: func(int) -> int, x: int) -> func() -> int {
+   |                    ^^^^ expected '{' after function signature
+46 |     return func() -> int:
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_89_lazy_evaluation.al:45:29
+   |
+44 | // 4. Lazy function application
+45 | func lazy_apply(f: func(int) -> int, x: int) -> func() -> int {
+   |                             ^ expected end of statement (newline)
+46 |     return func() -> int:
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_89_lazy_evaluation.al:46:1
+   |
+45 | func lazy_apply(f: func(int) -> int, x: int) -> func() -> int {
+46 |     return func() -> int:
+   | ^^^^^^ unexpected indentation
+47 |         return f(x)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_89_lazy_evaluation.al:47:1
+   |
+46 |     return func() -> int:
+47 |         return f(x)
+   | ^^^^^^ unexpected indentation
+48 | }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_89_lazy_evaluation.al:48:1
+   |
+47 |         return f(x)
+48 | }
+   | ^^^^^^ unaligned dedent
+49 | lazy_func := lazy_apply(func(n: int) -> int:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_89_lazy_evaluation.al:48:1
+   |
+47 |         return f(x)
+48 | }
+   | ^ unexpected closing '}' without matching '{'
+49 | lazy_func := lazy_apply(func(n: int) -> int:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_89_lazy_evaluation.al:49:25
+   |
+48 | }
+49 | lazy_func := lazy_apply(func(n: int) -> int:
+   |                         ^^^^ unexpected token "func" (func)
+50 |     return n * 2
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_89_lazy_evaluation.al:49:29
+   |
+48 | }
+49 | lazy_func := lazy_apply(func(n: int) -> int:
+   |                             ^ expected ')' to close parenthesis, got "(" (()
+50 |     return n * 2
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_89_lazy_evaluation.al:49:31
+   |
+48 | }
+49 | lazy_func := lazy_apply(func(n: int) -> int:
+   |                               ^ expected ')' to close parenthesis, got ":" (:)
+50 |     return n * 2
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_89_lazy_evaluation.al:49:31
+   |
+48 | }
+49 | lazy_func := lazy_apply(func(n: int) -> int:
+   |                               ^ expected end of statement (newline)
+50 |     return n * 2
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_89_lazy_evaluation.al:50:1
+   |
+49 | lazy_func := lazy_apply(func(n: int) -> int:
+50 |     return n * 2
+   | ^^^^^^ unexpected indentation
+51 | , 5)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_89_lazy_evaluation.al:51:1
+   |
+50 |     return n * 2
+51 | , 5)
+   | ^^^^^^ unaligned dedent
+52 | assert lazy_func() == 10
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected ',' outside list, map, or argument list
+  --> tests/test_89_lazy_evaluation.al:51:1
+   |
+50 |     return n * 2
+51 | , 5)
+   | ^ unexpected ',' outside list, map, or argument list
+52 | assert lazy_func() == 10
+   |
+   = help: remove the extra comma or enclose the items in brackets or parentheses
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_89_lazy_evaluation.al:55:45
+   |
+54 | // 5. Lazy map
+55 | func lazy_map(items: list[int], mapper: func(int) -> int) -> list[int] {
+   |                                             ^ expected ')' to close parenthesis, got "(" (()
+56 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_89_lazy_evaluation.al:55:41
+   |
+54 | // 5. Lazy map
+55 | func lazy_map(items: list[int], mapper: func(int) -> int) -> list[int] {
+   |                                         ^^^^ expected '{' after function signature
+56 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_89_lazy_evaluation.al:55:50
+   |
+54 | // 5. Lazy map
+55 | func lazy_map(items: list[int], mapper: func(int) -> int) -> list[int] {
+   |                                                  ^ expected end of statement (newline)
+56 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_89_lazy_evaluation.al:56:1
+   |
+55 | func lazy_map(items: list[int], mapper: func(int) -> int) -> list[int] {
+56 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+57 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_89_lazy_evaluation.al:61:1
+   |
+60 |     return result
+61 | }
+   | ^^^^^^ unaligned dedent
+62 | lazy_mapped := lazy_map([1, 2, 3], func(n: int) -> int:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_89_lazy_evaluation.al:61:1
+   |
+60 |     return result
+61 | }
+   | ^ unexpected closing '}' without matching '{'
+62 | lazy_mapped := lazy_map([1, 2, 3], func(n: int) -> int:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_89_lazy_evaluation.al:62:36
+   |
+61 | }
+62 | lazy_mapped := lazy_map([1, 2, 3], func(n: int) -> int:
+   |                                    ^^^^ unexpected token "func" (func)
+63 |     return n * n
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_89_lazy_evaluation.al:62:40
+   |
+61 | }
+62 | lazy_mapped := lazy_map([1, 2, 3], func(n: int) -> int:
+   |                                        ^ expected ')' to close parenthesis, got "(" (()
+63 |     return n * n
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_89_lazy_evaluation.al:62:42
+   |
+61 | }
+62 | lazy_mapped := lazy_map([1, 2, 3], func(n: int) -> int:
+   |                                          ^ expected ')' to close parenthesis, got ":" (:)
+63 |     return n * n
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_89_lazy_evaluation.al:62:42
+   |
+61 | }
+62 | lazy_mapped := lazy_map([1, 2, 3], func(n: int) -> int:
+   |                                          ^ expected end of statement (newline)
+63 |     return n * n
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_89_lazy_evaluation.al:63:1
+   |
+62 | lazy_mapped := lazy_map([1, 2, 3], func(n: int) -> int:
+63 |     return n * n
+   | ^^^^^^ unexpected indentation
+64 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_89_lazy_evaluation.al:64:1
+   |
+63 |     return n * n
+64 | )
+   | ^^^^^^ unaligned dedent
+65 | assert lazy_mapped == [1, 4, 9]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_89_lazy_evaluation.al:64:1
+   |
+63 |     return n * n
+64 | )
+   | ^ unexpected closing ')' without matching '('
+65 | assert lazy_mapped == [1, 4, 9]
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_89_lazy_evaluation.al:68:51
+   |
+67 | // 6. Lazy filter
+68 | func lazy_filter(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                   ^ expected ')' to close parenthesis, got "(" (()
+69 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_89_lazy_evaluation.al:68:47
+   |
+67 | // 6. Lazy filter
+68 | func lazy_filter(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                               ^^^^ expected '{' after function signature
+69 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_89_lazy_evaluation.al:68:56
+   |
+67 | // 6. Lazy filter
+68 | func lazy_filter(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                        ^ expected end of statement (newline)
+69 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_89_lazy_evaluation.al:69:1
+   |
+68 | func lazy_filter(items: list[int], predicate: func(int) -> bool) -> list[int] {
+69 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+70 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_89_lazy_evaluation.al:76:1
+   |
+75 |     return result
+76 | }
+   | ^^^^^^ unaligned dedent
+77 | lazy_filtered := lazy_filter([1, 2, 3, 4], func(n: int) -> bool:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_89_lazy_evaluation.al:76:1
+   |
+75 |     return result
+76 | }
+   | ^ unexpected closing '}' without matching '{'
+77 | lazy_filtered := lazy_filter([1, 2, 3, 4], func(n: int) -> bool:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_89_lazy_evaluation.al:77:44
+   |
+76 | }
+77 | lazy_filtered := lazy_filter([1, 2, 3, 4], func(n: int) -> bool:
+   |                                            ^^^^ unexpected token "func" (func)
+78 |     return n % 2 == 0
+   |
+   = help: check the syntax around this token
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_89_lazy_evaluation.al:77:48
+   |
+76 | }
+77 | lazy_filtered := lazy_filter([1, 2, 3, 4], func(n: int) -> bool:
+   |                                                ^ expected ')' to close parenthesis, got "(" (()
+78 |     return n % 2 == 0
+   |
+   = help: did you forget a closing ')'?
+
+error: expected ')' to close parenthesis, got ":" (:)
+  --> tests/test_89_lazy_evaluation.al:77:50
+   |
+76 | }
+77 | lazy_filtered := lazy_filter([1, 2, 3, 4], func(n: int) -> bool:
+   |                                                  ^ expected ')' to close parenthesis, got ":" (:)
+78 |     return n % 2 == 0
+   |
+   = help: did you forget a closing ')'?
+
+error: expected end of statement (newline)
+  --> tests/test_89_lazy_evaluation.al:77:50
+   |
+76 | }
+77 | lazy_filtered := lazy_filter([1, 2, 3, 4], func(n: int) -> bool:
+   |                                                  ^ expected end of statement (newline)
+78 |     return n % 2 == 0
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_89_lazy_evaluation.al:78:1
+   |
+77 | lazy_filtered := lazy_filter([1, 2, 3, 4], func(n: int) -> bool:
+78 |     return n % 2 == 0
+   | ^^^^^^ unexpected indentation
+79 | )
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_89_lazy_evaluation.al:79:1
+   |
+78 |     return n % 2 == 0
+79 | )
+   | ^^^^^^ unaligned dedent
+80 | assert lazy_filtered == [2, 4]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ')' without matching '('
+  --> tests/test_89_lazy_evaluation.al:79:1
+   |
+78 |     return n % 2 == 0
+79 | )
+   | ^ unexpected closing ')' without matching '('
+80 | assert lazy_filtered == [2, 4]
+   |
+   = help: check for an unclosed '(' earlier, or remove this extra ')'
+
+Found 40 errors. Execution aborted.
+

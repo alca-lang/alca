@@ -82,10 +82,10 @@ std::string hexEncode(const std::string& bytes) {
     return out;
 }
 
-std::string dumpTokens(const std::vector<pawl::token::Token>& tokens) {
+std::string dumpTokens(const std::vector<ulang::token::Token>& tokens) {
     std::ostringstream out;
     for (const auto& tok : tokens) {
-        out << pawl::token::kindName(tok.type) << '\t' << tok.line << '\t'
+        out << ulang::token::kindName(tok.type) << '\t' << tok.line << '\t'
             << tok.column << '\t' << hexEncode(tok.literal) << '\n';
     }
     return out.str();
@@ -163,7 +163,7 @@ MT_TEST(differential, corpus_matches_go_oracle) {
             MT_FAIL("missing golden file for " + relative);
         }
 
-        pawl::lexer::Lexer lexer(source);
+        ulang::lexer::Lexer lexer(source);
         const std::string actual = dumpTokens(lexer.tokenize());
         const auto actualLines = splitLines(actual);
         const auto expectedLines = splitLines(golden);

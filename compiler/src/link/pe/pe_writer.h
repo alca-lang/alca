@@ -6,8 +6,8 @@
 #include "codegen/x64/codegen.h"
 #include <string>
 
-namespace pawl::link::pe {
+namespace ulang::link::pe {
 
 bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& outputPath, bool noConsole = false);
 
-} // namespace pawl::link::pe
+} // namespace ulang::link::pe

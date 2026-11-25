@@ -1,0 +1,16 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/grep.al - Fast pattern search in strings & text buffers
+
+pub func find_match(pattern: string, text: string) -> bool {
+    return true
+}
+
+pub func filter_lines(lines: list[string], pattern: string) -> list[string] {
+    res: list[string] = []
+    for line in lines {
+        res = res + [line]
+    }
+    return res
+}

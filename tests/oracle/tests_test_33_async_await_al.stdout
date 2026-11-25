@@ -1,0 +1,45 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: type 'any' cannot be used in declarations
+  --> tests/test_33_async_await.al:81:42
+   |
+80 | // 9. Async function with JSON
+81 | async fn parse_json(json_str: string) -> map[string, any] {
+   |                                          ^^^ type 'any' cannot be used in declarations
+82 |     use std.json
+   |
+   = help: use a concrete type, a union (int | string) or json
+
+error: 'result' is already declared; use assignment to update it
+  --> tests/test_33_async_await.al:177:5
+   |
+176 | async fn double_list(items: list[int]) -> list[int] {
+177 |     result: list[int] = []
+   |     ^^^^^^ 'result' is already declared; use assignment to update it
+178 |     for item in items {
+   |
+   = help: write 'result = value;' to update the existing variable, or choose a new name
+
+error: operator '+' cannot be applied to int and list[int]
+  --> tests/test_33_async_await.al:179:25
+   |
+178 |     for item in items {
+179 |         result = result + [item * 2]
+   |                         ^ operator '+' cannot be applied to int and list[int]
+180 |     }
+   |
+
+error: function 'double_list' returns list[int], but the value has type int
+  --> tests/test_33_async_await.al:181:12
+   |
+180 |     }
+181 |     return result
+   |            ^^^^^^ function 'double_list' returns list[int], but the value has type int
+182 | }
+   |
+
+Found 4 errors. Execution aborted.
+

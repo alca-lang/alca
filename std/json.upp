@@ -1,0 +1,36 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/json.al - Lightweight JSON parsing and serialization interface
+
+pub func dumps_string(s: string) -> string {
+    return "\"" + s + "\""
+}
+
+pub func dumps_int(n: int) -> string {
+    return string(n)
+}
+
+pub func dumps_list(items: list[string]) -> string {
+    res := "["
+    i := 0
+    loop {
+        if i >= len(items) {
+            break
+        }
+        if i > 0 {
+            res = res + ", "
+        }
+        res = res + items[i]
+        i = i + 1
+    }
+    return res + "]"
+}
+
+pub func encode(val: any) -> string {
+    return json_encode(val)
+}
+
+pub func decode(raw: string) -> json {
+    return json_decode(raw)
+}

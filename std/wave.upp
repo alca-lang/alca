@@ -1,0 +1,24 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/wave.al - RIFF / WAVE PCM audio file reader & writer
+
+use std.mem
+
+struct WaveFile {
+    channels: int
+    sample_rate: int
+    bits_per_sample: int
+}
+
+pub func open(path: string) -> WaveFile {
+    return WaveFile(2, 44100, 16)
+}
+
+pub func write_header(dstAddr: int, sampleRate: int, channels: int) {
+    // Writes "RIFF" and "WAVE" fmt chunk
+    mem.write_u8(dstAddr, 82, 0) // 'R'
+    mem.write_u8(dstAddr, 73, 1) // 'I'
+    mem.write_u8(dstAddr, 70, 2) // 'F'
+    mem.write_u8(dstAddr, 70, 3) // 'F'
+}

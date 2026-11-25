@@ -9,7 +9,7 @@
 #include <vector>
 #include <memory>
 
-namespace pawl::ir {
+namespace ulang::ir {
 
 enum class Type {
     Void,
@@ -70,6 +70,8 @@ enum class Op {
     IntToStr,
     IntToFloat,
     FloatToInt,
+    MathUnary,
+    MathBinary,
     // Memory & Objects (Stage 4)
     Alloc,
     Load,
@@ -77,7 +79,19 @@ enum class Op {
     CallPtr,
     // Error handling (Stage 5)
     SetErr,
-    GetErr
+    GetErr,
+    // Bare-Metal & OS Dev (Stage 8)
+    CpuCli,
+    CpuSti,
+    CpuHlt,
+    CpuPause,
+    CpuIn,
+    CpuOut,
+    CpuReadCr,
+    CpuWriteCr,
+    CpuInvlpg,
+    RawLoad,
+    RawStore
 };
 
 std::string_view opToString(Op op);
@@ -134,4 +148,4 @@ struct Program {
     std::string toString() const;
 };
 
-} // namespace pawl::ir
+} // namespace ulang::ir

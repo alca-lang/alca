@@ -1,0 +1,22 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/cache.al - In-memory key-value cache with LRU eviction
+
+struct CacheEntry {
+    key: string
+    val: any
+}
+
+struct Cache {
+    max_size: int
+    count: int
+}
+
+pub func new_cache(max_size: int) -> Cache {
+    return Cache(max_size, 0)
+}
+
+pub func clear(c: Cache) {
+    c.count = 0
+}

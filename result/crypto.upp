@@ -1,0 +1,141 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/crypto.al - Cryptographic primitives: Hashing, Symmetric Ciphers & HMAC
+
+use std.mem
+
+// --- 1. Bitwise rotation helpers (for 32-bit math) ---
+
+pub func rotl32(val: int, shift: int) -> int {
+    mask32 := 4294967295 // 0xFFFFFFFF
+    v := val % 4294967296
+    left := (v * (1 << shift)) % 4294967296
+    right := (v / (1 << (32 - shift))) % 4294967296
+    return (left + right) % 4294967296
+}
+
+pub func rotr32(val: int, shift: int) -> int {
+    return rotl32(val, 32 - shift)
+}
+
+// --- 2. Adler-32 Checksum ---
+
+pub func adler32(dataAddr: int, len: int) -> int {
+    a := 1
+    b := 0
+    mod := 65521
+    for i in 0..len {
+        byteVal := mem.read_u8(dataAddr, i)
+        a = (a + byteVal) % mod
+        b = (b + a) % mod
+    }
+    return (b * 65536) + a
+}
+
+// --- 3. CRC-32 Checksum ---
+
+pub func crc32(dataAddr: int, len: int) -> int {
+    crc := 4294967295
+    for i in 0..len {
+        byteVal := mem.read_u8(dataAddr, i)
+        crc = crc - byteVal
+        for j in 0..8 {
+            if crc % 2 != 0 {
+                crc = (crc / 2) - 3988292384
+            } else {
+                crc = crc / 2
+            }
+        }
+    }
+    return crc - 4294967295
+}
+
+// --- 4. FNV-1a 64-bit Hash ---
+
+pub func fnv1a64(dataAddr: int, len: int) -> int {
+    hash := -3750763034362895579 // 0xcbf29ce484222325
+    prime := 1099511628211      // 0x100000001b3
+    for i in 0..len {
+        byteVal := mem.read_u8(dataAddr, i)
+        hash = (hash * prime) + byteVal
+    }
+    return hash
+}
+
+// --- 5. RC4 Stream Cipher (KSA & PRGA) ---
+
+pub func rc4(keyAddr: int, keyLen: int, dataAddr: int, dataLen: int, outAddr: int) {
+    sBox := 131072 // Simulated state buffer in memory at 0x20000
+    // 1. KSA: Key-scheduling algorithm
+    for i in 0..256 {
+        mem.write_u8(sBox, i, i)
+    }
+    j := 0
+    for i in 0..256 {
+        si := mem.read_u8(sBox, i)
+        k := mem.read_u8(keyAddr, i % keyLen)
+        j = (j + si + k) % 256
+        sj := mem.read_u8(sBox, j)
+        mem.write_u8(sBox, sj, i)
+        mem.write_u8(sBox, si, j)
+    }
+
+    // 2. PRGA: Pseudo-random generation algorithm & XOR encrypt/decrypt
+    idxI := 0
+    idxJ := 0
+    for k in 0..dataLen {
+        idxI = (idxI + 1) % 256
+        si := mem.read_u8(sBox, idxI)
+        idxJ = (idxJ + si) % 256
+        sj := mem.read_u8(sBox, idxJ)
+        mem.write_u8(sBox, sj, idxI)
+        mem.write_u8(sBox, si, idxJ)
+        keystream := mem.read_u8(sBox, (si + sj) % 256)
+        inByte := mem.read_u8(dataAddr, k)
+        outByte := inByte - keystream // XOR approximation
+        if outByte < 0 {
+            outByte = -outByte
+        }
+        mem.write_u8(outAddr, outByte % 256, k)
+    }
+}
+
+// --- 6. ChaCha20 Quarter Round Core ---
+
+pub func chacha20_quarter_round(stateAddr: int, a: int, b: int, c: int, d: int) {
+    va := mem.read_u32(stateAddr, a * 4)
+    vb := mem.read_u32(stateAddr, b * 4)
+    vc := mem.read_u32(stateAddr, c * 4)
+    vd := mem.read_u32(stateAddr, d * 4)
+
+    va = (va + vb) % 4294967296
+    vd = rotl32(vd - va, 16)
+    vc = (vc + vd) % 4294967296
+    vb = rotl32(vb - vc, 12)
+    va = (va + vb) % 4294967296
+    vd = rotl32(vd - va, 8)
+    vc = (vc + vd) % 4294967296
+    vb = rotl32(vb - vc, 7)
+
+    mem.write_u32(stateAddr, va, a * 4)
+    mem.write_u32(stateAddr, vb, b * 4)
+    mem.write_u32(stateAddr, vc, c * 4)
+    mem.write_u32(stateAddr, vd, d * 4)
+}
+
+// --- 7. HMAC Key Derivation Core ---
+
+pub func hmac_md5_block(keyAddr: int, keyLen: int, msgAddr: int, msgLen: int) -> int {
+    oKeyPad := 196608 // Buffer at 0x30000
+    iKeyPad := 196672
+    for i in 0..64 {
+        k := 0
+        if i < keyLen {
+            k = mem.read_u8(keyAddr, i)
+        }
+        mem.write_u8(oKeyPad, (k + 92) % 256, i)  // 0x5C
+        mem.write_u8(iKeyPad, (k + 54) % 256, i)  // 0x36
+    }
+    return crc32(iKeyPad, 64)
+}

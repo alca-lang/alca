@@ -1,0 +1,36 @@
+EXITCODE: 0
+--- STDOUT ---
+=== 1. Просмотр текущего process-level PATH ===
+Всего записей в PATH: 33
+Первые 3 записи:
+  [0] C:/Users/geekom/.gemini/antigravity-cli/bin
+  [1] C:\WINDOWS\system32
+  [2] C:\WINDOWS
+
+=== 2. Поиск исполняемых файлов (which) ===
+Найден git: C:\Program Files\Git\cmd\git.exe
+Найден go:  C:\Program Files\Go\bin\go.exe
+
+=== 3. Проверка и динамическое добавление директории в PATH ===
+Директория в PATH до добавления: false
+Директория в PATH после add_path: true
+
+=== 4. Приоритетное добавление (prepend_path) ===
+Первый элемент в PATH теперь: C:\MyApp\bin
+
+=== 5. Удаление директории из PATH ===
+Директория в PATH после remove_path: false
+
+=== 6. Утилиты std.path для работы со списками путей ===
+Системный разделитель путей: ;
+split_list: длина 3
+join_list:  dir1;dir2;dir3
+
+=== 7. Постоянный (Persistent) User PATH ===
+Постоянных записей в User PATH: 21
+Первая постоянная запись пользователя: C:\msys64\ucrt64\bin
+
+Готово! Pawl полностью контролирует как локальный, так и постоянный системный PATH.
+
+--- STDERR ---
+

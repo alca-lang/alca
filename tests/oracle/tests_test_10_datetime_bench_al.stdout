@@ -1,0 +1,6 @@
+EXITCODE: 0
+--- STDOUT ---
+✓ test_10_datetime_bench passed
+
+--- STDERR ---
+

@@ -1,0 +1,57 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unaligned dedent
+  --> tests/test_44_match_expressions.al:127:1
+   |
+126 |         }
+127 |     _:
+   | ^^^^^^ unaligned dedent
+128 |         combined = "other"
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: variable declaration requires an initial value
+  --> tests/test_44_match_expressions.al:127:7
+   |
+126 |         }
+127 |     _:
+   |       ^ variable declaration requires an initial value
+128 |         combined = "other"
+   |
+   = help: initialize it: 'name: type = value;'
+
+error: expected end of statement (newline)
+  --> tests/test_44_match_expressions.al:127:8
+   |
+126 |         }
+127 |     _:
+   |       ^ expected end of statement (newline)
+128 |         combined = "other"
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_44_match_expressions.al:129:1
+   |
+128 |         combined = "other"
+129 | }
+   | ^^^^^^ unaligned dedent
+130 | assert combined == "5-10"
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_44_match_expressions.al:129:1
+   |
+128 |         combined = "other"
+129 | }
+   | ^ unexpected closing '}' without matching '{'
+130 | assert combined == "5-10"
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 5 errors. Execution aborted.
+

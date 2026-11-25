@@ -1,0 +1,317 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: unexpected indentation
+  --> tests/test_85_mime_types.al:12:1
+   |
+11 |     mime_types := {
+12 |         "txt": "text/plain",
+   | ^^^^^^ unexpected indentation
+13 |         "html": "text/html",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:12:7
+   |
+11 |     mime_types := {
+12 |         "txt": "text/plain",
+   |       ^ expected end of statement (newline)
+13 |         "html": "text/html",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:13:15
+   |
+12 |         "txt": "text/plain",
+13 |         "html": "text/html",
+   |               ^ expected end of statement (newline)
+14 |         "json": "application/json",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:14:15
+   |
+13 |         "html": "text/html",
+14 |         "json": "application/json",
+   |               ^ expected end of statement (newline)
+15 |         "xml": "application/xml",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:15:14
+   |
+14 |         "json": "application/json",
+15 |         "xml": "application/xml",
+   |              ^ expected end of statement (newline)
+16 |         "pdf": "application/pdf",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:16:14
+   |
+15 |         "xml": "application/xml",
+16 |         "pdf": "application/pdf",
+   |              ^ expected end of statement (newline)
+17 |         "png": "image/png",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:17:14
+   |
+16 |         "pdf": "application/pdf",
+17 |         "png": "image/png",
+   |              ^ expected end of statement (newline)
+18 |         "jpg": "image/jpeg",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:18:14
+   |
+17 |         "png": "image/png",
+18 |         "jpg": "image/jpeg",
+   |              ^ expected end of statement (newline)
+19 |         "gif": "image/gif",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:19:14
+   |
+18 |         "jpg": "image/jpeg",
+19 |         "gif": "image/gif",
+   |              ^ expected end of statement (newline)
+20 |         "mp3": "audio/mpeg",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:20:14
+   |
+19 |         "gif": "image/gif",
+20 |         "mp3": "audio/mpeg",
+   |              ^ expected end of statement (newline)
+21 |         "mp4": "video/mp4"
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:21:14
+   |
+20 |         "mp3": "audio/mpeg",
+21 |         "mp4": "video/mp4"
+   |              ^ expected end of statement (newline)
+22 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_85_mime_types.al:27:1
+   |
+26 |     return "application/octet-stream"
+27 | }
+   | ^^^^^^ unaligned dedent
+28 | assert get_mime_type("file.txt") == "text/plain"
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_85_mime_types.al:27:1
+   |
+26 |     return "application/octet-stream"
+27 | }
+   | ^ unexpected closing '}' without matching '{'
+28 | assert get_mime_type("file.txt") == "text/plain"
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected indentation
+  --> tests/test_85_mime_types.al:98:1
+   |
+97 |     return [
+98 |         "text/plain",
+   | ^^^^^^ unexpected indentation
+99 |         "text/html",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected ']' to close list or index, got "text/plain" (STRING)
+  --> tests/test_85_mime_types.al:98:9
+   |
+97 |     return [
+98 |         "text/plain",
+   |         ^^^^^^^^^^ expected ']' to close list or index, got "text/plain" (STRING)
+99 |         "text/html",
+   |
+   = help: did you forget a closing ']'?
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:98:7
+   |
+97 |     return [
+98 |         "text/plain",
+   |       ^ expected end of statement (newline)
+99 |         "text/html",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:99:20
+   |
+98 |         "text/plain",
+99 |         "text/html",
+   |                    ^ expected end of statement (newline)
+100 |         "application/json",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:100:27
+   |
+99 |         "text/html",
+100 |         "application/json",
+   |                           ^ expected end of statement (newline)
+101 |         "application/xml",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:101:26
+   |
+100 |         "application/json",
+101 |         "application/xml",
+   |                          ^ expected end of statement (newline)
+102 |         "image/png",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:102:20
+   |
+101 |         "application/xml",
+102 |         "image/png",
+   |                    ^ expected end of statement (newline)
+103 |         "image/jpeg",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:103:21
+   |
+102 |         "image/png",
+103 |         "image/jpeg",
+   |                     ^ expected end of statement (newline)
+104 |         "image/gif",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:104:20
+   |
+103 |         "image/jpeg",
+104 |         "image/gif",
+   |                    ^ expected end of statement (newline)
+105 |         "application/pdf"
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_85_mime_types.al:106:5
+   |
+105 |         "application/pdf"
+106 |     ]
+   |     ^ unexpected closing ']' without matching '['
+107 | }
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: unexpected indentation
+  --> tests/test_85_mime_types.al:114:1
+   |
+113 |     ext_map := {
+114 |         "text/plain": "txt",
+   | ^^^^^^ unexpected indentation
+115 |         "text/html": "html",
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:114:7
+   |
+113 |     ext_map := {
+114 |         "text/plain": "txt",
+   |       ^ expected end of statement (newline)
+115 |         "text/html": "html",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:115:20
+   |
+114 |         "text/plain": "txt",
+115 |         "text/html": "html",
+   |                    ^ expected end of statement (newline)
+116 |         "application/json": "json",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:116:27
+   |
+115 |         "text/html": "html",
+116 |         "application/json": "json",
+   |                           ^ expected end of statement (newline)
+117 |         "image/png": "png",
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:117:20
+   |
+116 |         "application/json": "json",
+117 |         "image/png": "png",
+   |                    ^ expected end of statement (newline)
+118 |         "image/jpeg": "jpg"
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_85_mime_types.al:118:21
+   |
+117 |         "image/png": "png",
+118 |         "image/jpeg": "jpg"
+   |                     ^ expected end of statement (newline)
+119 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_85_mime_types.al:124:1
+   |
+123 |     return "bin"
+124 | }
+   | ^^^^^^ unaligned dedent
+125 | assert mime_to_extension("text/plain") == "txt"
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_85_mime_types.al:124:1
+   |
+123 |     return "bin"
+124 | }
+   | ^ unexpected closing '}' without matching '{'
+125 | assert mime_to_extension("text/plain") == "txt"
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 31 errors. Execution aborted.
+

@@ -1,0 +1,44 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: type 'any' cannot be used in declarations
+  --> tests/test_92_full_stack_workflow.al:40:28
+   |
+39 | // 5. Response formatting
+40 | func format_response(data: any) -> string {
+   |                            ^^^ type 'any' cannot be used in declarations
+41 |     use std.json
+   |
+   = help: use a concrete type, a union (int | string) or json
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_92_full_stack_workflow.al:24:18
+   |
+23 | func validate_email(email: string) -> bool {
+24 |     return string.contains(email, "@") and string.contains(email, ".")
+   |                  ^ type func(any) -> string has no field 'contains'
+25 | }
+   |
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_92_full_stack_workflow.al:24:50
+   |
+23 | func validate_email(email: string) -> bool {
+24 |     return string.contains(email, "@") and string.contains(email, ".")
+   |                                                  ^ type func(any) -> string has no field 'contains'
+25 | }
+   |
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_92_full_stack_workflow.al:45:14
+   |
+44 | response := format_response({"status": "ok"})
+45 | assert string.contains(response, "ok")
+   |              ^ type func(any) -> string has no field 'contains'
+46 | 
+   |
+
+Found 4 errors. Execution aborted.
+

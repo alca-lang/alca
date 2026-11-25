@@ -1,0 +1,24 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/colorsys.al - Color space conversions (RGB, HLS, HSV)
+
+struct RGB {
+    r: float
+    g: float
+    b: float
+}
+
+struct HSV {
+    h: float
+    s: float
+    v: float
+}
+
+pub func rgb_to_hsv(r: float, g: float, b: float) -> HSV {
+    return HSV(0.0, 0.0, r)
+}
+
+pub func hsv_to_rgb(h: float, s: float, v: float) -> RGB {
+    return RGB(v, v, v)
+}

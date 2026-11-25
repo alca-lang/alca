@@ -1,0 +1,137 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected '{' after function signature
+  --> tests/test_84_url_operations.al:30:31
+   |
+29 | func parse_url(url: string) -> map[string, string:
+30 |     result: map[string, string] = {}
+   |                               ^ expected '{' after function signature
+31 |     if string.contains(url, "://") {
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected '=' assignment operator
+  --> tests/test_84_url_operations.al:30:33
+   |
+29 | func parse_url(url: string) -> map[string, string:
+30 |     result: map[string, string] = {}
+   |                                 ^ unexpected '=' assignment operator
+31 |     if string.contains(url, "://") {
+   |
+   = help: check if you meant ':=' for declaration or '==' for equality comparison
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_84_url_operations.al:39:66
+   |
+38 |             if len(path_parts) > 1 {
+39 |                 result["path"] = "/" + string.join(path_parts[1..], "/")
+   |                                                                  ^ unexpected closing ']' without matching '['
+40 |             }
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "," (,)
+  --> tests/test_84_url_operations.al:39:67
+   |
+38 |             if len(path_parts) > 1 {
+39 |                 result["path"] = "/" + string.join(path_parts[1..], "/")
+   |                                                                   ^ expected ']' to close list or index, got "," (,)
+40 |             }
+   |
+   = help: unclosed '[' from line 39, col 62; add a closing ']'
+
+error: unaligned dedent
+  --> tests/test_84_url_operations.al:49:1
+   |
+48 | 
+49 | parsed_url := parse_url("https://example.com/path")
+   | ^^^^^^ unaligned dedent
+50 | assert parsed_url["protocol"] == "https"
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected '{' after function signature
+  --> tests/test_84_url_operations.al:55:31
+   |
+54 | func parse_query(query: string) -> map[string, string:
+55 |     result: map[string, string] = {}
+   |                               ^ expected '{' after function signature
+56 |     if string.starts_with(query, "?") {
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected '=' assignment operator
+  --> tests/test_84_url_operations.al:55:33
+   |
+54 | func parse_query(query: string) -> map[string, string:
+55 |     result: map[string, string] = {}
+   |                                 ^ unexpected '=' assignment operator
+56 |     if string.starts_with(query, "?") {
+   |
+   = help: check if you meant ':=' for declaration or '==' for equality comparison
+
+error: unaligned dedent
+  --> tests/test_84_url_operations.al:70:1
+   |
+69 | 
+70 | query_str := "?key1=value1&key2=value2"
+   | ^^^^^^ unaligned dedent
+71 | query_parsed := parse_query(query_str)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected ')' to close parenthesis, got "first" (IDENT)
+  --> tests/test_84_url_operations.al:83:9
+   |
+82 |         result = result + key + "=" + params[key]
+83 |         first = false
+   |         ^^^^^ expected ')' to close parenthesis, got "first" (IDENT)
+84 |     }
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_84_url_operations.al:82:50
+   |
+81 |         }
+82 |         result = result + key + "=" + params[key]
+   |                                                  ^ expected '{' after function signature
+83 |         first = false
+   |
+   = help: provide '{' to start the function body
+
+error: unaligned dedent
+  --> tests/test_84_url_operations.al:84:1
+   |
+83 |         first = false
+84 |     }
+   | ^^^^^^ unaligned dedent
+85 |     return result
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_84_url_operations.al:84:5
+   |
+83 |         first = false
+84 |     }
+   |     ^ unexpected closing '}' without matching '{'
+85 |     return result
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unaligned dedent
+  --> tests/test_84_url_operations.al:87:1
+   |
+86 | 
+87 | built := build_query({"a": "1", "b": "2"})
+   | ^^^^^^ unaligned dedent
+88 | assert string.contains(built, "a=1")
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+Found 13 errors. Execution aborted.
+

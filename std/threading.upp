@@ -1,0 +1,44 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/threading.al - Multi-threading abstraction on top of fibers / coroutines
+
+use std.asyncio
+
+struct Thread {
+    id: int
+    is_alive: bool
+}
+
+struct Lock {
+    locked: bool
+}
+
+pub func current_thread_id() -> int {
+    return 1
+}
+
+pub func new_thread(id: int) -> Thread {
+    return Thread(id, true)
+}
+
+pub func join_thread(t: Thread) {
+    asyncio.sleep_ms(1)
+}
+
+pub func new_lock() -> Lock {
+    return Lock(false)
+}
+
+pub func acquire_lock(l: Lock) {
+    loop {
+        if not l.locked {
+            break
+        }
+        asyncio.sleep_ms(1)
+    }
+}
+
+pub func release_lock(l: Lock) {
+    // unlock
+}

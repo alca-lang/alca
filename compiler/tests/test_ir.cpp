@@ -8,7 +8,7 @@
 #include "ir/ir.h"
 #include "ir/lower.h"
 
-using namespace pawl;
+using namespace ulang;
 
 MT_TEST(ir, simple_arithmetic) {
     std::string source = "x := 10 + 20\n";
@@ -145,6 +145,65 @@ MT_TEST(ir, assert_condition_is_lowered) {
     MT_CHECK_EQ(irRes.ok(), true);
     MT_CHECK(irRes.program != nullptr);
     MT_CHECK(irRes.program->toString().find("assert_fail") != std::string::npos);
+}
+
+MT_TEST(ir, math_module_lowering) {
+    std::string source =
+        "use std.math\n"
+        "a := math.sqrt(16.0)\n"
+        "b := math.pow(2.0, 10.0)\n"
+        "c := math.clamp(15, 0, 10)\n";
+
+    auto lex = std::make_unique<lexer::Lexer>(source);
+    parser::Parser p(std::move(lex));
+    auto astProg = p.parseProgram();
+    MT_CHECK_EQ(p.syntaxErrors().size(), 0u);
+
+    typecheck::Checker tc("test.al", source);
+    auto errs = tc.check(astProg);
+    MT_CHECK_EQ(errs.size(), 0u);
+
+    auto irRes = ir::lower(astProg, tc);
+    MT_CHECK_EQ(irRes.ok(), true);
+    MT_CHECK(irRes.program != nullptr);
+    std::string irStr = irRes.program->toString();
+    MT_CHECK(irStr.find("sqrt") != std::string::npos);
+    MT_CHECK(irStr.find("pow") != std::string::npos);
+    MT_CHECK(irStr.find("clamp_high") != std::string::npos);
+}
+
+MT_TEST(ir, baremetal_os_intrinsics) {
+    std::string source =
+        "use std.cpu\n"
+        "use std.mem\n"
+        "cpu.cli()\n"
+        "cpu.out8(1016, 65)\n"
+        "b := cpu.in8(1016)\n"
+        "mem.write_u16(753664, 3905)\n"
+        "v := mem.read_u16(753664)\n"
+        "cpu.sti()\n"
+        "cpu.hlt()\n";
+
+    auto lex = std::make_unique<lexer::Lexer>(source);
+    parser::Parser p(std::move(lex));
+    auto astProg = p.parseProgram();
+    MT_CHECK_EQ(p.syntaxErrors().size(), 0u);
+
+    typecheck::Checker tc("os.al", source);
+    auto errs = tc.check(astProg);
+    MT_CHECK_EQ(errs.size(), 0u);
+
+    auto irRes = ir::lower(astProg, tc);
+    MT_CHECK_EQ(irRes.ok(), true);
+    MT_CHECK(irRes.program != nullptr);
+    std::string irStr = irRes.program->toString();
+    MT_CHECK(irStr.find("cpu_cli") != std::string::npos);
+    MT_CHECK(irStr.find("out8") != std::string::npos);
+    MT_CHECK(irStr.find("in8") != std::string::npos);
+    MT_CHECK(irStr.find("raw_store16") != std::string::npos);
+    MT_CHECK(irStr.find("raw_load16") != std::string::npos);
+    MT_CHECK(irStr.find("cpu_sti") != std::string::npos);
+    MT_CHECK(irStr.find("cpu_hlt") != std::string::npos);
 }
 
 MT_TEST(ir, list_and_for_loop) {

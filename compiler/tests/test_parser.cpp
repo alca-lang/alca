@@ -12,9 +12,9 @@
 #include <string>
 #include <vector>
 
-using namespace pawl;
-using namespace pawl::ast;
-using namespace pawl::parser;
+using namespace ulang;
+using namespace ulang::ast;
+using namespace ulang::parser;
 
 namespace {
 

@@ -1,0 +1,87 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected '{' after function signature
+  --> tests/test_83_toml_parsing.al:6:31
+   |
+ 5 | func parse_toml_kv(toml: string) -> map[string, string:
+ 6 |     result: map[string, string] = {}
+   |                               ^ expected '{' after function signature
+ 7 |     lines := string.split(toml, "\n")
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected '=' assignment operator
+  --> tests/test_83_toml_parsing.al:6:33
+   |
+ 5 | func parse_toml_kv(toml: string) -> map[string, string:
+ 6 |     result: map[string, string] = {}
+   |                                 ^ unexpected '=' assignment operator
+ 7 |     lines := string.split(toml, "\n")
+   |
+   = help: check if you meant ':=' for declaration or '==' for equality comparison
+
+error: unaligned dedent
+  --> tests/test_83_toml_parsing.al:20:1
+   |
+19 | 
+20 | toml_kv := "name = \"John\"\nage = 30"
+   | ^^^^^^ unaligned dedent
+21 | parsed := parse_toml_kv(toml_kv)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected '{' after function signature
+  --> tests/test_83_toml_parsing.al:79:31
+   |
+78 | func parse_inline_table(toml: string) -> map[string, string:
+79 |     result: map[string, string] = {}
+   |                               ^ expected '{' after function signature
+80 |     content := string.substring(toml, 1, len(toml) - 1)
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected '=' assignment operator
+  --> tests/test_83_toml_parsing.al:79:33
+   |
+78 | func parse_inline_table(toml: string) -> map[string, string:
+79 |     result: map[string, string] = {}
+   |                                 ^ unexpected '=' assignment operator
+80 |     content := string.substring(toml, 1, len(toml) - 1)
+   |
+   = help: check if you meant ':=' for declaration or '==' for equality comparison
+
+error: unaligned dedent
+  --> tests/test_83_toml_parsing.al:94:1
+   |
+93 | 
+94 | inline := "{name = \"test\", value = 42}"
+   | ^^^^^^ unaligned dedent
+95 | inline_parsed := parse_inline_table(inline)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_83_toml_parsing.al:103:41
+   |
+102 |         if len(lines) > 1 {
+103 |             return string.join(lines[1..], "\n")
+   |                                         ^ unexpected closing ']' without matching '['
+104 |         }
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "," (,)
+  --> tests/test_83_toml_parsing.al:103:42
+   |
+102 |         if len(lines) > 1 {
+103 |             return string.join(lines[1..], "\n")
+   |                                          ^ expected ']' to close list or index, got "," (,)
+104 |         }
+   |
+   = help: unclosed '[' from line 103, col 37; add a closing ']'
+
+Found 8 errors. Execution aborted.
+

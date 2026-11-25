@@ -1,0 +1,70 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: type func(any) -> string has no field 'split'
+  --> tests/test_18_tcp_udp.al:69:20
+   |
+68 | func is_valid_ipv4(ip: string) -> bool {
+69 |     parts := string.split(ip, ".")
+   |                    ^ type func(any) -> string has no field 'split'
+70 |     if len(parts) != 4 {
+   |
+
+error: len() needs a list, map, string or blob, got <invalid>
+  --> tests/test_18_tcp_udp.al:70:12
+   |
+69 |     parts := string.split(ip, ".")
+70 |     if len(parts) != 4 {
+   |            ^^^^^ len() needs a list, map, string or blob, got <invalid>
+71 |         return false
+   |
+
+error: type func(any) -> string has no field 'contains'
+  --> tests/test_18_tcp_udp.al:89:18
+   |
+88 |     // Basic check for IPv6 format
+89 |     return string.contains(ip, ":") and len(string.split(ip, ":")) >= 3
+   |                  ^ type func(any) -> string has no field 'contains'
+90 | }
+   |
+
+error: type func(any) -> string has no field 'split'
+  --> tests/test_18_tcp_udp.al:89:51
+   |
+88 |     // Basic check for IPv6 format
+89 |     return string.contains(ip, ":") and len(string.split(ip, ":")) >= 3
+   |                                                   ^ type func(any) -> string has no field 'split'
+90 | }
+   |
+
+error: len() needs a list, map, string or blob, got <invalid>
+  --> tests/test_18_tcp_udp.al:89:45
+   |
+88 |     // Basic check for IPv6 format
+89 |     return string.contains(ip, ":") and len(string.split(ip, ":")) >= 3
+   |                                             ^^^^^^ len() needs a list, map, string or blob, got <invalid>
+90 | }
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_18_tcp_udp.al:154:41
+   |
+153 |     while i < len(data) {
+154 |         checksum = checksum + int(string.substring(data, i, i + 1))
+   |                                         ^ type func(any) -> string has no field 'substring'
+155 |         i = i + 1
+   |
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_18_tcp_udp.al:170:41
+   |
+169 |     while i < len(pkt.data) {
+170 |         checksum = checksum + int(string.substring(pkt.data, i, i + 1))
+   |                                         ^ type func(any) -> string has no field 'substring'
+171 |         i = i + 1
+   |
+
+Found 7 errors. Execution aborted.
+

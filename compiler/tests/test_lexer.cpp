@@ -11,9 +11,9 @@
 #include <utility>
 #include <vector>
 
-using pawl::lexer::Lexer;
-using pawl::token::Kind;
-using pawl::token::Token;
+using ulang::lexer::Lexer;
+using ulang::token::Kind;
+using ulang::token::Token;
 
 namespace {
 
@@ -32,23 +32,23 @@ MT_TEST(lexer, basic_operators_and_delimiters) {
     const std::string input =
         "= + - ! * / % ** == === != < <= > >= , :\n . ( ) [ ] { } |> | -> ~ ~> @ ..";
     const std::vector<std::pair<Kind, std::string>> expected = {
-        {pawl::token::ASSIGN, "="},   {pawl::token::PLUS, "+"},
-        {pawl::token::MINUS, "-"},    {pawl::token::BANG, "!"},
-        {pawl::token::ASTERISK, "*"}, {pawl::token::SLASH, "/"},
-        {pawl::token::PERCENT, "%"},  {pawl::token::POWER, "**"},
-        {pawl::token::EQ, "=="},      {pawl::token::STRICT_EQ, "==="},
-        {pawl::token::NOT_EQ, "!="},  {pawl::token::LT, "<"},
-        {pawl::token::LT_EQ, "<="},   {pawl::token::GT, ">"},
-        {pawl::token::GT_EQ, ">="},   {pawl::token::COMMA, ","},
-        {pawl::token::COLON, ":"},    {pawl::token::NEWLINE, "\n"},
-        {pawl::token::DOT, "."},      {pawl::token::LPAREN, "("},
-        {pawl::token::RPAREN, ")"},   {pawl::token::LBRACKET, "["},
-        {pawl::token::RBRACKET, "]"}, {pawl::token::LBRACE, "{"},
-        {pawl::token::RBRACE, "}"},   {pawl::token::PIPE, "|>"},
-        {pawl::token::PIPE_TYPE, "|"},{pawl::token::ARROW, "->"},
-        {pawl::token::TILDE, "~"},    {pawl::token::TILDE_GT, "~>"},
-        {pawl::token::AT, "@"},       {pawl::token::RANGE, ".."},
-        {pawl::token::EOF_TOKEN, ""},
+        {ulang::token::ASSIGN, "="},   {ulang::token::PLUS, "+"},
+        {ulang::token::MINUS, "-"},    {ulang::token::BANG, "!"},
+        {ulang::token::ASTERISK, "*"}, {ulang::token::SLASH, "/"},
+        {ulang::token::PERCENT, "%"},  {ulang::token::POWER, "**"},
+        {ulang::token::EQ, "=="},      {ulang::token::STRICT_EQ, "==="},
+        {ulang::token::NOT_EQ, "!="},  {ulang::token::LT, "<"},
+        {ulang::token::LT_EQ, "<="},   {ulang::token::GT, ">"},
+        {ulang::token::GT_EQ, ">="},   {ulang::token::COMMA, ","},
+        {ulang::token::COLON, ":"},    {ulang::token::NEWLINE, "\n"},
+        {ulang::token::DOT, "."},      {ulang::token::LPAREN, "("},
+        {ulang::token::RPAREN, ")"},   {ulang::token::LBRACKET, "["},
+        {ulang::token::RBRACKET, "]"}, {ulang::token::LBRACE, "{"},
+        {ulang::token::RBRACE, "}"},   {ulang::token::PIPE, "|>"},
+        {ulang::token::PIPE_TYPE, "|"},{ulang::token::ARROW, "->"},
+        {ulang::token::TILDE, "~"},    {ulang::token::TILDE_GT, "~>"},
+        {ulang::token::AT, "@"},       {ulang::token::RANGE, ".."},
+        {ulang::token::EOF_TOKEN, ""},
     };
 
     Lexer lexer(input);
@@ -62,15 +62,15 @@ MT_TEST(lexer, basic_operators_and_delimiters) {
 MT_TEST(lexer, stream_operators) {
     const std::string input = ">> >! >>> << ?>> ?>>> &>> &&>>";
     const std::vector<std::pair<Kind, std::string>> expected = {
-        {pawl::token::STREAM_OUT, ">>"},
-        {pawl::token::STREAM_OVERWRITE, ">!"},
-        {pawl::token::STREAM_VAR, ">>>"},
-        {pawl::token::STREAM_IN, "<<"},
-        {pawl::token::STREAM_ERR, "?>>"},
-        {pawl::token::STREAM_ERR_VAR, "?>>>"},
-        {pawl::token::STREAM_ASYNC, "&>>"},
-        {pawl::token::STREAM_THREAD, "&&>>"},
-        {pawl::token::EOF_TOKEN, ""},
+        {ulang::token::STREAM_OUT, ">>"},
+        {ulang::token::STREAM_OVERWRITE, ">!"},
+        {ulang::token::STREAM_VAR, ">>>"},
+        {ulang::token::STREAM_IN, "<<"},
+        {ulang::token::STREAM_ERR, "?>>"},
+        {ulang::token::STREAM_ERR_VAR, "?>>>"},
+        {ulang::token::STREAM_ASYNC, "&>>"},
+        {ulang::token::STREAM_THREAD, "&&>>"},
+        {ulang::token::EOF_TOKEN, ""},
     };
     Lexer lexer(input);
     for (const auto& item : expected) {
@@ -87,50 +87,50 @@ MT_TEST(lexer, keywords_and_types) {
         "assert tx match case err import string int float bool list map blob "
         "secret json";
     const std::vector<std::pair<Kind, std::string>> expected = {
-        {pawl::token::FUNC, "func"},
-        {pawl::token::RETURN, "return"},
-        {pawl::token::IF, "if"},
-        {pawl::token::ELSE, "else"},
-        {pawl::token::ELIF, "elif"},
-        {pawl::token::WHILE, "while"},
-        {pawl::token::FOR, "for"},
-        {pawl::token::LOOP, "loop"},
-        {pawl::token::FOREACH, "foreach"},
-        {pawl::token::IN, "in"},
-        {pawl::token::BREAK, "break"},
-        {pawl::token::CONTINUE, "continue"},
-        {pawl::token::AND, "and"},
-        {pawl::token::OR, "or"},
-        {pawl::token::NOT, "not"},
-        {pawl::token::TRUE, "true"},
-        {pawl::token::FALSE, "false"},
-        {pawl::token::NULL_TOKEN, "null"},
-        {pawl::token::STRUCT, "struct"},
-        {pawl::token::PUB, "pub"},
-        {pawl::token::USE, "use"},
-        {pawl::token::AS, "as"},
-        {pawl::token::BA, "ba"},
-        {pawl::token::THREADS, "threads"},
-        {pawl::token::WAIT, "wait"},
-        {pawl::token::WATCH, "watch"},
-        {pawl::token::TEST, "test"},
-        {pawl::token::MOCK, "mock"},
-        {pawl::token::ASSERT, "assert"},
-        {pawl::token::TX, "tx"},
-        {pawl::token::MATCH, "match"},
-        {pawl::token::CASE, "case"},
-        {pawl::token::ERR, "err"},
-        {pawl::token::IMPORT, "import"},
-        {pawl::token::TYPE_STRING, "string"},
-        {pawl::token::TYPE_INT, "int"},
-        {pawl::token::TYPE_FLOAT, "float"},
-        {pawl::token::TYPE_BOOL, "bool"},
-        {pawl::token::TYPE_LIST, "list"},
-        {pawl::token::TYPE_MAP, "map"},
-        {pawl::token::TYPE_BLOB, "blob"},
-        {pawl::token::TYPE_SECRET, "secret"},
-        {pawl::token::TYPE_JSON, "json"},
-        {pawl::token::EOF_TOKEN, ""},
+        {ulang::token::FUNC, "func"},
+        {ulang::token::RETURN, "return"},
+        {ulang::token::IF, "if"},
+        {ulang::token::ELSE, "else"},
+        {ulang::token::ELIF, "elif"},
+        {ulang::token::WHILE, "while"},
+        {ulang::token::FOR, "for"},
+        {ulang::token::LOOP, "loop"},
+        {ulang::token::FOREACH, "foreach"},
+        {ulang::token::IN, "in"},
+        {ulang::token::BREAK, "break"},
+        {ulang::token::CONTINUE, "continue"},
+        {ulang::token::AND, "and"},
+        {ulang::token::OR, "or"},
+        {ulang::token::NOT, "not"},
+        {ulang::token::TRUE, "true"},
+        {ulang::token::FALSE, "false"},
+        {ulang::token::NULL_TOKEN, "null"},
+        {ulang::token::STRUCT, "struct"},
+        {ulang::token::PUB, "pub"},
+        {ulang::token::USE, "use"},
+        {ulang::token::AS, "as"},
+        {ulang::token::BA, "ba"},
+        {ulang::token::THREADS, "threads"},
+        {ulang::token::WAIT, "wait"},
+        {ulang::token::WATCH, "watch"},
+        {ulang::token::TEST, "test"},
+        {ulang::token::MOCK, "mock"},
+        {ulang::token::ASSERT, "assert"},
+        {ulang::token::TX, "tx"},
+        {ulang::token::MATCH, "match"},
+        {ulang::token::CASE, "case"},
+        {ulang::token::ERR, "err"},
+        {ulang::token::IMPORT, "import"},
+        {ulang::token::TYPE_STRING, "string"},
+        {ulang::token::TYPE_INT, "int"},
+        {ulang::token::TYPE_FLOAT, "float"},
+        {ulang::token::TYPE_BOOL, "bool"},
+        {ulang::token::TYPE_LIST, "list"},
+        {ulang::token::TYPE_MAP, "map"},
+        {ulang::token::TYPE_BLOB, "blob"},
+        {ulang::token::TYPE_SECRET, "secret"},
+        {ulang::token::TYPE_JSON, "json"},
+        {ulang::token::EOF_TOKEN, ""},
     };
     Lexer lexer(input);
     for (const auto& item : expected) {
@@ -144,14 +144,14 @@ MT_TEST(lexer, numbers_and_suffixes) {
     const std::string input =
         "42 3.14 100ms 5s 10m 2h 500KB 16MB 2GB 0.5s 1.5MB 1..10";
     const std::vector<std::pair<Kind, std::string>> expected = {
-        {pawl::token::INT, "42"},     {pawl::token::FLOAT, "3.14"},
-        {pawl::token::INT, "100ms"},  {pawl::token::INT, "5s"},
-        {pawl::token::INT, "10m"},    {pawl::token::INT, "2h"},
-        {pawl::token::INT, "500KB"},  {pawl::token::INT, "16MB"},
-        {pawl::token::INT, "2GB"},    {pawl::token::FLOAT, "0.5s"},
-        {pawl::token::FLOAT, "1.5MB"},{pawl::token::INT, "1"},
-        {pawl::token::RANGE, ".."},   {pawl::token::INT, "10"},
-        {pawl::token::EOF_TOKEN, ""},
+        {ulang::token::INT, "42"},     {ulang::token::FLOAT, "3.14"},
+        {ulang::token::INT, "100ms"},  {ulang::token::INT, "5s"},
+        {ulang::token::INT, "10m"},    {ulang::token::INT, "2h"},
+        {ulang::token::INT, "500KB"},  {ulang::token::INT, "16MB"},
+        {ulang::token::INT, "2GB"},    {ulang::token::FLOAT, "0.5s"},
+        {ulang::token::FLOAT, "1.5MB"},{ulang::token::INT, "1"},
+        {ulang::token::RANGE, ".."},   {ulang::token::INT, "10"},
+        {ulang::token::EOF_TOKEN, ""},
     };
     Lexer lexer(input);
     for (const auto& item : expected) {
@@ -165,11 +165,11 @@ MT_TEST(lexer, strings_and_interpolation) {
     const std::string input =
         "\"hello world\" \"with\\nnewline\" \"hello ${name}!\" 'single quote'";
     const std::vector<std::pair<Kind, std::string>> expected = {
-        {pawl::token::STRING, "hello world"},
-        {pawl::token::STRING, "with\nnewline"},
-        {pawl::token::STRING, "hello ${name}!"},
-        {pawl::token::STRING, "single quote"},
-        {pawl::token::EOF_TOKEN, ""},
+        {ulang::token::STRING, "hello world"},
+        {ulang::token::STRING, "with\nnewline"},
+        {ulang::token::STRING, "hello ${name}!"},
+        {ulang::token::STRING, "single quote"},
+        {ulang::token::EOF_TOKEN, ""},
     };
     Lexer lexer(input);
     for (const auto& item : expected) {
@@ -182,26 +182,26 @@ MT_TEST(lexer, strings_and_interpolation) {
 MT_TEST(lexer, indentation_and_dedent) {
     const std::string input = "if true {\n    x = 1\n    y = 2\n}\nz = 3";
     expectTypes(input, {
-        pawl::token::IF, pawl::token::TRUE, pawl::token::LBRACE,
-        pawl::token::NEWLINE, pawl::token::INDENT, pawl::token::IDENT,
-        pawl::token::ASSIGN, pawl::token::INT, pawl::token::NEWLINE,
-        pawl::token::IDENT, pawl::token::ASSIGN, pawl::token::INT,
-        pawl::token::NEWLINE, pawl::token::DEDENT, pawl::token::RBRACE,
-        pawl::token::NEWLINE, pawl::token::IDENT, pawl::token::ASSIGN,
-        pawl::token::INT, pawl::token::EOF_TOKEN,
+        ulang::token::IF, ulang::token::TRUE, ulang::token::LBRACE,
+        ulang::token::NEWLINE, ulang::token::INDENT, ulang::token::IDENT,
+        ulang::token::ASSIGN, ulang::token::INT, ulang::token::NEWLINE,
+        ulang::token::IDENT, ulang::token::ASSIGN, ulang::token::INT,
+        ulang::token::NEWLINE, ulang::token::DEDENT, ulang::token::RBRACE,
+        ulang::token::NEWLINE, ulang::token::IDENT, ulang::token::ASSIGN,
+        ulang::token::INT, ulang::token::EOF_TOKEN,
     });
 }
 
 MT_TEST(lexer, nested_indentation_and_eof_dedent) {
     const std::string input = "if a {\n    if b {\n        c = 1    \n    }\n}\n";
     expectTypes(input, {
-        pawl::token::IF, pawl::token::IDENT, pawl::token::LBRACE,
-        pawl::token::NEWLINE, pawl::token::INDENT, pawl::token::IF,
-        pawl::token::IDENT, pawl::token::LBRACE, pawl::token::NEWLINE,
-        pawl::token::INDENT, pawl::token::IDENT, pawl::token::ASSIGN,
-        pawl::token::INT, pawl::token::NEWLINE, pawl::token::DEDENT,
-        pawl::token::RBRACE, pawl::token::NEWLINE, pawl::token::DEDENT,
-        pawl::token::RBRACE, pawl::token::NEWLINE, pawl::token::EOF_TOKEN,
+        ulang::token::IF, ulang::token::IDENT, ulang::token::LBRACE,
+        ulang::token::NEWLINE, ulang::token::INDENT, ulang::token::IF,
+        ulang::token::IDENT, ulang::token::LBRACE, ulang::token::NEWLINE,
+        ulang::token::INDENT, ulang::token::IDENT, ulang::token::ASSIGN,
+        ulang::token::INT, ulang::token::NEWLINE, ulang::token::DEDENT,
+        ulang::token::RBRACE, ulang::token::NEWLINE, ulang::token::DEDENT,
+        ulang::token::RBRACE, ulang::token::NEWLINE, ulang::token::EOF_TOKEN,
     });
 }
 
@@ -218,34 +218,34 @@ fn myFunc() {
 }
 )";
     expectTypes(input, {
-        pawl::token::FUNC, pawl::token::IDENT, pawl::token::LPAREN,
-        pawl::token::RPAREN, pawl::token::LBRACE, pawl::token::NEWLINE,
-        pawl::token::INDENT, pawl::token::IDENT, pawl::token::ASSIGN,
-        pawl::token::INT, pawl::token::NEWLINE, pawl::token::RETURN,
-        pawl::token::IDENT, pawl::token::NEWLINE, pawl::token::DEDENT,
-        pawl::token::RBRACE, pawl::token::NEWLINE, pawl::token::EOF_TOKEN,
+        ulang::token::FUNC, ulang::token::IDENT, ulang::token::LPAREN,
+        ulang::token::RPAREN, ulang::token::LBRACE, ulang::token::NEWLINE,
+        ulang::token::INDENT, ulang::token::IDENT, ulang::token::ASSIGN,
+        ulang::token::INT, ulang::token::NEWLINE, ulang::token::RETURN,
+        ulang::token::IDENT, ulang::token::NEWLINE, ulang::token::DEDENT,
+        ulang::token::RBRACE, ulang::token::NEWLINE, ulang::token::EOF_TOKEN,
     });
 }
 
 MT_TEST(lexer, windows_line_endings) {
     const std::string input = "x = 1\r\ny = 2\r\n";
     expectTypes(input, {
-        pawl::token::IDENT, pawl::token::ASSIGN, pawl::token::INT,
-        pawl::token::NEWLINE, pawl::token::IDENT, pawl::token::ASSIGN,
-        pawl::token::INT, pawl::token::NEWLINE, pawl::token::EOF_TOKEN,
+        ulang::token::IDENT, ulang::token::ASSIGN, ulang::token::INT,
+        ulang::token::NEWLINE, ulang::token::IDENT, ulang::token::ASSIGN,
+        ulang::token::INT, ulang::token::NEWLINE, ulang::token::EOF_TOKEN,
     });
 }
 
 MT_TEST(lexer, tab_indentation) {
     const std::string input = "if true {\n\tx = 1\n\ty = 2\n}\nz = 3";
     expectTypes(input, {
-        pawl::token::IF, pawl::token::TRUE, pawl::token::LBRACE,
-        pawl::token::NEWLINE, pawl::token::INDENT, pawl::token::IDENT,
-        pawl::token::ASSIGN, pawl::token::INT, pawl::token::NEWLINE,
-        pawl::token::IDENT, pawl::token::ASSIGN, pawl::token::INT,
-        pawl::token::NEWLINE, pawl::token::DEDENT, pawl::token::RBRACE,
-        pawl::token::NEWLINE, pawl::token::IDENT, pawl::token::ASSIGN,
-        pawl::token::INT, pawl::token::EOF_TOKEN,
+        ulang::token::IF, ulang::token::TRUE, ulang::token::LBRACE,
+        ulang::token::NEWLINE, ulang::token::INDENT, ulang::token::IDENT,
+        ulang::token::ASSIGN, ulang::token::INT, ulang::token::NEWLINE,
+        ulang::token::IDENT, ulang::token::ASSIGN, ulang::token::INT,
+        ulang::token::NEWLINE, ulang::token::DEDENT, ulang::token::RBRACE,
+        ulang::token::NEWLINE, ulang::token::IDENT, ulang::token::ASSIGN,
+        ulang::token::INT, ulang::token::EOF_TOKEN,
     });
 }
 
@@ -269,7 +269,7 @@ MT_TEST(lexer, line_and_column_positions) {
     MT_CHECK_EQ(tok.column, 5);
 
     tok = lexer.nextToken();
-    MT_CHECK_EQ(tok.type, pawl::token::NEWLINE);
+    MT_CHECK_EQ(tok.type, ulang::token::NEWLINE);
     MT_CHECK_EQ(tok.line, 1);
     MT_CHECK_EQ(tok.column, 7);
 
@@ -282,10 +282,10 @@ MT_TEST(lexer, line_and_column_positions) {
 MT_TEST(lexer, float_dot_prefix) {
     Lexer lexer(".5 .75s");
     Token tok = lexer.nextToken();
-    MT_CHECK_EQ(tok.type, pawl::token::FLOAT);
+    MT_CHECK_EQ(tok.type, ulang::token::FLOAT);
     MT_CHECK_EQ(tok.literal, std::string(".5"));
     tok = lexer.nextToken();
-    MT_CHECK_EQ(tok.type, pawl::token::FLOAT);
+    MT_CHECK_EQ(tok.type, ulang::token::FLOAT);
     MT_CHECK_EQ(tok.literal, std::string(".75s"));
 }
 
@@ -293,9 +293,9 @@ MT_TEST(lexer, triple_quoted_strings) {
     const std::string input = "html = \"\"\"\n<html>\n    <button onclick=\"alert('hi')\">Click</button>\n</html>\n\"\"\"";
     Lexer lexer(input);
     MT_CHECK_EQ(lexer.nextToken().literal, std::string("html"));
-    MT_CHECK_EQ(lexer.nextToken().type, pawl::token::ASSIGN);
+    MT_CHECK_EQ(lexer.nextToken().type, ulang::token::ASSIGN);
     const Token tok = lexer.nextToken();
-    MT_CHECK_EQ(tok.type, pawl::token::STRING);
+    MT_CHECK_EQ(tok.type, ulang::token::STRING);
     MT_CHECK_EQ(tok.literal,
                 std::string("\n<html>\n    <button onclick=\"alert('hi')\">Click</button>\n</html>\n"));
 }
@@ -304,9 +304,9 @@ MT_TEST(lexer, raw_backtick_strings) {
     const std::string input = "pat = `\\b\\d{1,3}\\.\\d{1,3}\\b`";
     Lexer lexer(input);
     MT_CHECK_EQ(lexer.nextToken().literal, std::string("pat"));
-    MT_CHECK_EQ(lexer.nextToken().type, pawl::token::ASSIGN);
+    MT_CHECK_EQ(lexer.nextToken().type, ulang::token::ASSIGN);
     const Token tok = lexer.nextToken();
-    MT_CHECK_EQ(tok.type, pawl::token::STRING);
+    MT_CHECK_EQ(tok.type, ulang::token::STRING);
     MT_CHECK_EQ(tok.literal, std::string("\\b\\d{1,3}\\.\\d{1,3}\\b"));
 }
 
@@ -318,23 +318,23 @@ MT_TEST(lexer, multiline_raw_and_fstring_tokens) {
         std::string wantLiteral;
     };
     const std::vector<Case> cases = {
-        {"triple single quote", "'''line1\nline2'''", pawl::token::STRING,
+        {"triple single quote", "'''line1\nline2'''", ulang::token::STRING,
          "line1\nline2"},
         {"raw triple double quotes", R"(r"""hello\nworld""")",
-         pawl::token::STRING, R"(hello\nworld)"},
+         ulang::token::STRING, R"(hello\nworld)"},
         {"raw triple single quotes", R"(r'''hello\tworld''')",
-         pawl::token::STRING, R"(hello\tworld)"},
+         ulang::token::STRING, R"(hello\tworld)"},
         {"raw single quote string", R"(r'C:\Users\foo\bar')",
-         pawl::token::STRING, R"(C:\Users\foo\bar)"},
+         ulang::token::STRING, R"(C:\Users\foo\bar)"},
         {"raw double quote string", R"(r"C:\Windows\System32")",
-         pawl::token::STRING, R"(C:\Windows\System32)"},
-        {"fstring single quotes", R"(f"val = {x}")", pawl::token::FSTRING,
+         ulang::token::STRING, R"(C:\Windows\System32)"},
+        {"fstring single quotes", R"(f"val = {x}")", ulang::token::FSTRING,
          R"(val = {x})"},
         {"fstring triple quotes", "f\"\"\"hello {name}\nworld\"\"\"",
-         pawl::token::FSTRING, "hello {name}\nworld"},
-        {"raw fstring rf", R"(rf"path: {p}\n")", pawl::token::FSTRING,
+         ulang::token::FSTRING, "hello {name}\nworld"},
+        {"raw fstring rf", R"(rf"path: {p}\n")", ulang::token::FSTRING,
          R"(path: {p}\n)"},
-        {"raw fstring fr", R"(fr"path: {p}\t")", pawl::token::FSTRING,
+        {"raw fstring fr", R"(fr"path: {p}\t")", ulang::token::FSTRING,
          R"(path: {p}\t)"},
     };
 
@@ -349,21 +349,21 @@ MT_TEST(lexer, multiline_raw_and_fstring_tokens) {
 MT_TEST(lexer, bom_is_skipped) {
     const std::string input = "\xEF\xBB\xBFx = 1";
     expectTypes(input, {
-        pawl::token::IDENT, pawl::token::ASSIGN, pawl::token::INT,
-        pawl::token::EOF_TOKEN,
+        ulang::token::IDENT, ulang::token::ASSIGN, ulang::token::INT,
+        ulang::token::EOF_TOKEN,
     });
 }
 
 MT_TEST(lexer, illegal_operators) {
     expectTypes("&& ?", {
-        pawl::token::ILLEGAL, pawl::token::ILLEGAL, pawl::token::ILLEGAL,
-        pawl::token::EOF_TOKEN,
+        ulang::token::ILLEGAL, ulang::token::ILLEGAL, ulang::token::ILLEGAL,
+        ulang::token::EOF_TOKEN,
     });
 }
 
 MT_TEST(lexer, range_inclusive) {
     Lexer lexer("1..=10");
     MT_CHECK_EQ(lexer.nextToken().literal, std::string("1"));
-    MT_CHECK_EQ(lexer.nextToken().type, pawl::token::DOTDOTEQ);
+    MT_CHECK_EQ(lexer.nextToken().type, ulang::token::DOTDOTEQ);
     MT_CHECK_EQ(lexer.nextToken().literal, std::string("10"));
 }

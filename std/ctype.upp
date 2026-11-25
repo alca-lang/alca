@@ -1,0 +1,42 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/ctype.al - Character classification & case conversion (equivalent to <ctype.h>)
+
+pub func is_digit(c: int) -> bool {
+    return c >= 48 and c <= 57 // '0'..'9'
+}
+
+pub func is_alpha(c: int) -> bool {
+    return (c >= 65 and c <= 90) or (c >= 97 and c <= 122) // 'A'..'Z', 'a'..'z'
+}
+
+pub func is_alnum(c: int) -> bool {
+    return is_alpha(c) or is_digit(c)
+}
+
+pub func is_space(c: int) -> bool {
+    return c == 32 or (c >= 9 and c <= 13) // ' ', '\t', '\n', '\v', '\f', '\r'
+}
+
+pub func is_upper(c: int) -> bool {
+    return c >= 65 and c <= 90
+}
+
+pub func is_lower(c: int) -> bool {
+    return c >= 97 and c <= 122
+}
+
+pub func to_upper(c: int) -> int {
+    if is_lower(c) {
+        return c - 32
+    }
+    return c
+}
+
+pub func to_lower(c: int) -> int {
+    if is_upper(c) {
+        return c + 32
+    }
+    return c
+}

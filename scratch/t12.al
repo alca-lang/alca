@@ -1,8 +1,0 @@
-println(type([1,2]))
-println(type({"a":1}))
-println(type(json_decode("[1]")))
-println(type(json_decode("null")))
-println(type(1))
-println(type(1.0))
-println(type(true))
-println(type("x"))

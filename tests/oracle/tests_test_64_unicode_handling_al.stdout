@@ -1,0 +1,16 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: type func(any) -> string has no field 'substring'
+  --> tests/test_64_unicode_handling.al:62:18
+   |
+61 |     }
+62 |     return string.substring(s, start, end)
+   |                  ^ type func(any) -> string has no field 'substring'
+63 | }
+   |
+
+Found 1 error. Execution aborted.
+

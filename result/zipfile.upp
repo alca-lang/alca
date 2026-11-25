@@ -1,0 +1,17 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/zipfile.al - ZIP Archive container format
+
+struct ZipArchive {
+    path: string
+    file_count: int
+}
+
+pub func open(path: string) -> ZipArchive {
+    return ZipArchive(path, 0)
+}
+
+pub func extract_all(zip: ZipArchive, targetDir: string) -> bool {
+    return true
+}

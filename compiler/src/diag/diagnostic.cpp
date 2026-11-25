@@ -8,7 +8,7 @@
 #include <sstream>
 #include <unordered_set>
 
-namespace pawl::diag {
+namespace ulang::diag {
 
 namespace {
 
@@ -168,4 +168,4 @@ std::string formatReport(const std::string& filename, const std::string& source,
     return b.str();
 }
 
-} // namespace pawl::diag
+} // namespace ulang::diag

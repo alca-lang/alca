@@ -1,0 +1,27 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/fmt.al - Bare-metal formatting, hexadecimal dumps & numeric conversions
+
+use std.mem
+
+// Writes a hex character (0..15 -> '0'..'F') to buffer
+pub func write_hex_digit(bufAddr: int, offset: int, d: int) {
+    if d < 10 {
+        mem.write_u8(bufAddr, 48 + d, offset) // '0'..'9'
+    } else {
+        mem.write_u8(bufAddr, 65 + (d - 10), offset) // 'A'..'F'
+    }
+}
+
+// Formats a 64-bit integer into a 16-character hexadecimal string
+pub func format_hex64(bufAddr: int, offset: int, val: int) {
+    cur := val
+    for i in 0..16 {
+        d := (cur / (1 << ((15 - i) * 4))) % 16
+        if d < 0 {
+            d = -d
+        }
+        write_hex_digit(bufAddr, offset + i, d)
+    }
+}

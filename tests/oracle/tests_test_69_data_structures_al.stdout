@@ -1,0 +1,257 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected '{' after function signature
+  --> tests/test_69_data_structures.al:12:23
+   |
+11 | }
+12 | func pop(s: Stack) -> (Stack, int) {
+   |                       ^ expected '{' after function signature
+13 |     if len(s.items) == 0 {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_69_data_structures.al:12:29
+   |
+11 | }
+12 | func pop(s: Stack) -> (Stack, int) {
+   |                             ^ expected end of statement (newline)
+13 |     if len(s.items) == 0 {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_69_data_structures.al:13:1
+   |
+12 | func pop(s: Stack) -> (Stack, int) {
+13 |     if len(s.items) == 0 {
+   | ^^^^^^ unexpected indentation
+14 |         return (s, 0)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_69_data_structures.al:14:1
+   |
+13 |     if len(s.items) == 0 {
+14 |         return (s, 0)
+   | ^^^^^^ unexpected indentation
+15 |     }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_69_data_structures.al:15:1
+   |
+14 |         return (s, 0)
+15 |     }
+   | ^^^^^^ unaligned dedent
+16 |     item := s.items[len(s.items) - 1]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_69_data_structures.al:15:5
+   |
+14 |         return (s, 0)
+15 |     }
+   |     ^ unexpected closing '}' without matching '{'
+16 |     item := s.items[len(s.items) - 1]
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_69_data_structures.al:18:14
+   |
+17 |     s.items = s.items[0..len(s.items) - 1]
+18 |     return (s, item)
+   |              ^ expected ')' to close parenthesis, got "," (,)
+19 | }
+   |
+   = help: unclosed '(' from line 18, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_69_data_structures.al:18:14
+   |
+17 |     s.items = s.items[0..len(s.items) - 1]
+18 |     return (s, item)
+   |              ^ expected end of statement (newline)
+19 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_69_data_structures.al:19:1
+   |
+18 |     return (s, item)
+19 | }
+   | ^^^^^^ unaligned dedent
+20 | func peek(s: Stack) -> int {
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_69_data_structures.al:19:1
+   |
+18 |     return (s, item)
+19 | }
+   | ^ unexpected closing '}' without matching '{'
+20 | func peek(s: Stack) -> int {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_69_data_structures.al:31:7
+   |
+30 | assert peek(stack) == 3
+31 | (stack, popped) := pop(stack)
+   |       ^ expected ')' to close parenthesis, got "," (,)
+32 | assert popped == 3
+   |
+   = help: unclosed '(' from line 31, col 1; add a closing ')'
+
+error: expected '{' after function signature
+  --> tests/test_69_data_structures.al:43:27
+   |
+42 | }
+43 | func dequeue(q: Queue) -> (Queue, int) {
+   |                           ^ expected '{' after function signature
+44 |     if len(q.items) == 0 {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_69_data_structures.al:43:33
+   |
+42 | }
+43 | func dequeue(q: Queue) -> (Queue, int) {
+   |                                 ^ expected end of statement (newline)
+44 |     if len(q.items) == 0 {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_69_data_structures.al:44:1
+   |
+43 | func dequeue(q: Queue) -> (Queue, int) {
+44 |     if len(q.items) == 0 {
+   | ^^^^^^ unexpected indentation
+45 |         return (q, 0)
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_69_data_structures.al:45:1
+   |
+44 |     if len(q.items) == 0 {
+45 |         return (q, 0)
+   | ^^^^^^ unexpected indentation
+46 |     }
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_69_data_structures.al:46:1
+   |
+45 |         return (q, 0)
+46 |     }
+   | ^^^^^^ unaligned dedent
+47 |     item := q.items[0]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_69_data_structures.al:46:5
+   |
+45 |         return (q, 0)
+46 |     }
+   |     ^ unexpected closing '}' without matching '{'
+47 |     item := q.items[0]
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected closing ']' without matching '['
+  --> tests/test_69_data_structures.al:48:26
+   |
+47 |     item := q.items[0]
+48 |     q.items = q.items[1..]
+   |                          ^ unexpected closing ']' without matching '['
+49 |     return (q, item)
+   |
+   = help: check for an unclosed '[' earlier, or remove this extra ']'
+
+error: expected ']' to close list or index, got "\n" (NEWLINE)
+  --> tests/test_69_data_structures.al:48:27
+   |
+47 |     item := q.items[0]
+48 |     q.items = q.items[1..]
+   |                           ^ expected ']' to close list or index, got "\n" (NEWLINE)
+49 |     return (q, item)
+   |
+   = help: unclosed '[' from line 48, col 22; add a closing ']'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_69_data_structures.al:49:14
+   |
+48 |     q.items = q.items[1..]
+49 |     return (q, item)
+   |              ^ expected ')' to close parenthesis, got "," (,)
+50 | }
+   |
+   = help: unclosed '(' from line 49, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_69_data_structures.al:49:14
+   |
+48 |     q.items = q.items[1..]
+49 |     return (q, item)
+   |              ^ expected end of statement (newline)
+50 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_69_data_structures.al:50:1
+   |
+49 |     return (q, item)
+50 | }
+   | ^^^^^^ unaligned dedent
+51 | queue := Queue()
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_69_data_structures.al:50:1
+   |
+49 |     return (q, item)
+50 | }
+   | ^ unexpected closing '}' without matching '{'
+51 | queue := Queue()
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_69_data_structures.al:55:7
+   |
+54 | queue = enqueue(queue, 30)
+55 | (queue, dequeued) := dequeue(queue)
+   |       ^ expected ')' to close parenthesis, got "," (,)
+56 | assert dequeued == 10
+   |
+   = help: unclosed '(' from line 55, col 1; add a closing ')'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_69_data_structures.al:57:7
+   |
+56 | assert dequeued == 10
+57 | (queue, dequeued2) := dequeue(queue)
+   |       ^ expected ')' to close parenthesis, got "," (,)
+58 | assert dequeued2 == 20
+   |
+   = help: unclosed '(' from line 57, col 1; add a closing ')'
+
+Found 25 errors. Execution aborted.
+

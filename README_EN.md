@@ -2,37 +2,53 @@
 
 [English](README_EN.md) | [Русский](README_RU.md)
 
-**Pawl** is a modern, statically-typed programming language designed for systems automation, cross-platform tools, and native application development. It combines the expressive ergonomics of scripting with static type safety, bytecode VM execution with multi-tier JIT acceleration, and zero-toolchain standalone distribution:
-- **Windows**: Built-in standalone PE/EXE and native DLL generator (no MSVC or MinGW required).
-- **Windows & Linux**: Fast Bytecode VM with JIT acceleration and sandboxed capability-based security.
+**Pawl** is a high-performance, statically-typed systems programming language designed for bare-metal operating system development, low-level tooling, and standalone native applications.
+
+### Key Capabilities:
+- 🚀 **Native AOT Compiler**: Direct compilation to x86-64 machine code (`pawl build`), generating standalone **PE** (`.exe`), **ELF**, and **Raw Binary** without external linkers.
+- 💻 **Operating System & Bare-Metal Ready**:
+  - CPU Ring 0 intrinsics: `cpu.cli()`, `cpu.sti()`, `cpu.hlt()`, `cpu.pause()`, `cpu.in8()`, `cpu.out8()`, `cpu.read_cr3()`, `cpu.write_cr3()`, `cpu.invlpg()`.
+  - Direct physical memory access (MMIO): `mem.read_u8/16/32/64` and `mem.write_u8/16/32/64` (VGA buffer at `0xB8000`, APIC registers, PIC interrupt controller).
+- 💿 **Multiboot 1 / GRUB / QEMU Support**: Native `--target freestanding-elf` with automated Multiboot header generation at `0x100000` for direct hypervisor execution (`qemu-system-x86_64 -kernel kernel.elf`).
+- ⚡ **Advanced Memory Management**: Mark-Sweep Garbage Collector alongside fast Bump Allocation.
+- 🧵 **Async & Green Threads**: M:N cooperative fiber scheduler.
 
 Programs use the `.al` extension.
 
 ```pawl
-use std.math
+use std.cpu
+use std.mem
 
-struct Server {
-    ip: string
-    port: int = 80
+// Minimal OS Kernel: write to VGA text buffer and halt CPU
+func kernel_main() {
+    cpu.cli()
+    vga := 753664 // 0xB8000
+    attr := 3840  // White on black
+
+    // Write "PAWL" directly to VGA buffer
+    mem.write_u16(vga + 0, attr + 80) // 'P'
+    mem.write_u16(vga + 2, attr + 65) // 'A'
+    mem.write_u16(vga + 4, attr + 87) // 'W'
+    mem.write_u16(vga + 6, attr + 76) // 'L'
+
+    loop {
+        cpu.hlt()
+    }
 }
-
-pub fn area(r: float) -> float {
-    return math.PI * r * r
-}
-
-srv := Server("127.0.0.1", 8080)
-println("listening on " + srv.ip + ":" + string(srv.port))
-println(area(2.0))
 ```
 
-## Quick Start
+## Quick Start & Building
 
-```bash
-go build -o pawl ./cmd/pawl
-./pawl run examples/hello.al
+```powershell
+# Build the native compiler:
+.\compiler\build.ps1
+
+# Build a standalone native executable:
+.\compiler\build_bin\pawl.exe build -o my_app.exe my_app.al
+
+# Build an OS kernel for QEMU / GRUB:
+.\compiler\build_bin\pawl.exe build --target freestanding-elf -o kernel.elf kernel.al
 ```
-
-The Bytecode VM is the primary execution engine. Programs compile directly to standalone native machine code executables (`pawl build app.al`) and libraries (`pawl build lib.al --shared`).
 
 ---
 

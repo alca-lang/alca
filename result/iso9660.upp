@@ -1,0 +1,20 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/iso9660.al - ISO 9660 (CD-ROM) Filesystem Primary Volume Descriptor
+
+use std.mem
+
+struct VolumeDescriptor {
+    vol_type: int
+    standard_id: string
+    root_dir_lba: int
+    data_length: int
+}
+
+pub func parse_pvd(sectorAddr: int) -> VolumeDescriptor {
+    vType := mem.read_u8(sectorAddr, 0)
+    rootLba := mem.read_u32(sectorAddr, 158)
+    dataLen := mem.read_u32(sectorAddr, 166)
+    return VolumeDescriptor(vType, "CD001", rootLba, dataLen)
+}

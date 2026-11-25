@@ -1,0 +1,37 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected '{' after function signature
+  --> tests/test_82_yaml_parsing.al:6:31
+   |
+ 5 | func parse_yaml_kv(yaml: string) -> map[string, string:
+ 6 |     result: map[string, string] = {}
+   |                               ^ expected '{' after function signature
+ 7 |     lines := string.split(yaml, "\n")
+   |
+   = help: provide '{' to start the function body
+
+error: unexpected '=' assignment operator
+  --> tests/test_82_yaml_parsing.al:6:33
+   |
+ 5 | func parse_yaml_kv(yaml: string) -> map[string, string:
+ 6 |     result: map[string, string] = {}
+   |                                 ^ unexpected '=' assignment operator
+ 7 |     lines := string.split(yaml, "\n")
+   |
+   = help: check if you meant ':=' for declaration or '==' for equality comparison
+
+error: unaligned dedent
+  --> tests/test_82_yaml_parsing.al:20:1
+   |
+19 | 
+20 | yaml_kv := "name: John\nage: 30"
+   | ^^^^^^ unaligned dedent
+21 | parsed := parse_yaml_kv(yaml_kv)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+Found 3 errors. Execution aborted.
+

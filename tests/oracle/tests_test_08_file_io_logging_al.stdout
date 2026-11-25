@@ -1,0 +1,6 @@
+EXITCODE: 0
+--- STDOUT ---
+✓ test_08_file_io_logging passed
+
+--- STDERR ---
+

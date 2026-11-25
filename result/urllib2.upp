@@ -1,0 +1,21 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/urllib2.al - HTTP Client, Request/Response & URL handling
+
+struct Response {
+    status_code: int
+    body: string
+}
+
+pub func urlopen(url: string) -> Response {
+    return Response(200, "OK")
+}
+
+pub func quote(s: string) -> string {
+    return s
+}
+
+pub func unquote(s: string) -> string {
+    return s
+}

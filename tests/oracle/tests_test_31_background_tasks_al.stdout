@@ -1,0 +1,37 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: map value has type int, expected string
+  --> tests/test_31_background_tasks.al:133:40
+   |
+132 |     use std.json
+133 |     data := {"key": "value", "number": 42}
+   |                                        ^^ map value has type int, expected string
+134 |     encoded := json.encode(data)
+   |
+   = help: for heterogeneous values declare the map as 'map[string, json]'
+
+error: default value of field 'nested' has type null, expected Nested
+  --> tests/test_31_background_tasks.al:193:9
+   |
+192 |         value: int
+193 |         nested: Nested = null
+   |         ^^^^^^ default value of field 'nested' has type null, expected Nested
+194 |     }
+   |
+   = help: the value may be null: check 'x != null' first or declare the target as 'T | null'
+
+error: argument 2 'nested' of Nested has type null, expected Nested
+  --> tests/test_31_background_tasks.al:195:25
+   |
+194 |     }
+195 |     outer := Nested(10, null)
+   |                         ^^^^ argument 2 'nested' of Nested has type null, expected Nested
+196 |     assert outer.value == 10
+   |
+   = help: the value may be null: check 'x != null' first or declare the target as 'T | null'
+
+Found 3 errors. Execution aborted.
+

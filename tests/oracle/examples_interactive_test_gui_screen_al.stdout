@@ -1,0 +1,10 @@
+EXITCODE: 0
+--- STDOUT ---
+Detected Screen Size:
+Width:  1536
+Height: 864
+Taking screenshot...
+Screenshot successfully saved to: C:\Users\geekom\Desktop\архив\Pawl\tests\my_screen.png
+
+--- STDERR ---
+

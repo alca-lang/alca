@@ -1,0 +1,527 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected '{' after struct Dog
+  --> tests/test_36_class_inheritance.al:12:11
+   |
+11 | }
+12 | struct Dog extends Animal {
+   |           ^ expected '{' after struct Dog
+13 |     breed: string
+   |
+   = help: add '{' after 'struct Dog' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:12:11
+   |
+11 | }
+12 | struct Dog extends Animal {
+   |           ^ expected end of statement (newline)
+13 |     breed: string
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:13:7
+   |
+12 | struct Dog extends Animal {
+13 |     breed: string
+   |       ^ expected end of statement (newline)
+14 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:14:1
+   |
+13 |     breed: string
+14 | }
+   | ^ unexpected closing '}' without matching '{'
+15 | func make_sound(self: Dog) -> string {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct Car
+  --> tests/test_36_class_inheritance.al:36:11
+   |
+35 | }
+36 | struct Car extends Vehicle {
+   |           ^ expected '{' after struct Car
+37 |     brand: string
+   |
+   = help: add '{' after 'struct Car' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:36:11
+   |
+35 | }
+36 | struct Car extends Vehicle {
+   |           ^ expected end of statement (newline)
+37 |     brand: string
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:37:7
+   |
+36 | struct Car extends Vehicle {
+37 |     brand: string
+   |       ^ expected end of statement (newline)
+38 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:38:1
+   |
+37 |     brand: string
+38 | }
+   | ^ unexpected closing '}' without matching '{'
+39 | func move(self: Car) -> string {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct Employee
+  --> tests/test_36_class_inheritance.al:54:16
+   |
+53 | }
+54 | struct Employee extends Person {
+   |                ^ expected '{' after struct Employee
+55 |     employee_id: int
+   |
+   = help: add '{' after 'struct Employee' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:54:16
+   |
+53 | }
+54 | struct Employee extends Person {
+   |                ^ expected end of statement (newline)
+55 |     employee_id: int
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:55:7
+   |
+54 | struct Employee extends Person {
+55 |     employee_id: int
+   |       ^ expected end of statement (newline)
+56 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:56:1
+   |
+55 |     employee_id: int
+56 | }
+   | ^ unexpected closing '}' without matching '{'
+57 | func greet(self: Employee) -> string {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct Circle
+  --> tests/test_36_class_inheritance.al:69:14
+   |
+68 | }
+69 | struct Circle extends Shape {
+   |              ^ expected '{' after struct Circle
+70 |     radius: float
+   |
+   = help: add '{' after 'struct Circle' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:69:14
+   |
+68 | }
+69 | struct Circle extends Shape {
+   |              ^ expected end of statement (newline)
+70 |     radius: float
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:70:7
+   |
+69 | struct Circle extends Shape {
+70 |     radius: float
+   |       ^ expected end of statement (newline)
+71 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:71:1
+   |
+70 |     radius: float
+71 | }
+   | ^ unexpected closing '}' without matching '{'
+72 | func area(self: Circle) -> float {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct ColoredCircle
+  --> tests/test_36_class_inheritance.al:75:21
+   |
+74 | }
+75 | struct ColoredCircle extends Circle {
+   |                     ^ expected '{' after struct ColoredCircle
+76 |     pattern: string = "solid"
+   |
+   = help: add '{' after 'struct ColoredCircle' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:75:21
+   |
+74 | }
+75 | struct ColoredCircle extends Circle {
+   |                     ^ expected end of statement (newline)
+76 |     pattern: string = "solid"
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:76:7
+   |
+75 | struct ColoredCircle extends Circle {
+76 |     pattern: string = "solid"
+   |       ^ expected end of statement (newline)
+77 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:77:1
+   |
+76 |     pattern: string = "solid"
+77 | }
+   | ^ unexpected closing '}' without matching '{'
+78 | circle := ColoredCircle("red", 5.0)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct Derived
+  --> tests/test_36_class_inheritance.al:90:15
+   |
+89 | }
+90 | struct Derived extends Base {
+   |               ^ expected '{' after struct Derived
+91 |     extra: int
+   |
+   = help: add '{' after 'struct Derived' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:90:15
+   |
+89 | }
+90 | struct Derived extends Base {
+   |               ^ expected end of statement (newline)
+91 |     extra: int
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:91:7
+   |
+90 | struct Derived extends Base {
+91 |     extra: int
+   |       ^ expected end of statement (newline)
+92 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:92:1
+   |
+91 |     extra: int
+92 | }
+   | ^ unexpected closing '}' without matching '{'
+93 | func get_value(self: Derived) -> int {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct DerivedWithDefaults
+  --> tests/test_36_class_inheritance.al:104:27
+   |
+103 | }
+104 | struct DerivedWithDefaults extends BaseWithDefaults {
+   |                           ^ expected '{' after struct DerivedWithDefaults
+105 |     z: int = 30
+   |
+   = help: add '{' after 'struct DerivedWithDefaults' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:104:27
+   |
+103 | }
+104 | struct DerivedWithDefaults extends BaseWithDefaults {
+   |                           ^ expected end of statement (newline)
+105 |     z: int = 30
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:105:7
+   |
+104 | struct DerivedWithDefaults extends BaseWithDefaults {
+105 |     z: int = 30
+   |       ^ expected end of statement (newline)
+106 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:106:1
+   |
+105 |     z: int = 30
+106 | }
+   | ^ unexpected closing '}' without matching '{'
+107 | derived_defaults := DerivedWithDefaults()
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct Manager
+  --> tests/test_36_class_inheritance.al:116:15
+   |
+115 | }
+116 | struct Manager extends Person {
+   |               ^ expected '{' after struct Manager
+117 |     department: string
+   |
+   = help: add '{' after 'struct Manager' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:116:15
+   |
+115 | }
+116 | struct Manager extends Person {
+   |               ^ expected end of statement (newline)
+117 |     department: string
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:117:7
+   |
+116 | struct Manager extends Person {
+117 |     department: string
+   |       ^ expected end of statement (newline)
+118 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:118:1
+   |
+117 |     department: string
+118 | }
+   | ^ unexpected closing '}' without matching '{'
+119 | func greet(self: Manager) -> string {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct PersonWithAddress
+  --> tests/test_36_class_inheritance.al:130:25
+   |
+129 | }
+130 | struct PersonWithAddress extends Person {
+   |                         ^ expected '{' after struct PersonWithAddress
+131 |     address: Address
+   |
+   = help: add '{' after 'struct PersonWithAddress' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:130:25
+   |
+129 | }
+130 | struct PersonWithAddress extends Person {
+   |                         ^ expected end of statement (newline)
+131 |     address: Address
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:131:7
+   |
+130 | struct PersonWithAddress extends Person {
+131 |     address: Address
+   |       ^ expected end of statement (newline)
+132 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:132:1
+   |
+131 |     address: Address
+132 | }
+   | ^ unexpected closing '}' without matching '{'
+133 | addr := Address("123 Main St", "City")
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct Point3D
+  --> tests/test_36_class_inheritance.al:161:15
+   |
+160 | }
+161 | struct Point3D extends Point2D {
+   |               ^ expected '{' after struct Point3D
+162 |     z: float
+   |
+   = help: add '{' after 'struct Point3D' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:161:15
+   |
+160 | }
+161 | struct Point3D extends Point2D {
+   |               ^ expected end of statement (newline)
+162 |     z: float
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:162:7
+   |
+161 | struct Point3D extends Point2D {
+162 |     z: float
+   |       ^ expected end of statement (newline)
+163 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:163:1
+   |
+162 |     z: float
+163 | }
+   | ^ unexpected closing '}' without matching '{'
+164 | p3d := Point3D(1.0, 2.0, 3.0)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct DerivedClass
+  --> tests/test_36_class_inheritance.al:174:20
+   |
+173 | }
+174 | struct DerivedClass extends BaseClass {
+   |                    ^ expected '{' after struct DerivedClass
+175 |     derived_field: int
+   |
+   = help: add '{' after 'struct DerivedClass' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:174:20
+   |
+173 | }
+174 | struct DerivedClass extends BaseClass {
+   |                    ^ expected end of statement (newline)
+175 |     derived_field: int
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:175:7
+   |
+174 | struct DerivedClass extends BaseClass {
+175 |     derived_field: int
+   |       ^ expected end of statement (newline)
+176 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:176:1
+   |
+175 |     derived_field: int
+176 | }
+   | ^ unexpected closing '}' without matching '{'
+177 | derived_instance := DerivedClass(100, 200)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct SVGRenderer
+  --> tests/test_36_class_inheritance.al:188:19
+   |
+187 | }
+188 | struct SVGRenderer extends Renderer {
+   |                   ^ expected '{' after struct SVGRenderer
+189 |     width: int
+   |
+   = help: add '{' after 'struct SVGRenderer' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:188:19
+   |
+187 | }
+188 | struct SVGRenderer extends Renderer {
+   |                   ^ expected end of statement (newline)
+189 |     width: int
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:189:7
+   |
+188 | struct SVGRenderer extends Renderer {
+189 |     width: int
+   |       ^ expected end of statement (newline)
+190 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:190:1
+   |
+189 |     width: int
+190 | }
+   | ^ unexpected closing '}' without matching '{'
+191 | func render(self: SVGRenderer) -> string {
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected '{' after struct Bird
+  --> tests/test_36_class_inheritance.al:201:12
+   |
+200 | }
+201 | struct Bird extends Animal {
+   |            ^ expected '{' after struct Bird
+202 |     wingspan: float
+   |
+   = help: add '{' after 'struct Bird' to begin the block
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:201:12
+   |
+200 | }
+201 | struct Bird extends Animal {
+   |            ^ expected end of statement (newline)
+202 |     wingspan: float
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: expected end of statement (newline)
+  --> tests/test_36_class_inheritance.al:202:7
+   |
+201 | struct Bird extends Animal {
+202 |     wingspan: float
+   |       ^ expected end of statement (newline)
+203 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_36_class_inheritance.al:203:1
+   |
+202 |     wingspan: float
+203 | }
+   | ^ unexpected closing '}' without matching '{'
+204 | bird := Bird("Eagle", 5, 2.5)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+Found 52 errors. Execution aborted.
+

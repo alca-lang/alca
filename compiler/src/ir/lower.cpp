@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <sstream>
 
-namespace pawl::ir {
+namespace ulang::ir {
 
 namespace {
 
@@ -251,6 +251,17 @@ public:
     VReg lowerListEq(VReg left, VReg right, Type elemType, bool negate);
     VReg lowerStringEq(VReg left, VReg right, bool negate);
     VReg lowerBoolToStr(VReg value);
+    VReg emitIntConst(int64_t value);
+    VReg emitResolveStr(VReg value);
+    VReg emitByteLoad(VReg str, VReg index);
+    void emitByteStore(VReg str, VReg index, VReg value);
+    VReg emitSubstring(VReg str, VReg start, VReg count);
+    VReg emitStringSearch(VReg haystack, VReg needle, VReg from);
+    VReg emitStringTransform(VReg str, bool toUpper);
+    VReg emitStringTrim(VReg str);
+    VReg emitStringSplit(VReg str, VReg sep);
+    VReg emitStringJoin(VReg list, VReg sep);
+    void emitCopyString(VReg dst, VReg dstIndex, VReg src, VReg count);
 };
 
 void LoweringContext::lowerStatement(const ast::Statement& stmt) {
@@ -329,6 +340,32 @@ void LoweringContext::lowerStatement(const ast::Statement& stmt) {
         lowerIfStatement(*s);
     } else if (auto* s = dynamic_cast<const ast::WhileStatement*>(&stmt)) {
         lowerWhileStatement(*s);
+    } else if (auto* s = dynamic_cast<const ast::LoopStatement*>(&stmt)) {
+        Block* bodyBlock = currentFn->newBlock("loop_body");
+        Block* afterBlock = currentFn->newBlock("loop_after");
+
+        Instruction jmpEntry;
+        jmpEntry.op = Op::Jmp;
+        jmpEntry.target = bodyBlock;
+        emit(std::move(jmpEntry));
+
+        loopContinue.push_back(bodyBlock);
+        loopBreak.push_back(afterBlock);
+
+        currentBlock = bodyBlock;
+        if (s->body) {
+            lowerStatement(*s->body);
+        }
+        if (!isTerminated(currentBlock)) {
+            Instruction jmpLoop;
+            jmpLoop.op = Op::Jmp;
+            jmpLoop.target = bodyBlock;
+            emit(std::move(jmpLoop));
+        }
+
+        loopContinue.pop_back();
+        loopBreak.pop_back();
+        currentBlock = afterBlock;
     } else if (auto* s = dynamic_cast<const ast::ForStatement*>(&stmt)) {
         lowerForStatement(*s);
     } else if (auto* s = dynamic_cast<const ast::MatchStatement*>(&stmt)) {
@@ -813,12 +850,827 @@ VReg LoweringContext::lowerBoolToStr(VReg value) {
     return dst;
 }
 
+VReg LoweringContext::emitIntConst(int64_t value) {
+    VReg reg = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::ConstInt, reg, {}, {}, value});
+    return reg;
+}
+
+VReg LoweringContext::emitResolveStr(VReg value) {
+    VReg resolved = currentFn->newVReg(Type::Ptr);
+    Instruction call;
+    call.op = Op::Call;
+    call.dst = resolved;
+    call.callName = "ulang_str_ptr";
+    call.args = {value};
+    emit(std::move(call));
+    return resolved;
+}
+
+VReg LoweringContext::emitByteLoad(VReg str, VReg index) {
+    VReg addr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Add, addr, str, index});
+    VReg byte = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Load, byte, addr, {}, 8});
+    return byte;
+}
+
+void LoweringContext::emitByteStore(VReg str, VReg index, VReg value) {
+    VReg addr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Add, addr, str, index});
+    emit(Instruction{Op::Store, {}, addr, value, 8});
+}
+
+VReg LoweringContext::emitSubstring(VReg str, VReg start, VReg count) {
+    str = emitResolveStr(str);
+    VReg allocSize = currentFn->newVReg(Type::I64);
+    VReg overhead = emitIntConst(9);
+    emit(Instruction{Op::Add, allocSize, count, overhead});
+    VReg buffer = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Alloc, buffer, allocSize});
+    emit(Instruction{Op::Store, {}, buffer, count, 0});
+
+    VReg index = currentFn->newVReg(Type::I64);
+    VReg zero = emitIntConst(0);
+    VReg one = emitIntConst(1);
+    emit(Instruction{Op::Copy, index, zero});
+
+    Block* condBlock = currentFn->newBlock("substr_cond");
+    Block* bodyBlock = currentFn->newBlock("substr_body");
+    Block* doneBlock = currentFn->newBlock("substr_done");
+    Instruction toCond;
+    toCond.op = Op::Jmp;
+    toCond.target = condBlock;
+    emit(std::move(toCond));
+
+    currentBlock = condBlock;
+    VReg more = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Lt, more, index, count});
+    Instruction condBranch;
+    condBranch.op = Op::Branch;
+    condBranch.src1 = more;
+    condBranch.target = bodyBlock;
+    condBranch.elseTgt = doneBlock;
+    emit(std::move(condBranch));
+
+    currentBlock = bodyBlock;
+    VReg sourceIndex = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, sourceIndex, start, index});
+    VReg byte = emitByteLoad(str, sourceIndex);
+    emitByteStore(buffer, index, byte);
+    VReg next = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, next, index, one});
+    emit(Instruction{Op::Copy, index, next});
+    Instruction back;
+    back.op = Op::Jmp;
+    back.target = condBlock;
+    emit(std::move(back));
+
+    currentBlock = doneBlock;
+    VReg endAddr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Add, endAddr, buffer, count});
+    VReg nul = currentFn->newVReg(Type::I8);
+    VReg byteZero = emitIntConst(0);
+    emit(Instruction{Op::Copy, nul, byteZero});
+    emit(Instruction{Op::Store, {}, endAddr, nul, 8});
+    return buffer;
+}
+
+VReg LoweringContext::emitStringSearch(VReg haystack, VReg needle, VReg from) {
+    haystack = emitResolveStr(haystack);
+    needle = emitResolveStr(needle);
+    VReg result = currentFn->newVReg(Type::I64);
+    VReg minusOne = emitIntConst(-1);
+    emit(Instruction{Op::Copy, result, minusOne});
+
+    VReg hayLen = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, hayLen, haystack, {}, 0});
+    VReg needleLen = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, needleLen, needle, {}, 0});
+    VReg zero = emitIntConst(0);
+    VReg one = emitIntConst(1);
+    VReg index = currentFn->newVReg(Type::I64);
+    VReg offset = currentFn->newVReg(Type::I64);
+
+    Block* checkLimit = currentFn->newBlock("str_find_limit");
+    Block* outerInit = currentFn->newBlock("str_find_outer_init");
+    Block* outerCond = currentFn->newBlock("str_find_outer_cond");
+    Block* innerInit = currentFn->newBlock("str_find_inner_init");
+    Block* innerCond = currentFn->newBlock("str_find_inner_cond");
+    Block* innerBody = currentFn->newBlock("str_find_inner_body");
+    Block* innerNext = currentFn->newBlock("str_find_inner_next");
+    Block* found = currentFn->newBlock("str_find_found");
+    Block* mismatch = currentFn->newBlock("str_find_mismatch");
+    Block* done = currentFn->newBlock("str_find_done");
+
+    VReg fromValid = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Ge, fromValid, from, zero});
+    Instruction brFrom;
+    brFrom.op = Op::Branch;
+    brFrom.src1 = fromValid;
+    brFrom.target = checkLimit;
+    brFrom.elseTgt = done;
+    emit(std::move(brFrom));
+
+    currentBlock = checkLimit;
+    VReg limit = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Sub, limit, hayLen, needleLen});
+    VReg limitValid = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Le, limitValid, from, limit});
+    Instruction brLimit;
+    brLimit.op = Op::Branch;
+    brLimit.src1 = limitValid;
+    brLimit.target = outerInit;
+    brLimit.elseTgt = done;
+    emit(std::move(brLimit));
+
+    currentBlock = outerInit;
+    emit(Instruction{Op::Copy, index, from});
+    Instruction toOuter;
+    toOuter.op = Op::Jmp;
+    toOuter.target = outerCond;
+    emit(std::move(toOuter));
+
+    currentBlock = outerCond;
+    VReg outerMore = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Le, outerMore, index, limit});
+    Instruction brOuter;
+    brOuter.op = Op::Branch;
+    brOuter.src1 = outerMore;
+    brOuter.target = innerInit;
+    brOuter.elseTgt = done;
+    emit(std::move(brOuter));
+
+    currentBlock = innerInit;
+    emit(Instruction{Op::Copy, offset, zero});
+    Instruction toInner;
+    toInner.op = Op::Jmp;
+    toInner.target = innerCond;
+    emit(std::move(toInner));
+
+    currentBlock = innerCond;
+    VReg innerMore = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Lt, innerMore, offset, needleLen});
+    Instruction brInner;
+    brInner.op = Op::Branch;
+    brInner.src1 = innerMore;
+    brInner.target = innerBody;
+    brInner.elseTgt = found;
+    emit(std::move(brInner));
+
+    currentBlock = innerBody;
+    VReg hayIndex = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, hayIndex, index, offset});
+    VReg hayByte = emitByteLoad(haystack, hayIndex);
+    VReg needleByte = emitByteLoad(needle, offset);
+    VReg equal = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Eq, equal, hayByte, needleByte});
+    Instruction brEqual;
+    brEqual.op = Op::Branch;
+    brEqual.src1 = equal;
+    brEqual.target = innerNext;
+    brEqual.elseTgt = mismatch;
+    emit(std::move(brEqual));
+
+    currentBlock = innerNext;
+    VReg nextOffset = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, nextOffset, offset, one});
+    emit(Instruction{Op::Copy, offset, nextOffset});
+    Instruction backInner;
+    backInner.op = Op::Jmp;
+    backInner.target = innerCond;
+    emit(std::move(backInner));
+
+    currentBlock = mismatch;
+    VReg nextIndex = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, nextIndex, index, one});
+    emit(Instruction{Op::Copy, index, nextIndex});
+    Instruction backOuter;
+    backOuter.op = Op::Jmp;
+    backOuter.target = outerCond;
+    emit(std::move(backOuter));
+
+    currentBlock = found;
+    emit(Instruction{Op::Copy, result, index});
+    Instruction toDone;
+    toDone.op = Op::Jmp;
+    toDone.target = done;
+    emit(std::move(toDone));
+
+    currentBlock = done;
+    return result;
+}
+
+VReg LoweringContext::emitStringTransform(VReg str, bool toUpper) {
+    str = emitResolveStr(str);
+    VReg length = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, length, str, {}, 0});
+    VReg allocSize = currentFn->newVReg(Type::I64);
+    VReg overhead = emitIntConst(9);
+    emit(Instruction{Op::Add, allocSize, length, overhead});
+    VReg buffer = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Alloc, buffer, allocSize});
+    emit(Instruction{Op::Store, {}, buffer, length, 0});
+
+    VReg index = currentFn->newVReg(Type::I64);
+    VReg zero = emitIntConst(0);
+    VReg one = emitIntConst(1);
+    VReg caseDelta = emitIntConst(32);
+    VReg lowerA = emitIntConst('a');
+    VReg lowerZ = emitIntConst('z');
+    VReg upperA = emitIntConst('A');
+    VReg upperZ = emitIntConst('Z');
+    emit(Instruction{Op::Copy, index, zero});
+
+    Block* condBlock = currentFn->newBlock("str_xform_cond");
+    Block* bodyBlock = currentFn->newBlock("str_xform_body");
+    Block* checkUpper = currentFn->newBlock("str_xform_check_upper");
+    Block* checkLower = currentFn->newBlock("str_xform_check_lower");
+    Block* convertBlock = currentFn->newBlock("str_xform_convert");
+    Block* storeBlock = currentFn->newBlock("str_xform_store");
+    Block* doneBlock = currentFn->newBlock("str_xform_done");
+
+    Instruction toCond;
+    toCond.op = Op::Jmp;
+    toCond.target = condBlock;
+    emit(std::move(toCond));
+
+    currentBlock = condBlock;
+    VReg more = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Lt, more, index, length});
+    Instruction brCond;
+    brCond.op = Op::Branch;
+    brCond.src1 = more;
+    brCond.target = bodyBlock;
+    brCond.elseTgt = doneBlock;
+    emit(std::move(brCond));
+
+    currentBlock = bodyBlock;
+    VReg byte = emitByteLoad(str, index);
+    VReg byteReg = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Copy, byteReg, byte});
+    if (toUpper) {
+        VReg ge = currentFn->newVReg(Type::I8);
+        emit(Instruction{Op::Ge, ge, byteReg, lowerA});
+        Instruction brGe;
+        brGe.op = Op::Branch;
+        brGe.src1 = ge;
+        brGe.target = checkUpper;
+        brGe.elseTgt = storeBlock;
+        emit(std::move(brGe));
+    } else {
+        VReg ge = currentFn->newVReg(Type::I8);
+        emit(Instruction{Op::Ge, ge, byteReg, upperA});
+        Instruction brGe;
+        brGe.op = Op::Branch;
+        brGe.src1 = ge;
+        brGe.target = checkLower;
+        brGe.elseTgt = storeBlock;
+        emit(std::move(brGe));
+    }
+
+    currentBlock = toUpper ? checkUpper : checkLower;
+    VReg le = currentFn->newVReg(Type::I8);
+    if (toUpper) emit(Instruction{Op::Le, le, byteReg, lowerZ});
+    else emit(Instruction{Op::Le, le, byteReg, upperZ});
+    Instruction brLe;
+    brLe.op = Op::Branch;
+    brLe.src1 = le;
+    brLe.target = convertBlock;
+    brLe.elseTgt = storeBlock;
+    emit(std::move(brLe));
+
+    currentBlock = convertBlock;
+    VReg converted = currentFn->newVReg(Type::I8);
+    if (toUpper) emit(Instruction{Op::Sub, converted, byteReg, caseDelta});
+    else emit(Instruction{Op::Add, converted, byteReg, caseDelta});
+    emit(Instruction{Op::Copy, byteReg, converted});
+    Instruction toStore;
+    toStore.op = Op::Jmp;
+    toStore.target = storeBlock;
+    emit(std::move(toStore));
+
+    currentBlock = storeBlock;
+    emitByteStore(buffer, index, byteReg);
+    VReg next = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, next, index, one});
+    emit(Instruction{Op::Copy, index, next});
+    Instruction back;
+    back.op = Op::Jmp;
+    back.target = condBlock;
+    emit(std::move(back));
+
+    currentBlock = doneBlock;
+    VReg endAddr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Add, endAddr, buffer, length});
+    VReg nul = currentFn->newVReg(Type::I8);
+    VReg byteZero = emitIntConst(0);
+    emit(Instruction{Op::Copy, nul, byteZero});
+    emit(Instruction{Op::Store, {}, endAddr, nul, 8});
+    return buffer;
+}
+
+VReg LoweringContext::emitStringTrim(VReg str) {
+    str = emitResolveStr(str);
+    VReg length = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, length, str, {}, 0});
+    VReg zero = emitIntConst(0);
+    VReg one = emitIntConst(1);
+    VReg space = emitIntConst(' ');
+    VReg first = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Copy, first, zero});
+
+    Block* firstCond = currentFn->newBlock("trim_first_cond");
+    Block* firstBody = currentFn->newBlock("trim_first_body");
+    Block* firstDone = currentFn->newBlock("trim_first_done");
+    Instruction toFirst;
+    toFirst.op = Op::Jmp;
+    toFirst.target = firstCond;
+    emit(std::move(toFirst));
+
+    currentBlock = firstCond;
+    VReg firstMore = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Lt, firstMore, first, length});
+    Instruction brFirst;
+    brFirst.op = Op::Branch;
+    brFirst.src1 = firstMore;
+    brFirst.target = firstBody;
+    brFirst.elseTgt = firstDone;
+    emit(std::move(brFirst));
+
+    currentBlock = firstBody;
+    VReg firstByte = emitByteLoad(str, first);
+    VReg firstSpace = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Eq, firstSpace, firstByte, space});
+    Block* firstAdvance = currentFn->newBlock("trim_first_advance");
+    Instruction brFirstSpace;
+    brFirstSpace.op = Op::Branch;
+    brFirstSpace.src1 = firstSpace;
+    brFirstSpace.target = firstAdvance;
+    brFirstSpace.elseTgt = firstDone;
+    emit(std::move(brFirstSpace));
+
+    currentBlock = firstAdvance;
+    VReg nextFirst = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, nextFirst, first, one});
+    emit(Instruction{Op::Copy, first, nextFirst});
+    Instruction backFirst;
+    backFirst.op = Op::Jmp;
+    backFirst.target = firstCond;
+    emit(std::move(backFirst));
+
+    currentBlock = firstDone;
+    VReg last = currentFn->newVReg(Type::I64);
+    VReg lastStart = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Sub, lastStart, length, one});
+    emit(Instruction{Op::Copy, last, lastStart});
+
+    Block* lastCond = currentFn->newBlock("trim_last_cond");
+    Block* lastBody = currentFn->newBlock("trim_last_body");
+    Block* lastDone = currentFn->newBlock("trim_last_done");
+    Block* emptyDone = currentFn->newBlock("trim_empty");
+    Instruction toLast;
+    toLast.op = Op::Jmp;
+    toLast.target = lastCond;
+    emit(std::move(toLast));
+
+    currentBlock = lastCond;
+    VReg lastValid = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Ge, lastValid, last, first});
+    Instruction brLast;
+    brLast.op = Op::Branch;
+    brLast.src1 = lastValid;
+    brLast.target = lastBody;
+    brLast.elseTgt = emptyDone;
+    emit(std::move(brLast));
+
+    currentBlock = lastBody;
+    VReg lastByte = emitByteLoad(str, last);
+    VReg lastSpace = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Eq, lastSpace, lastByte, space});
+    Block* lastAdvance = currentFn->newBlock("trim_last_advance");
+    Instruction brLastSpace;
+    brLastSpace.op = Op::Branch;
+    brLastSpace.src1 = lastSpace;
+    brLastSpace.target = lastAdvance;
+    brLastSpace.elseTgt = lastDone;
+    emit(std::move(brLastSpace));
+
+    currentBlock = lastAdvance;
+    VReg prevLast = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Sub, prevLast, last, one});
+    emit(Instruction{Op::Copy, last, prevLast});
+    Instruction backLast;
+    backLast.op = Op::Jmp;
+    backLast.target = lastCond;
+    emit(std::move(backLast));
+
+    currentBlock = lastDone;
+    VReg count = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Sub, count, last, first});
+    emit(Instruction{Op::Add, count, count, one});
+    VReg result = emitSubstring(str, first, count);
+    Block* finish = currentFn->newBlock("trim_finish");
+    Instruction toFinish;
+    toFinish.op = Op::Jmp;
+    toFinish.target = finish;
+    emit(std::move(toFinish));
+
+    currentBlock = emptyDone;
+    VReg empty = emitSubstring(str, zero, zero);
+    emit(Instruction{Op::Copy, result, empty});
+    Instruction toFinishEmpty;
+    toFinishEmpty.op = Op::Jmp;
+    toFinishEmpty.target = finish;
+    emit(std::move(toFinishEmpty));
+
+    currentBlock = finish;
+    return result;
+}
+
+void LoweringContext::emitCopyString(VReg dst, VReg dstIndex, VReg src, VReg count) {
+    VReg index = currentFn->newVReg(Type::I64);
+    VReg zero = emitIntConst(0);
+    VReg one = emitIntConst(1);
+    emit(Instruction{Op::Copy, index, zero});
+
+    Block* condBlock = currentFn->newBlock("copy_cond");
+    Block* bodyBlock = currentFn->newBlock("copy_body");
+    Block* doneBlock = currentFn->newBlock("copy_done");
+    Instruction toCond;
+    toCond.op = Op::Jmp;
+    toCond.target = condBlock;
+    emit(std::move(toCond));
+
+    currentBlock = condBlock;
+    VReg more = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Lt, more, index, count});
+    Instruction branch;
+    branch.op = Op::Branch;
+    branch.src1 = more;
+    branch.target = bodyBlock;
+    branch.elseTgt = doneBlock;
+    emit(std::move(branch));
+
+    currentBlock = bodyBlock;
+    VReg byte = emitByteLoad(src, index);
+    VReg outIndex = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, outIndex, dstIndex, index});
+    emitByteStore(dst, outIndex, byte);
+    VReg next = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, next, index, one});
+    emit(Instruction{Op::Copy, index, next});
+    Instruction back;
+    back.op = Op::Jmp;
+    back.target = condBlock;
+    emit(std::move(back));
+
+    currentBlock = doneBlock;
+}
+
+VReg LoweringContext::emitStringSplit(VReg str, VReg sep) {
+    str = emitResolveStr(str);
+    sep = emitResolveStr(sep);
+    VReg strLen = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, strLen, str, {}, 0});
+    VReg sepLen = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, sepLen, sep, {}, 0});
+    VReg zero = emitIntConst(0);
+    VReg one = emitIntConst(1);
+    VReg result = currentFn->newVReg(Type::Ptr);
+
+    Block* emptySepBlock = currentFn->newBlock("split_empty_sep");
+    Block* generalBlock = currentFn->newBlock("split_general");
+    Block* doneBlock = currentFn->newBlock("split_done");
+    VReg sepEmpty = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Eq, sepEmpty, sepLen, zero});
+    Instruction choose;
+    choose.op = Op::Branch;
+    choose.src1 = sepEmpty;
+    choose.target = emptySepBlock;
+    choose.elseTgt = generalBlock;
+    emit(std::move(choose));
+
+    currentBlock = emptySepBlock;
+    VReg oneBytes = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::ConstInt, oneBytes, {}, {}, 8});
+    VReg singleData = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Alloc, singleData, oneBytes});
+    emit(Instruction{Op::Store, {}, singleData, str, 0});
+    VReg singleHdrSize = emitIntConst(24);
+    VReg singleHdr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Alloc, singleHdr, singleHdrSize});
+    emit(Instruction{Op::Store, {}, singleHdr, singleData, 0});
+    emit(Instruction{Op::Store, {}, singleHdr, one, 8});
+    emit(Instruction{Op::Store, {}, singleHdr, one, 16});
+    emit(Instruction{Op::Copy, result, singleHdr});
+    Instruction emptyToDone;
+    emptyToDone.op = Op::Jmp;
+    emptyToDone.target = doneBlock;
+    emit(std::move(emptyToDone));
+
+    currentBlock = generalBlock;
+    VReg count = currentFn->newVReg(Type::I64);
+    VReg pos = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Copy, count, zero});
+    emit(Instruction{Op::Copy, pos, zero});
+
+    Block* countCond = currentFn->newBlock("split_count_cond");
+    Block* countDone = currentFn->newBlock("split_count_done");
+    Block* countStep = currentFn->newBlock("split_count_step");
+    Instruction toCount;
+    toCount.op = Op::Jmp;
+    toCount.target = countCond;
+    emit(std::move(toCount));
+
+    currentBlock = countCond;
+    VReg foundCount = emitStringSearch(str, sep, pos);
+    VReg noMoreCount = currentFn->newVReg(Type::I8);
+    VReg minusOne = emitIntConst(-1);
+    emit(Instruction{Op::Eq, noMoreCount, foundCount, minusOne});
+    Instruction countBranch;
+    countBranch.op = Op::Branch;
+    countBranch.src1 = noMoreCount;
+    countBranch.target = countDone;
+    countBranch.elseTgt = countStep;
+    emit(std::move(countBranch));
+
+    currentBlock = countStep;
+    VReg countNext = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, countNext, count, one});
+    emit(Instruction{Op::Copy, count, countNext});
+    VReg afterSepCount = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, afterSepCount, foundCount, sepLen});
+    emit(Instruction{Op::Copy, pos, afterSepCount});
+    Instruction countBack;
+    countBack.op = Op::Jmp;
+    countBack.target = countCond;
+    emit(std::move(countBack));
+
+    currentBlock = countDone;
+    VReg parts = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, parts, count, one});
+    VReg dataBytes = currentFn->newVReg(Type::I64);
+    VReg eight = emitIntConst(8);
+    emit(Instruction{Op::Mul, dataBytes, parts, eight});
+    VReg data = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Alloc, data, dataBytes});
+
+    VReg part = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Copy, part, zero});
+    emit(Instruction{Op::Copy, pos, zero});
+
+    Block* splitCond = currentFn->newBlock("split_cond");
+    Block* splitBody = currentFn->newBlock("split_body");
+    Block* splitFinal = currentFn->newBlock("split_final");
+    Instruction toSplit;
+    toSplit.op = Op::Jmp;
+    toSplit.target = splitCond;
+    emit(std::move(toSplit));
+
+    currentBlock = splitCond;
+    VReg foundSplit = emitStringSearch(str, sep, pos);
+    VReg noMoreSplit = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Eq, noMoreSplit, foundSplit, minusOne});
+    Instruction splitBranch;
+    splitBranch.op = Op::Branch;
+    splitBranch.src1 = noMoreSplit;
+    splitBranch.target = splitFinal;
+    splitBranch.elseTgt = splitBody;
+    emit(std::move(splitBranch));
+
+    currentBlock = splitBody;
+    VReg pieceLen = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Sub, pieceLen, foundSplit, pos});
+    VReg piece = emitSubstring(str, pos, pieceLen);
+    VReg partOff = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Mul, partOff, part, eight});
+    VReg partAddr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Add, partAddr, data, partOff});
+    emit(Instruction{Op::Store, {}, partAddr, piece, 0});
+    VReg partNext = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, partNext, part, one});
+    emit(Instruction{Op::Copy, part, partNext});
+    VReg posNext = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, posNext, foundSplit, sepLen});
+    emit(Instruction{Op::Copy, pos, posNext});
+    Instruction splitBack;
+    splitBack.op = Op::Jmp;
+    splitBack.target = splitCond;
+    emit(std::move(splitBack));
+
+    currentBlock = splitFinal;
+    VReg tailLen = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Sub, tailLen, strLen, pos});
+    VReg tail = emitSubstring(str, pos, tailLen);
+    VReg tailOff = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Mul, tailOff, part, eight});
+    VReg tailAddr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Add, tailAddr, data, tailOff});
+    emit(Instruction{Op::Store, {}, tailAddr, tail, 0});
+    VReg finalParts = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, finalParts, part, one});
+
+    VReg hdrSize = emitIntConst(24);
+    VReg hdr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Alloc, hdr, hdrSize});
+    emit(Instruction{Op::Store, {}, hdr, data, 0});
+    emit(Instruction{Op::Store, {}, hdr, finalParts, 8});
+    emit(Instruction{Op::Store, {}, hdr, parts, 16});
+    emit(Instruction{Op::Copy, result, hdr});
+    Instruction splitToDone;
+    splitToDone.op = Op::Jmp;
+    splitToDone.target = doneBlock;
+    emit(std::move(splitToDone));
+
+    currentBlock = doneBlock;
+    return result;
+}
+
+VReg LoweringContext::emitStringJoin(VReg list, VReg sep) {
+    sep = emitResolveStr(sep);
+    VReg data = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Load, data, list, {}, 0});
+    VReg count = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, count, list, {}, 8});
+    VReg sepLen = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, sepLen, sep, {}, 0});
+    VReg zero = emitIntConst(0);
+    VReg one = emitIntConst(1);
+    VReg eight = emitIntConst(8);
+    VReg total = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Copy, total, zero});
+
+    Block* emptyBlock = currentFn->newBlock("join_empty");
+    Block* calcInit = currentFn->newBlock("join_calc_init");
+    Block* calcCond = currentFn->newBlock("join_calc_cond");
+    Block* calcBody = currentFn->newBlock("join_calc_body");
+    Block* calcDone = currentFn->newBlock("join_calc_done");
+    Block* doneBlock = currentFn->newBlock("join_done");
+    VReg noItems = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Eq, noItems, count, zero});
+    Instruction choose;
+    choose.op = Op::Branch;
+    choose.src1 = noItems;
+    choose.target = emptyBlock;
+    choose.elseTgt = calcInit;
+    emit(std::move(choose));
+
+    VReg result = currentFn->newVReg(Type::Ptr);
+
+    currentBlock = emptyBlock;
+    VReg emptyBytes = emitIntConst(9);
+    VReg emptyBuf = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Alloc, emptyBuf, emptyBytes});
+    emit(Instruction{Op::Store, {}, emptyBuf, zero, 0});
+    emit(Instruction{Op::Store, {}, emptyBuf, zero, 8});
+    emit(Instruction{Op::Copy, result, emptyBuf});
+    Instruction emptyDone;
+    emptyDone.op = Op::Jmp;
+    emptyDone.target = doneBlock;
+    emit(std::move(emptyDone));
+
+    currentBlock = calcInit;
+    VReg index = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Copy, index, zero});
+    Instruction toCalc;
+    toCalc.op = Op::Jmp;
+    toCalc.target = calcCond;
+    emit(std::move(toCalc));
+
+    currentBlock = calcCond;
+    VReg calcMore = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Lt, calcMore, index, count});
+    Instruction calcBranch;
+    calcBranch.op = Op::Branch;
+    calcBranch.src1 = calcMore;
+    calcBranch.target = calcBody;
+    calcBranch.elseTgt = calcDone;
+    emit(std::move(calcBranch));
+
+    currentBlock = calcBody;
+    VReg itemOff = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Mul, itemOff, index, eight});
+    VReg itemAddr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Add, itemAddr, data, itemOff});
+    VReg item = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Load, item, itemAddr, {}, 0});
+    VReg itemResolved = emitResolveStr(item);
+    VReg itemLen = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, itemLen, itemResolved, {}, 0});
+    emit(Instruction{Op::Add, total, total, itemLen});
+    VReg calcNext = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, calcNext, index, one});
+    emit(Instruction{Op::Copy, index, calcNext});
+    Instruction calcBack;
+    calcBack.op = Op::Jmp;
+    calcBack.target = calcCond;
+    emit(std::move(calcBack));
+
+    currentBlock = calcDone;
+    VReg gapCount = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Sub, gapCount, count, one});
+    VReg gapBytes = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Mul, gapBytes, gapCount, sepLen});
+    emit(Instruction{Op::Add, total, total, gapBytes});
+    VReg allocSize = currentFn->newVReg(Type::I64);
+    VReg overhead = emitIntConst(9);
+    emit(Instruction{Op::Add, allocSize, total, overhead});
+    VReg buffer = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Alloc, buffer, allocSize});
+    emit(Instruction{Op::Store, {}, buffer, total, 0});
+    emit(Instruction{Op::Copy, result, buffer});
+
+    VReg outPos = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Copy, outPos, zero});
+    emit(Instruction{Op::Copy, index, zero});
+
+    Block* copyCond = currentFn->newBlock("join_copy_cond");
+    Block* copyBody = currentFn->newBlock("join_copy_body");
+    Block* sepBlock = currentFn->newBlock("join_sep");
+    Block* copyStep = currentFn->newBlock("join_copy_step");
+    Block* copyDone = currentFn->newBlock("join_copy_done");
+    Instruction toCopy;
+    toCopy.op = Op::Jmp;
+    toCopy.target = copyCond;
+    emit(std::move(toCopy));
+
+    currentBlock = copyCond;
+    VReg copyMore = currentFn->newVReg(Type::I8);
+    emit(Instruction{Op::Lt, copyMore, index, count});
+    Instruction copyBranch;
+    copyBranch.op = Op::Branch;
+    copyBranch.src1 = copyMore;
+    copyBranch.target = copyBody;
+    copyBranch.elseTgt = copyDone;
+    emit(std::move(copyBranch));
+
+    currentBlock = copyBody;
+    VReg outItemOff = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Mul, outItemOff, index, eight});
+    VReg outItemAddr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Add, outItemAddr, data, outItemOff});
+    VReg outItem = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Load, outItem, outItemAddr, {}, 0});
+    VReg outItemResolved = emitResolveStr(outItem);
+    VReg outItemLen = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Load, outItemLen, outItemResolved, {}, 0});
+    emitCopyString(buffer, outPos, outItemResolved, outItemLen);
+    VReg afterItem = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, afterItem, outPos, outItemLen});
+    emit(Instruction{Op::Copy, outPos, afterItem});
+    VReg hasMore = currentFn->newVReg(Type::I8);
+    VReg lastIndex = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Sub, lastIndex, count, one});
+    emit(Instruction{Op::Lt, hasMore, index, lastIndex});
+    Instruction sepBranch;
+    sepBranch.op = Op::Branch;
+    sepBranch.src1 = hasMore;
+    sepBranch.target = sepBlock;
+    sepBranch.elseTgt = copyStep;
+    emit(std::move(sepBranch));
+
+    currentBlock = sepBlock;
+    emitCopyString(buffer, outPos, sep, sepLen);
+    VReg afterSep = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, afterSep, outPos, sepLen});
+    emit(Instruction{Op::Copy, outPos, afterSep});
+    Instruction sepToStep;
+    sepToStep.op = Op::Jmp;
+    sepToStep.target = copyStep;
+    emit(std::move(sepToStep));
+
+    currentBlock = copyStep;
+    VReg nextIndex = currentFn->newVReg(Type::I64);
+    emit(Instruction{Op::Add, nextIndex, index, one});
+    emit(Instruction{Op::Copy, index, nextIndex});
+    Instruction copyBack;
+    copyBack.op = Op::Jmp;
+    copyBack.target = copyCond;
+    emit(std::move(copyBack));
+
+    currentBlock = copyDone;
+    VReg endAddr = currentFn->newVReg(Type::Ptr);
+    emit(Instruction{Op::Add, endAddr, buffer, total});
+    VReg nul = currentFn->newVReg(Type::I8);
+    VReg byteZero = emitIntConst(0);
+    emit(Instruction{Op::Copy, nul, byteZero});
+    emit(Instruction{Op::Store, {}, endAddr, nul, 8});
+    Instruction toDone;
+    toDone.op = Op::Jmp;
+    toDone.target = doneBlock;
+    emit(std::move(toDone));
+
+    currentBlock = doneBlock;
+    return result;
+}
+
 VReg LoweringContext::lowerStringEq(VReg left, VReg right, bool negate) {
     VReg dst = currentFn->newVReg(Type::I8);
     Instruction call;
     call.op = Op::Call;
     call.dst = dst;
-    call.callName = "pawl_str_eq";
+    call.callName = "ulang_str_eq";
     call.args = {left, right};
     emit(std::move(call));
     if (!negate) return dst;
@@ -1690,6 +2542,166 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
                 const std::string& modName = ident->value;
                 const std::string& fnName = dot->field;
 
+                // Check if this is a custom imported module function: modName.fnName
+                std::string fullCustomName = modName + "." + fnName;
+                auto customFnIt = functions.find(fullCustomName);
+                if (customFnIt == functions.end()) {
+                    customFnIt = functions.find(fnName);
+                }
+                if (customFnIt != functions.end()) {
+                    std::vector<VReg> args;
+                    for (const auto& a : expr->arguments) {
+                        args.push_back(lowerExpression(*a));
+                    }
+                    Function* targetFn = customFnIt->second;
+                    VReg dst = currentFn->newVReg(targetFn->returnType);
+                    Instruction callInst;
+                    callInst.op = Op::Call;
+                    callInst.dst = dst;
+                    callInst.callName = customFnIt->first;
+                    callInst.args = std::move(args);
+                    emit(std::move(callInst));
+                    return dst;
+                }
+
+                if (modName == "cpu") {
+                    std::vector<VReg> args;
+                    for (const auto& a : expr->arguments) {
+                        args.push_back(lowerExpression(*a));
+                    }
+                    if (fnName == "cli") {
+                        emit(Instruction{Op::CpuCli});
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
+                    if (fnName == "sti") {
+                        emit(Instruction{Op::CpuSti});
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
+                    if (fnName == "hlt") {
+                        emit(Instruction{Op::CpuHlt});
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
+                    if (fnName == "pause") {
+                        emit(Instruction{Op::CpuPause});
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
+                    if ((fnName == "in8" || fnName == "in16" || fnName == "in32") && args.size() == 1) {
+                        int bits = (fnName == "in8") ? 8 : ((fnName == "in16") ? 16 : 32);
+                        VReg dst = currentFn->newVReg(Type::I64);
+                        Instruction inst;
+                        inst.op = Op::CpuIn;
+                        inst.dst = dst;
+                        inst.src1 = args[0];
+                        inst.intVal = bits;
+                        emit(std::move(inst));
+                        return dst;
+                    }
+                    if ((fnName == "out8" || fnName == "out16" || fnName == "out32") && args.size() == 2) {
+                        int bits = (fnName == "out8") ? 8 : ((fnName == "out16") ? 16 : 32);
+                        Instruction inst;
+                        inst.op = Op::CpuOut;
+                        inst.src1 = args[0];
+                        inst.src2 = args[1];
+                        inst.intVal = bits;
+                        emit(std::move(inst));
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
+                    if (fnName == "read_cr0" || fnName == "read_cr2" || fnName == "read_cr3") {
+                        int crNum = (fnName == "read_cr0") ? 0 : ((fnName == "read_cr2") ? 2 : 3);
+                        VReg dst = currentFn->newVReg(Type::I64);
+                        Instruction inst;
+                        inst.op = Op::CpuReadCr;
+                        inst.dst = dst;
+                        inst.intVal = crNum;
+                        emit(std::move(inst));
+                        return dst;
+                    }
+                    if ((fnName == "write_cr0" || fnName == "write_cr3") && args.size() == 1) {
+                        int crNum = (fnName == "write_cr0") ? 0 : 3;
+                        Instruction inst;
+                        inst.op = Op::CpuWriteCr;
+                        inst.src1 = args[0];
+                        inst.intVal = crNum;
+                        emit(std::move(inst));
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
+                    if (fnName == "invlpg" && args.size() == 1) {
+                        Instruction inst;
+                        inst.op = Op::CpuInvlpg;
+                        inst.src1 = args[0];
+                        emit(std::move(inst));
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
+                }
+
+                if (modName == "mem") {
+                    std::vector<VReg> args;
+                    for (const auto& a : expr->arguments) {
+                        args.push_back(lowerExpression(*a));
+                    }
+                    if (fnName == "read_u8" || fnName == "read_i8" ||
+                        fnName == "read_u16" || fnName == "read_i16" ||
+                        fnName == "read_u32" || fnName == "read_i32" ||
+                        fnName == "read_u64" || fnName == "read_i64") {
+                        int bits = (fnName.find("8") != std::string::npos) ? 8 :
+                                   ((fnName.find("16") != std::string::npos) ? 16 :
+                                   ((fnName.find("32") != std::string::npos) ? 32 : 64));
+                        VReg addr = args[0];
+                        if (args.size() == 2) {
+                            VReg sum = currentFn->newVReg(Type::I64);
+                            emit(Instruction{Op::Add, sum, args[0], args[1]});
+                            addr = sum;
+                        }
+                        VReg dst = currentFn->newVReg(Type::I64);
+                        Instruction inst;
+                        inst.op = Op::RawLoad;
+                        inst.dst = dst;
+                        inst.src1 = addr;
+                        inst.intVal = bits;
+                        emit(std::move(inst));
+                        return dst;
+                    }
+                    if (fnName == "write_u8" || fnName == "write_i8" ||
+                        fnName == "write_u16" || fnName == "write_i16" ||
+                        fnName == "write_u32" || fnName == "write_i32" ||
+                        fnName == "write_u64" || fnName == "write_i64") {
+                        int bits = (fnName.find("8") != std::string::npos) ? 8 :
+                                   ((fnName.find("16") != std::string::npos) ? 16 :
+                                   ((fnName.find("32") != std::string::npos) ? 32 : 64));
+                        VReg addr = args[0];
+                        VReg val = args[1];
+                        if (args.size() == 3) {
+                            // mem.write_u8(base, val, offset)
+                            VReg sum = currentFn->newVReg(Type::I64);
+                            emit(Instruction{Op::Add, sum, args[0], args[2]});
+                            addr = sum;
+                        }
+                        Instruction inst;
+                        inst.op = Op::RawStore;
+                        inst.src1 = addr;
+                        inst.src2 = val;
+                        inst.intVal = bits;
+                        emit(std::move(inst));
+                        VReg trueReg = currentFn->newVReg(Type::I8);
+                        emit(Instruction{Op::ConstInt, trueReg, {}, {}, 1});
+                        return trueReg;
+                    }
+                }
+
                 if (modName == "math") {
                     std::vector<VReg> args;
                     for (const auto& a : expr->arguments) {
@@ -1775,6 +2787,243 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
 
                         currentBlock = mergeB;
                         return dst;
+                    }
+
+                    auto toFloat = [&](VReg value) -> VReg {
+                        if (value.type == Type::F64) return value;
+                        VReg converted = currentFn->newVReg(Type::F64);
+                        emit(Instruction{Op::IntToFloat, converted, value});
+                        return converted;
+                    };
+
+                    if (args.size() == 1 &&
+                        (fnName == "sqrt" || fnName == "sin" || fnName == "cos" ||
+                         fnName == "tan" || fnName == "asin" || fnName == "acos" ||
+                         fnName == "atan" || fnName == "log" || fnName == "log10" ||
+                         fnName == "floor" || fnName == "ceil" || fnName == "round")) {
+                        VReg input = toFloat(args[0]);
+                        VReg dst = currentFn->newVReg(Type::F64);
+                        Instruction inst;
+                        inst.op = Op::MathUnary;
+                        inst.dst = dst;
+                        inst.src1 = input;
+                        inst.callName = fnName;
+                        emit(std::move(inst));
+                        return dst;
+                    }
+
+                    if (args.size() == 2 && (fnName == "pow" || fnName == "hypot")) {
+                        VReg left = toFloat(args[0]);
+                        VReg right = toFloat(args[1]);
+                        VReg dst = currentFn->newVReg(Type::F64);
+                        Instruction inst;
+                        inst.op = Op::MathBinary;
+                        inst.dst = dst;
+                        inst.src1 = left;
+                        inst.src2 = right;
+                        inst.callName = fnName;
+                        emit(std::move(inst));
+                        return dst;
+                    }
+
+                    if (fnName == "clamp" && args.size() == 3) {
+                        Type ty = args[0].type;
+                        VReg result = currentFn->newVReg(ty);
+                        emit(Instruction{Op::Copy, result, args[0]});
+
+                        Block* checkHigh = currentFn->newBlock("clamp_high");
+                        Block* setLow = currentFn->newBlock("clamp_low");
+                        Block* setHigh = currentFn->newBlock("clamp_set_high");
+                        Block* done = currentFn->newBlock("clamp_done");
+
+                        VReg below = currentFn->newVReg(Type::I8);
+                        emit(Instruction{Op::Lt, below, result, args[1]});
+                        Instruction br1;
+                        br1.op = Op::Branch;
+                        br1.src1 = below;
+                        br1.target = setLow;
+                        br1.elseTgt = checkHigh;
+                        emit(std::move(br1));
+
+                        currentBlock = setLow;
+                        emit(Instruction{Op::Copy, result, args[1]});
+                        Instruction j1;
+                        j1.op = Op::Jmp;
+                        j1.target = checkHigh;
+                        emit(std::move(j1));
+
+                        currentBlock = checkHigh;
+                        VReg above = currentFn->newVReg(Type::I8);
+                        emit(Instruction{Op::Gt, above, result, args[2]});
+                        Instruction br2;
+                        br2.op = Op::Branch;
+                        br2.src1 = above;
+                        br2.target = setHigh;
+                        br2.elseTgt = done;
+                        emit(std::move(br2));
+
+                        currentBlock = setHigh;
+                        emit(Instruction{Op::Copy, result, args[2]});
+                        Instruction j2;
+                        j2.op = Op::Jmp;
+                        j2.target = done;
+                        emit(std::move(j2));
+
+                        currentBlock = done;
+                        return result;
+                    }
+
+                    if (fnName == "deg2rad" && args.size() == 1) {
+                        VReg input = toFloat(args[0]);
+                        VReg pi = currentFn->newVReg(Type::F64);
+                        Instruction piInst;
+                        piInst.op = Op::ConstFloat;
+                        piInst.dst = pi;
+                        piInst.floatVal = 3.14159265358979323846;
+                        emit(std::move(piInst));
+                        VReg divisor = currentFn->newVReg(Type::F64);
+                        Instruction divInst;
+                        divInst.op = Op::ConstFloat;
+                        divInst.dst = divisor;
+                        divInst.floatVal = 180.0;
+                        emit(std::move(divInst));
+                        VReg factor = currentFn->newVReg(Type::F64);
+                        emit(Instruction{Op::Div, factor, pi, divisor});
+                        VReg dst = currentFn->newVReg(Type::F64);
+                        emit(Instruction{Op::Mul, dst, input, factor});
+                        return dst;
+                    }
+
+                    if (fnName == "rad2deg" && args.size() == 1) {
+                        VReg input = toFloat(args[0]);
+                        VReg pi = currentFn->newVReg(Type::F64);
+                        Instruction piInst;
+                        piInst.op = Op::ConstFloat;
+                        piInst.dst = pi;
+                        piInst.floatVal = 3.14159265358979323846;
+                        emit(std::move(piInst));
+                        VReg factor = currentFn->newVReg(Type::F64);
+                        Instruction factorInst;
+                        factorInst.op = Op::ConstFloat;
+                        factorInst.dst = factor;
+                        factorInst.floatVal = 180.0;
+                        emit(std::move(factorInst));
+                        VReg dst = currentFn->newVReg(Type::F64);
+                        emit(Instruction{Op::Mul, dst, input, factor});
+                        emit(Instruction{Op::Div, dst, dst, pi});
+                        return dst;
+                    }
+                }
+
+                if (modName == "string") {
+                    std::vector<VReg> args;
+                    for (const auto& a : expr->arguments) {
+                        args.push_back(lowerExpression(*a));
+                    }
+
+                    if (fnName == "lower" && args.size() == 1) {
+                        return emitStringTransform(args[0], false);
+                    }
+                    if (fnName == "upper" && args.size() == 1) {
+                        return emitStringTransform(args[0], true);
+                    }
+                    if (fnName == "trim" && args.size() == 1) {
+                        return emitStringTrim(args[0]);
+                    }
+                    if (fnName == "contains" && args.size() == 2) {
+                        VReg zero = emitIntConst(0);
+                        VReg foundIdx = emitStringSearch(args[0], args[1], zero);
+                        VReg minusOne = emitIntConst(-1);
+                        VReg dst = currentFn->newVReg(Type::I8);
+                        emit(Instruction{Op::Ne, dst, foundIdx, minusOne});
+                        return dst;
+                    }
+                    if (fnName == "index_of" && (args.size() == 2 || args.size() == 3)) {
+                        VReg from = (args.size() == 3) ? args[2] : emitIntConst(0);
+                        return emitStringSearch(args[0], args[1], from);
+                    }
+                    if (fnName == "starts_with" && args.size() == 2) {
+                        VReg zero = emitIntConst(0);
+                        VReg foundIdx = emitStringSearch(args[0], args[1], zero);
+                        VReg dst = currentFn->newVReg(Type::I8);
+                        emit(Instruction{Op::Eq, dst, foundIdx, zero});
+                        return dst;
+                    }
+                    if (fnName == "ends_with" && args.size() == 2) {
+                        VReg hay = emitResolveStr(args[0]);
+                        VReg needle = emitResolveStr(args[1]);
+                        VReg hayLen = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::Load, hayLen, hay, {}, 0});
+                        VReg needleLen = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::Load, needleLen, needle, {}, 0});
+                        VReg fits = currentFn->newVReg(Type::I8);
+                        emit(Instruction{Op::Le, fits, needleLen, hayLen});
+
+                        VReg dst = currentFn->newVReg(Type::I8);
+                        VReg zero = emitIntConst(0);
+                        emit(Instruction{Op::Copy, dst, zero});
+
+                        Block* checkBlock = currentFn->newBlock("ends_check");
+                        Block* falseBlock = currentFn->newBlock("ends_false");
+                        Block* doneBlock = currentFn->newBlock("ends_done");
+                        Instruction brFits;
+                        brFits.op = Op::Branch;
+                        brFits.src1 = fits;
+                        brFits.target = checkBlock;
+                        brFits.elseTgt = falseBlock;
+                        emit(std::move(brFits));
+
+                        currentBlock = checkBlock;
+                        VReg from = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::Sub, from, hayLen, needleLen});
+                        VReg foundIdx = emitStringSearch(args[0], args[1], from);
+                        VReg matches = currentFn->newVReg(Type::I8);
+                        emit(Instruction{Op::Eq, matches, foundIdx, from});
+                        emit(Instruction{Op::Copy, dst, matches});
+                        Instruction toDone;
+                        toDone.op = Op::Jmp;
+                        toDone.target = doneBlock;
+                        emit(std::move(toDone));
+
+                        currentBlock = falseBlock;
+                        emit(Instruction{Op::Copy, dst, zero});
+                        Instruction toDoneFalse;
+                        toDoneFalse.op = Op::Jmp;
+                        toDoneFalse.target = doneBlock;
+                        emit(std::move(toDoneFalse));
+
+                        currentBlock = doneBlock;
+                        return dst;
+                    }
+                    if (fnName == "substring" && (args.size() == 2 || args.size() == 3)) {
+                        VReg start = args[1];
+                        VReg count;
+                        if (args.size() == 3) {
+                            count = args[2];
+                        } else {
+                            VReg resolved = emitResolveStr(args[0]);
+                            VReg total = currentFn->newVReg(Type::I64);
+                            emit(Instruction{Op::Load, total, resolved, {}, 0});
+                            count = currentFn->newVReg(Type::I64);
+                            emit(Instruction{Op::Sub, count, total, start});
+                        }
+                        return emitSubstring(args[0], start, count);
+                    }
+                    if (fnName == "length" && args.size() == 1) {
+                        VReg resolved = emitResolveStr(args[0]);
+                        VReg dst = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::Load, dst, resolved, {}, 0});
+                        return dst;
+                    }
+                    if (fnName == "split" && args.size() == 2) {
+                        return emitStringSplit(args[0], args[1]);
+                    }
+                    if (fnName == "join" && args.size() == 2) {
+                        return emitStringJoin(args[0], args[1]);
+                    }
+                    if (fnName == "replace" && args.size() == 3) {
+                        VReg parts = emitStringSplit(args[0], args[1]);
+                        return emitStringJoin(parts, args[2]);
                     }
                 }
             }
@@ -1932,7 +3181,7 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
                 Instruction call;
                 call.op = Op::Call;
                 call.dst = dst;
-                call.callName = "pawl_str_to_int";
+                call.callName = "ulang_str_to_int";
                 call.args = {args[0]};
                 emit(std::move(call));
                 return dst;
@@ -2064,8 +3313,14 @@ LowerResult lower(const std::shared_ptr<ast::Program>& prog, const typecheck::Ch
         }
 
         // 4. Entry point (main)
+        Function* userMain = nullptr;
+        auto itMain = ctx.functions.find("main");
+        if (itMain != ctx.functions.end()) {
+            userMain = itMain->second;
+        }
+
         auto entryFn = std::make_unique<Function>();
-        entryFn->name = "main";
+        entryFn->name = userMain ? "__ulang_top_level" : "main";
         entryFn->returnType = Type::I64;
         Function* entryPtr = entryFn.get();
         ctx.currentFn = entryPtr;
@@ -2081,6 +3336,14 @@ LowerResult lower(const std::shared_ptr<ast::Program>& prog, const typecheck::Ch
                 continue;
             }
             ctx.lowerStatement(*stmt);
+        }
+
+        if (userMain) {
+            // Call user's func main()
+            Instruction callInst;
+            callInst.op = Op::Call;
+            callInst.callName = userMain->name;
+            ctx.emit(std::move(callInst));
         }
 
         if (ctx.currentBlock && !ctx.isTerminated(ctx.currentBlock)) {
@@ -2102,4 +3365,4 @@ LowerResult lower(const std::shared_ptr<ast::Program>& prog, const typecheck::Ch
     }
 }
 
-} // namespace pawl::ir
+} // namespace ulang::ir

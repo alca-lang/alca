@@ -14,7 +14,7 @@
 #include "token/token.h"
 #include "typecheck/types.h"
 
-namespace pawl::typecheck {
+namespace ulang::typecheck {
 
 enum class SymKind {
     Var,
@@ -112,4 +112,4 @@ private:
     std::unordered_set<const ast::ClassDeclaration*> hoistedClassFields_;
 };
 
-} // namespace pawl::typecheck
+} // namespace ulang::typecheck

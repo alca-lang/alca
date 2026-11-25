@@ -1,0 +1,25 @@
+// Copyright 2026 ULang++ Programming Language
+// SPDX-License-Identifier: Apache-2.0
+//
+// std/heap.al - Binary Min-Heap / Priority Queue for OS Scheduler
+
+struct Heap {
+    size: int
+    capacity: int
+}
+
+pub func new_heap(capacity: int) -> Heap {
+    return Heap(0, capacity)
+}
+
+pub func parent(i: int) -> int {
+    return (i - 1) / 2
+}
+
+pub func left_child(i: int) -> int {
+    return 2 * i + 1
+}
+
+pub func right_child(i: int) -> int {
+    return 2 * i + 2
+}

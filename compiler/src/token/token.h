@@ -16,7 +16,7 @@
 #include <string_view>
 #include <vector>
 
-namespace pawl::token {
+namespace ulang::token {
 
 enum class Kind : std::uint16_t {
     Illegal,
@@ -295,4 +295,4 @@ struct Token {
 std::ostream& operator<<(std::ostream& os, Kind kind);
 std::ostream& operator<<(std::ostream& os, const Token& tok);
 
-} // namespace pawl::token
+} // namespace ulang::token

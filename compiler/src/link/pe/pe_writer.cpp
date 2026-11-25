@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <map>
 
-namespace pawl::link::pe {
+namespace ulang::link::pe {
 
 namespace {
 
@@ -30,7 +30,7 @@ inline void put64(std::vector<uint8_t>& buf, uint64_t val) {
     for (int i = 0; i < 8; ++i) buf.push_back(static_cast<uint8_t>(val >> (i * 8)));
 }
 
-// Emits pawl_concat_str helper in machine bytes (calls pawl_alloc)
+// Emits ulang_concat_str helper in machine bytes (calls ulang_alloc)
 std::vector<uint8_t> emitConcatStrHelper(uint32_t allocOff, uint32_t myOff, uint32_t constRVA) {
     // RCX = s1 (rodata off or heap ptr), RDX = s2 (rodata off or heap ptr)
     // returns RAX = heap ptr to new string [len:8][bytes...][0]
@@ -71,7 +71,7 @@ std::vector<uint8_t> emitConcatStrHelper(uint32_t allocOff, uint32_t myOff, uint
     // 4. Alloc size = (totalLen + 8 + 1 + 15) & ~15
     b.insert(b.end(), {0x49, 0x8D, 0x4C, 0x24, 0x18});     // lea rcx, [r12 + 24]
     b.insert(b.end(), {0x48, 0x83, 0xE1, 0xF0});           // and rcx, -16
-    // call pawl_alloc (rel32)
+    // call ulang_alloc (rel32)
     b.push_back(0xE8);
     size_t callOff = b.size();
     put32(b, 0);
@@ -102,7 +102,7 @@ std::vector<uint8_t> emitConcatStrHelper(uint32_t allocOff, uint32_t myOff, uint
     return b;
 }
 
-// Emits pawl_str_eq (RCX = s1, RDX = s2) -> RAX = 0/1 in machine bytes.
+// Emits ulang_str_eq (RCX = s1, RDX = s2) -> RAX = 0/1 in machine bytes.
 std::vector<uint8_t> emitStrEqHelper(uint32_t myOff, uint32_t constRVA) {
     std::vector<uint8_t> b;
     b.insert(b.end(), {0x53, 0x56, 0x57});                 // push rbx; push rsi; push rdi
@@ -154,7 +154,26 @@ std::vector<uint8_t> emitStrEqHelper(uint32_t myOff, uint32_t constRVA) {
     return b;
 }
 
-// Emits pawl_str_to_int (RCX = string) -> RAX = parsed integer.
+// Emits ulang_str_ptr (RCX = literal offset or heap pointer) -> RAX = real pointer.
+std::vector<uint8_t> emitStrPtrHelper(uint32_t myOff, uint32_t constRVA) {
+    std::vector<uint8_t> b;
+    b.insert(b.end(), {0x48, 0x89, 0xC8});                 // mov rax, rcx
+    b.insert(b.end(), {0x49, 0xB8}); put64(b, 0x10000000); // mov r8, 0x10000000
+    b.insert(b.end(), {0x4C, 0x39, 0xC0});                 // cmp rax, r8
+    b.push_back(0x73);                                     // jae done
+    size_t jDone = b.size(); b.push_back(0);
+    uint32_t cur = 0x1000 + myOff + static_cast<uint32_t>(b.size()) + 7;
+    int32_t disp = static_cast<int32_t>(constRVA + 8) - static_cast<int32_t>(cur);
+    b.insert(b.end(), {0x48, 0x8D, 0x05});                 // lea rax, [rip + disp]
+    put32(b, static_cast<uint32_t>(disp));
+    b.insert(b.end(), {0x48, 0x01, 0xC8});                 // add rax, rcx
+    size_t done = b.size();
+    b[jDone] = static_cast<uint8_t>(done - (jDone + 1));
+    b.push_back(0xC3);                                     // ret
+    return b;
+}
+
+// Emits ulang_str_to_int (RCX = string) -> RAX = parsed integer.
 std::vector<uint8_t> emitStrToIntHelper(uint32_t myOff, uint32_t constRVA) {
     std::vector<uint8_t> b;
     b.push_back(0x56);                                     // push rsi
@@ -324,7 +343,7 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
 
     while (text.size() % 16 != 0) text.push_back(0x90);
 
-    // 2. pawl_print(str in RCX)
+    // 2. ulang_print(str in RCX)
     uint32_t printOff = static_cast<uint32_t>(text.size());
     text.insert(text.end(), {0x48, 0x83, 0xEC, 0x38}); // sub rsp, 56
     text.insert(text.end(), {0x48, 0x89, 0xC8});       // mov rax, rcx
@@ -354,7 +373,7 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
 
     while (text.size() % 16 != 0) text.push_back(0x90);
 
-    // 3. pawl_println(str in RCX)
+    // 3. ulang_println(str in RCX)
     uint32_t printlnOff = static_cast<uint32_t>(text.size());
     text.insert(text.end(), {0x48, 0x83, 0xEC, 0x38}); // sub rsp, 56
     text.push_back(0xE8);
@@ -379,7 +398,7 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
 
     while (text.size() % 16 != 0) text.push_back(0x90);
 
-    // 4. pawl_alloc(size in RCX) -> RAX
+    // 4. ulang_alloc(size in RCX) -> RAX
     uint32_t allocOff = static_cast<uint32_t>(text.size());
     text.insert(text.end(), {0x48, 0x83, 0xC1, 0x0F}); // add rcx, 15
     text.insert(text.end(), {0x48, 0x83, 0xE1, 0xF0}); // and rcx, -16
@@ -396,26 +415,31 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
 
     while (text.size() % 16 != 0) text.push_back(0x90);
 
-    // 5. pawl_concat_str(s1 in RCX, s2 in RDX) -> RAX
+    // 5. ulang_concat_str(s1 in RCX, s2 in RDX) -> RAX
     uint32_t concatOff = static_cast<uint32_t>(text.size());
     auto concatBytes = emitConcatStrHelper(allocOff, concatOff, constRVA);
     text.insert(text.end(), concatBytes.begin(), concatBytes.end());
 
     while (text.size() % 16 != 0) text.push_back(0x90);
 
-    // 6. pawl_str_eq(s1 in RCX, s2 in RDX) -> RAX
+    // 6. ulang_str_eq(s1 in RCX, s2 in RDX) -> RAX
     uint32_t strEqOff = static_cast<uint32_t>(text.size());
     auto strEqBytes = emitStrEqHelper(strEqOff, constRVA);
     text.insert(text.end(), strEqBytes.begin(), strEqBytes.end());
 
-    // 7. pawl_str_to_int(s in RCX) -> RAX
+    // 7. ulang_str_ptr(s in RCX) -> RAX
+    uint32_t strPtrOff = static_cast<uint32_t>(text.size());
+    auto strPtrBytes = emitStrPtrHelper(strPtrOff, constRVA);
+    text.insert(text.end(), strPtrBytes.begin(), strPtrBytes.end());
+
+    // 8. ulang_str_to_int(s in RCX) -> RAX
     uint32_t strToIntOff = static_cast<uint32_t>(text.size());
     auto strToIntBytes = emitStrToIntHelper(strToIntOff, constRVA);
     text.insert(text.end(), strToIntBytes.begin(), strToIntBytes.end());
 
     while (text.size() % 16 != 0) text.push_back(0x90);
 
-    // 8. pawl_int_to_str(n in RCX) -> RAX
+    // 8. ulang_int_to_str(n in RCX) -> RAX
     uint32_t intToStrOff = static_cast<uint32_t>(text.size());
     std::vector<uint8_t> intToStrBytes = {
         0x55, 0x48, 0x89, 0xE5, 0x53, 0x56, 0x57, 0x41, 0x54, 0x48, 0x83, 0xEC, 0x50, 0x48, 0x8D, 0x74,
@@ -446,13 +470,14 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
     std::vector<uint8_t> userCodeCopy = art.code;
     for (const auto& fix : art.callFixups) {
         uint32_t targetHelper = 0;
-        if (fix.funcName == "pawl_print") targetHelper = printOff;
-        else if (fix.funcName == "pawl_println") targetHelper = printlnOff;
-        else if (fix.funcName == "pawl_alloc") targetHelper = allocOff;
-        else if (fix.funcName == "pawl_concat_str") targetHelper = concatOff;
-        else if (fix.funcName == "pawl_str_eq") targetHelper = strEqOff;
-        else if (fix.funcName == "pawl_str_to_int") targetHelper = strToIntOff;
-        else if (fix.funcName == "pawl_int_to_str") targetHelper = intToStrOff;
+        if (fix.funcName == "ulang_print") targetHelper = printOff;
+        else if (fix.funcName == "ulang_println") targetHelper = printlnOff;
+        else if (fix.funcName == "ulang_alloc") targetHelper = allocOff;
+        else if (fix.funcName == "ulang_concat_str") targetHelper = concatOff;
+        else if (fix.funcName == "ulang_str_eq") targetHelper = strEqOff;
+        else if (fix.funcName == "ulang_str_ptr") targetHelper = strPtrOff;
+        else if (fix.funcName == "ulang_str_to_int") targetHelper = strToIntOff;
+        else if (fix.funcName == "ulang_int_to_str") targetHelper = intToStrOff;
         else {
             std::printf("linkPE: unknown fixup %s\n", fix.funcName.c_str());
             return false;
@@ -621,4 +646,4 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
     return true;
 }
 
-} // namespace pawl::link::pe
+} // namespace ulang::link::pe

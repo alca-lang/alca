@@ -9,7 +9,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace pawl::mod {
+namespace ulang::mod {
 
 struct Resolved {
     std::string modulePath;
@@ -33,4 +33,4 @@ void setBundled(const std::unordered_map<std::string, std::string>& files);
 // Resolve maps a module path written in source to a loadable file.
 std::optional<Resolved> resolve(const std::string& modulePath, const std::string& fromFile);
 
-} // namespace pawl::mod
+} // namespace ulang::mod

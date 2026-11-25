@@ -1,0 +1,467 @@
+EXITCODE: 1
+--- STDOUT ---
+
+--- STDERR ---
+
+error: expected '{' after function signature
+  --> tests/test_37_interfaces_traits.al:98:30
+   |
+97 | }
+98 | func next(self: Iterator) -> (Iterator, int) {
+   |                              ^ expected '{' after function signature
+99 |     if self.index < len(self.data) {
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_37_interfaces_traits.al:98:39
+   |
+97 | }
+98 | func next(self: Iterator) -> (Iterator, int) {
+   |                                       ^ expected end of statement (newline)
+99 |     if self.index < len(self.data) {
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_37_interfaces_traits.al:99:1
+   |
+98 | func next(self: Iterator) -> (Iterator, int) {
+99 |     if self.index < len(self.data) {
+   | ^^^^^^ unexpected indentation
+100 |         item := self.data[self.index]
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unexpected indentation
+  --> tests/test_37_interfaces_traits.al:100:1
+   |
+99 |     if self.index < len(self.data) {
+100 |         item := self.data[self.index]
+   | ^^^^^^ unexpected indentation
+101 |         self.index = self.index + 1
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_37_interfaces_traits.al:102:21
+   |
+101 |         self.index = self.index + 1
+102 |         return (self, item)
+   |                     ^ expected ')' to close parenthesis, got "," (,)
+103 |     }
+   |
+   = help: unclosed '(' from line 102, col 16; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_37_interfaces_traits.al:102:21
+   |
+101 |         self.index = self.index + 1
+102 |         return (self, item)
+   |                     ^ expected end of statement (newline)
+103 |     }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_37_interfaces_traits.al:103:1
+   |
+102 |         return (self, item)
+103 |     }
+   | ^^^^^^ unaligned dedent
+104 |     return (self, 0)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_37_interfaces_traits.al:103:5
+   |
+102 |         return (self, item)
+103 |     }
+   |     ^ unexpected closing '}' without matching '{'
+104 |     return (self, 0)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_37_interfaces_traits.al:104:17
+   |
+103 |     }
+104 |     return (self, 0)
+   |                 ^ expected ')' to close parenthesis, got "," (,)
+105 | }
+   |
+   = help: unclosed '(' from line 104, col 12; add a closing ')'
+
+error: expected end of statement (newline)
+  --> tests/test_37_interfaces_traits.al:104:17
+   |
+103 |     }
+104 |     return (self, 0)
+   |                 ^ expected end of statement (newline)
+105 | }
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unaligned dedent
+  --> tests/test_37_interfaces_traits.al:105:1
+   |
+104 |     return (self, 0)
+105 | }
+   | ^^^^^^ unaligned dedent
+106 | iter := Iterator([1, 2, 3], 0)
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_37_interfaces_traits.al:105:1
+   |
+104 |     return (self, 0)
+105 | }
+   | ^ unexpected closing '}' without matching '{'
+106 | iter := Iterator([1, 2, 3], 0)
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_37_interfaces_traits.al:107:6
+   |
+106 | iter := Iterator([1, 2, 3], 0)
+107 | (iter, item1) := next(iter)
+   |      ^ expected ')' to close parenthesis, got "," (,)
+108 | (iter, item2) := next(iter)
+   |
+   = help: unclosed '(' from line 107, col 1; add a closing ')'
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_37_interfaces_traits.al:108:6
+   |
+107 | (iter, item1) := next(iter)
+108 | (iter, item2) := next(iter)
+   |      ^ expected ')' to close parenthesis, got "," (,)
+109 | assert item1 == 1
+   |
+   = help: unclosed '(' from line 108, col 1; add a closing ')'
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_37_interfaces_traits.al:113:46
+   |
+112 | // 7. Predicate interface simulation
+113 | func filter(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                              ^ expected ')' to close parenthesis, got "(" (()
+114 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_37_interfaces_traits.al:113:42
+   |
+112 | // 7. Predicate interface simulation
+113 | func filter(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                          ^^^^ expected '{' after function signature
+114 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_37_interfaces_traits.al:113:51
+   |
+112 | // 7. Predicate interface simulation
+113 | func filter(items: list[int], predicate: func(int) -> bool) -> list[int] {
+   |                                                   ^ expected end of statement (newline)
+114 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_37_interfaces_traits.al:114:1
+   |
+113 | func filter(items: list[int], predicate: func(int) -> bool) -> list[int] {
+114 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+115 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_37_interfaces_traits.al:121:1
+   |
+120 |     return result
+121 | }
+   | ^^^^^^ unaligned dedent
+122 | is_even := func(n: int) -> bool:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_37_interfaces_traits.al:121:1
+   |
+120 |     return result
+121 | }
+   | ^ unexpected closing '}' without matching '{'
+122 | is_even := func(n: int) -> bool:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_37_interfaces_traits.al:122:12
+   |
+121 | }
+122 | is_even := func(n: int) -> bool:
+   |            ^^^^ unexpected token "func" (func)
+123 |     return n % 2 == 0
+   |
+   = help: check the syntax around this token
+
+error: expected end of statement (newline)
+  --> tests/test_37_interfaces_traits.al:122:16
+   |
+121 | }
+122 | is_even := func(n: int) -> bool:
+   |                ^ expected end of statement (newline)
+123 |     return n % 2 == 0
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_37_interfaces_traits.al:123:1
+   |
+122 | is_even := func(n: int) -> bool:
+123 |     return n % 2 == 0
+   | ^^^^^^ unexpected indentation
+124 | 
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_37_interfaces_traits.al:125:1
+   |
+124 | 
+125 | evens := filter([1, 2, 3, 4, 5], is_even)
+   | ^^^^^^ unaligned dedent
+126 | assert evens == [2, 4]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_37_interfaces_traits.al:129:40
+   |
+128 | // 8. Mapper interface simulation
+129 | func map(items: list[int], mapper: func(int) -> int) -> list[int] {
+   |                                        ^ expected ')' to close parenthesis, got "(" (()
+130 |     result: list[int] = []
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_37_interfaces_traits.al:129:36
+   |
+128 | // 8. Mapper interface simulation
+129 | func map(items: list[int], mapper: func(int) -> int) -> list[int] {
+   |                                    ^^^^ expected '{' after function signature
+130 |     result: list[int] = []
+   |
+   = help: provide '{' to start the function body
+
+error: expected end of statement (newline)
+  --> tests/test_37_interfaces_traits.al:129:45
+   |
+128 | // 8. Mapper interface simulation
+129 | func map(items: list[int], mapper: func(int) -> int) -> list[int] {
+   |                                             ^ expected end of statement (newline)
+130 |     result: list[int] = []
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_37_interfaces_traits.al:130:1
+   |
+129 | func map(items: list[int], mapper: func(int) -> int) -> list[int] {
+130 |     result: list[int] = []
+   | ^^^^^^ unexpected indentation
+131 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_37_interfaces_traits.al:135:1
+   |
+134 |     return result
+135 | }
+   | ^^^^^^ unaligned dedent
+136 | double := func(n: int) -> int:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_37_interfaces_traits.al:135:1
+   |
+134 |     return result
+135 | }
+   | ^ unexpected closing '}' without matching '{'
+136 | double := func(n: int) -> int:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_37_interfaces_traits.al:136:11
+   |
+135 | }
+136 | double := func(n: int) -> int:
+   |           ^^^^ unexpected token "func" (func)
+137 |     return n * 2
+   |
+   = help: check the syntax around this token
+
+error: expected end of statement (newline)
+  --> tests/test_37_interfaces_traits.al:136:15
+   |
+135 | }
+136 | double := func(n: int) -> int:
+   |               ^ expected end of statement (newline)
+137 |     return n * 2
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_37_interfaces_traits.al:137:1
+   |
+136 | double := func(n: int) -> int:
+137 |     return n * 2
+   | ^^^^^^ unexpected indentation
+138 | 
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_37_interfaces_traits.al:139:1
+   |
+138 | 
+139 | doubled := map([1, 2, 3], double)
+   | ^^^^^^ unaligned dedent
+140 | assert doubled == [2, 4, 6]
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: expected ')' to close parenthesis, got "(" (()
+  --> tests/test_37_interfaces_traits.al:143:44
+   |
+142 | // 9. Reducer interface simulation
+143 | func reduce(items: list[int], reducer: func(int, int) -> int, initial: int) -> int {
+   |                                            ^ expected ')' to close parenthesis, got "(" (()
+144 |     result := initial
+   |
+   = help: did you forget a closing ')'?
+
+error: expected '{' after function signature
+  --> tests/test_37_interfaces_traits.al:143:40
+   |
+142 | // 9. Reducer interface simulation
+143 | func reduce(items: list[int], reducer: func(int, int) -> int, initial: int) -> int {
+   |                                        ^^^^ expected '{' after function signature
+144 |     result := initial
+   |
+   = help: provide '{' to start the function body
+
+error: expected ')' to close parenthesis, got "," (,)
+  --> tests/test_37_interfaces_traits.al:143:48
+   |
+142 | // 9. Reducer interface simulation
+143 | func reduce(items: list[int], reducer: func(int, int) -> int, initial: int) -> int {
+   |                                                ^ expected ')' to close parenthesis, got "," (,)
+144 |     result := initial
+   |
+   = help: unclosed '(' from line 143, col 44; add a closing ')'
+
+error: unexpected indentation
+  --> tests/test_37_interfaces_traits.al:144:1
+   |
+143 | func reduce(items: list[int], reducer: func(int, int) -> int, initial: int) -> int {
+144 |     result := initial
+   | ^^^^^^ unexpected indentation
+145 |     for item in items {
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_37_interfaces_traits.al:149:1
+   |
+148 |     return result
+149 | }
+   | ^^^^^^ unaligned dedent
+150 | sum := func(a: int, b: int) -> int:
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected closing '}' without matching '{'
+  --> tests/test_37_interfaces_traits.al:149:1
+   |
+148 |     return result
+149 | }
+   | ^ unexpected closing '}' without matching '{'
+150 | sum := func(a: int, b: int) -> int:
+   |
+   = help: check for an unclosed '{' earlier, or remove this extra '}'
+
+error: unexpected token "func" (func)
+  --> tests/test_37_interfaces_traits.al:150:8
+   |
+149 | }
+150 | sum := func(a: int, b: int) -> int:
+   |        ^^^^ unexpected token "func" (func)
+151 |     return a + b
+   |
+   = help: check the syntax around this token
+
+error: expected end of statement (newline)
+  --> tests/test_37_interfaces_traits.al:150:12
+   |
+149 | }
+150 | sum := func(a: int, b: int) -> int:
+   |            ^ expected end of statement (newline)
+151 |     return a + b
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+error: unexpected indentation
+  --> tests/test_37_interfaces_traits.al:151:1
+   |
+150 | sum := func(a: int, b: int) -> int:
+151 |     return a + b
+   | ^^^^^^ unexpected indentation
+152 | 
+   |
+   = help: indentation is only valid inside block bodies (following ':')
+
+error: unaligned dedent
+  --> tests/test_37_interfaces_traits.al:153:1
+   |
+152 | 
+153 | total := reduce([1, 2, 3, 4], sum, 0)
+   | ^^^^^^ unaligned dedent
+154 | assert total == 10
+   |
+   = help: check block indentation: indentation decreased to an invalid level
+
+error: unexpected '=' assignment operator
+  --> tests/test_37_interfaces_traits.al:185:17
+   |
+184 | assert cloned.data == 100
+185 | assert cloned !== original
+   |                 ^ unexpected '=' assignment operator
+186 | 
+   |
+   = help: check if you meant ':=' for declaration or '==' for equality comparison
+
+error: expected end of statement (newline)
+  --> tests/test_37_interfaces_traits.al:185:18
+   |
+184 | assert cloned.data == 100
+185 | assert cloned !== original
+   |                  ^ expected end of statement (newline)
+186 | 
+   |
+   = help: put each statement on its own line, without a trailing ';'
+
+Found 46 errors. Execution aborted.
+
