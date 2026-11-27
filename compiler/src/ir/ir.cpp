@@ -54,14 +54,28 @@ std::string_view opToString(Op op) {
     case Op::CpuReadCr:  return "cpu_read_cr";
     case Op::CpuWriteCr: return "cpu_write_cr";
     case Op::CpuInvlpg:  return "cpu_invlpg";
+    case Op::CpuRdmsr:   return "cpu_rdmsr";
+    case Op::CpuWrmsr:   return "cpu_wrmsr";
+    case Op::CpuCpuid:   return "cpu_cpuid";
+    case Op::CpuLidt:    return "cpu_lidt";
+    case Op::CpuIret:    return "cpu_iret";
     case Op::RawLoad:    return "raw_load";
     case Op::RawStore:   return "raw_store";
+    case Op::LoadGlobal: return "load_global";
+    case Op::StoreGlobal: return "store_global";
+    case Op::FuncAddr:   return "func_addr";
+    case Op::ClearErr:   return "clear_err";
+    case Op::GetErrValue: return "get_err_value";
+    case Op::SetErrType: return "set_err_type";
+    case Op::GetErrType: return "get_err_type";
     case Op::Copy:       return "copy";
     case Op::Add:        return "add";
     case Op::Sub:        return "sub";
     case Op::Mul:        return "mul";
     case Op::Div:        return "div";
     case Op::Mod:        return "mod";
+    case Op::Shl:        return "shl";
+    case Op::Shr:        return "shr";
     case Op::Neg:        return "neg";
     case Op::Not:        return "not";
     case Op::Eq:         return "eq";
@@ -138,6 +152,8 @@ std::string Instruction::toString() const {
     case Op::Mul:
     case Op::Div:
     case Op::Mod:
+    case Op::Shl:
+    case Op::Shr:
     case Op::Eq:
     case Op::Ne:
     case Op::Lt:
@@ -220,11 +236,47 @@ std::string Instruction::toString() const {
     case Op::CpuInvlpg:
         ss << "  invlpg " << src1.toString();
         break;
+    case Op::CpuRdmsr:
+        ss << "  " << dst.toString() << " = rdmsr " << src1.toString();
+        break;
+    case Op::CpuWrmsr:
+        ss << "  wrmsr " << src1.toString() << ", " << src2.toString();
+        break;
+    case Op::CpuCpuid:
+        ss << "  " << dst.toString() << " = cpuid" << intVal << " " << src1.toString() << ", " << src2.toString();
+        break;
+    case Op::CpuLidt:
+        ss << "  lidt [" << src1.toString() << "]";
+        break;
+    case Op::CpuIret:
+        ss << "  iret";
+        break;
     case Op::RawLoad:
         ss << "  " << dst.toString() << " = raw_load" << intVal << " [" << src1.toString() << "]";
         break;
     case Op::RawStore:
         ss << "  raw_store" << intVal << " [" << src1.toString() << "] = " << src2.toString();
+        break;
+    case Op::LoadGlobal:
+        ss << "  " << dst.toString() << " = load_global @" << callName;
+        break;
+    case Op::StoreGlobal:
+        ss << "  store_global @" << callName << " = " << src1.toString();
+        break;
+    case Op::FuncAddr:
+        ss << "  " << dst.toString() << " = func_addr @" << callName;
+        break;
+    case Op::ClearErr:
+        ss << "  clear_err";
+        break;
+    case Op::GetErrValue:
+        ss << "  " << dst.toString() << " = get_err_value";
+        break;
+    case Op::SetErrType:
+        ss << "  set_err_type " << intVal;
+        break;
+    case Op::GetErrType:
+        ss << "  " << dst.toString() << " = get_err_type";
         break;
     case Op::Ret:
         if (src1.type != Type::Void && src1.id >= 0) {
@@ -260,6 +312,9 @@ std::string Function::toString() const {
 
 std::string Program::toString() const {
     std::ostringstream ss;
+    for (const auto& g : globals) {
+        ss << "global @" << g.name << " = " << g.initValue << "\n";
+    }
     for (const auto& f : functions) {
         ss << f->toString() << "\n";
     }

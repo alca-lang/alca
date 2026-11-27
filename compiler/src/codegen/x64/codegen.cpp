@@ -52,7 +52,31 @@ CompiledArtifact CodeGenerator::generate(const ir::Program& prog) {
     funcOffsets_.clear();
     funcRVAs_.clear();
     funcCalls_.clear();
+    globalIndex_.clear();
+    dataFixups_.clear();
     entryOffset_ = 0;
+
+    // The exception slot must survive calls, so it lives in the data section
+    // rather than in callee-saved r14.
+    std::vector<ir::GlobalVar> globals = prog.globals;
+    bool hasErr = false, hasFlag = false, hasType = false;
+    for (const auto& g : globals) {
+        if (g.name == "__ulang_error") hasErr = true;
+        if (g.name == "__ulang_error_flag") hasFlag = true;
+        if (g.name == "__ulang_error_type") hasType = true;
+    }
+    if (!hasErr) globals.push_back({"__ulang_error", 0});
+    if (!hasFlag) globals.push_back({"__ulang_error_flag", 0});
+    if (!hasType) globals.push_back({"__ulang_error_type", 0});
+    errGlobal_ = 0; errFlagGlobal_ = 0; errTypeGlobal_ = 0;
+    for (uint32_t i = 0; i < globals.size(); ++i) {
+        if (globals[i].name == "__ulang_error") errGlobal_ = i;
+        if (globals[i].name == "__ulang_error_flag") errFlagGlobal_ = i;
+        if (globals[i].name == "__ulang_error_type") errTypeGlobal_ = i;
+    }
+    for (uint32_t i = 0; i < globals.size(); ++i) {
+        globalIndex_[globals[i].name] = i;
+    }
 
     for (const auto& fn : prog.functions) {
         if (fn.get() == prog.entryFn) continue;
@@ -85,6 +109,8 @@ CompiledArtifact CodeGenerator::generate(const ir::Program& prog) {
     art.functionRVAs = std::move(funcRVAs_);
     art.entryOffset = entryOffset_;
     art.callFixups = std::move(unpatched);
+    art.globals = std::move(globals);
+    art.dataFixups = std::move(dataFixups_);
     return art;
 }
 
@@ -280,6 +306,21 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 emitBytes({0x48, 0x99});                                               // cqo
                 emitBytes({0x48, 0xF7, 0xF9});                                         // idiv rcx
                 emitBytes({0x48, 0x89, 0x95}); emitUint32(static_cast<uint32_t>(dst)); // mov [dst], rdx
+                break;
+            }
+            case ir::Op::Shl:
+            case ir::Op::Shr: {
+                int s1 = -ctx.slotOffsets[inst->src1.id];
+                int s2 = -ctx.slotOffsets[inst->src2.id];
+                int dst = -ctx.slotOffsets[inst->dst.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(s1)); // mov rax, [s1]
+                emitBytes({0x48, 0x8B, 0x8D}); emitUint32(static_cast<uint32_t>(s2)); // mov rcx, [s2]
+                if (inst->op == ir::Op::Shl) {
+                    emitBytes({0x48, 0xD3, 0xE0}); // shl rax, cl
+                } else {
+                    emitBytes({0x48, 0xD3, 0xE8}); // shr rax, cl
+                }
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dst)); // mov [dst], rax
                 break;
             }
             case ir::Op::Neg: {
@@ -621,16 +662,53 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
             }
             case ir::Op::SetErr: {
                 int sDisp = -ctx.slotOffsets[inst->src1.id];
-                // mov r14, [rbp + sDisp32]
-                emitBytes({0x4C, 0x8B, 0xB5});
-                emitUint32(static_cast<uint32_t>(sDisp));
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(sDisp)); // mov rax, [src]
+                emitBytes({0x48, 0x89, 0x05}); // mov [rip+disp32], rax
+                size_t patch = codeLen();
+                emitUint32(0);
+                dataFixups_.push_back({errGlobal_, patch, patch + 4});
+                emitBytes({0x48, 0xC7, 0x05}); // mov qword [rip+disp32], 1
+                patch = codeLen();
+                emitUint32(0);
+                emitUint32(1);
+                dataFixups_.push_back({errFlagGlobal_, patch, patch + 8});
                 break;
             }
-            case ir::Op::GetErr: {
+            case ir::Op::GetErr:
+            case ir::Op::GetErrValue: {
                 int dDisp = -ctx.slotOffsets[inst->dst.id];
-                // mov [rbp + dDisp32], r14
-                emitBytes({0x4C, 0x89, 0xB5});
-                emitUint32(static_cast<uint32_t>(dDisp));
+                emitBytes({0x48, 0x8B, 0x05}); // mov rax, [rip+disp32]
+                size_t patch = codeLen();
+                emitUint32(0);
+                dataFixups_.push_back({
+                    inst->op == ir::Op::GetErr ? errFlagGlobal_ : errGlobal_, patch, patch + 4});
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dDisp));
+                break;
+            }
+            case ir::Op::ClearErr: {
+                emitBytes({0x48, 0xC7, 0x05}); // mov qword [rip+disp32], 0
+                size_t patch = codeLen();
+                emitUint32(0);
+                emitUint32(0);
+                dataFixups_.push_back({errFlagGlobal_, patch, patch + 8});
+                break;
+            }
+            case ir::Op::SetErrType: {
+                emitBytes({0x48, 0xC7, 0x05}); // mov qword [rip+disp32], imm32
+                size_t patch = codeLen();
+                emitUint32(0);
+                emitUint32(static_cast<uint32_t>(inst->intVal));
+                // C7 /0 with imm32: RIP base is after the immediate.
+                dataFixups_.push_back({errTypeGlobal_, patch, patch + 8});
+                break;
+            }
+            case ir::Op::GetErrType: {
+                int dDisp = -ctx.slotOffsets[inst->dst.id];
+                emitBytes({0x48, 0x8B, 0x05}); // mov rax, [rip+disp32]
+                size_t patch = codeLen();
+                emitUint32(0);
+                dataFixups_.push_back({errTypeGlobal_, patch, patch + 4});
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dDisp));
                 break;
             }
             case ir::Op::CpuCli: {
@@ -711,6 +789,49 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 emitBytes({0x0F, 0x01, 0x38}); // invlpg [rax]
                 break;
             }
+            case ir::Op::CpuRdmsr: {
+                int ecxDisp = -ctx.slotOffsets[inst->src1.id];
+                int dstDisp = -ctx.slotOffsets[inst->dst.id];
+                emitBytes({0x8B, 0x8D}); emitUint32(static_cast<uint32_t>(ecxDisp)); // mov ecx, [msr]
+                emitBytes({0x0F, 0x32});       // rdmsr
+                emitBytes({0x48, 0xC1, 0xE2, 0x20}); // shl rdx, 32
+                emitBytes({0x48, 0x09, 0xD0});       // or rax, rdx
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dstDisp));
+                break;
+            }
+            case ir::Op::CpuWrmsr: {
+                int ecxDisp = -ctx.slotOffsets[inst->src1.id];
+                int valDisp = -ctx.slotOffsets[inst->src2.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(valDisp)); // mov rax, [value]
+                emitBytes({0x48, 0x89, 0xC2});             // mov rdx, rax
+                emitBytes({0x48, 0xC1, 0xEA, 0x20});       // shr rdx, 32
+                emitBytes({0x8B, 0x8D}); emitUint32(static_cast<uint32_t>(ecxDisp)); // mov ecx, [msr]
+                emitBytes({0x0F, 0x30});                   // wrmsr
+                break;
+            }
+            case ir::Op::CpuCpuid: {
+                int leafDisp = -ctx.slotOffsets[inst->src1.id];
+                int subDisp = -ctx.slotOffsets[inst->src2.id];
+                int dstDisp = -ctx.slotOffsets[inst->dst.id];
+                emitBytes({0x8B, 0x85}); emitUint32(static_cast<uint32_t>(leafDisp)); // mov eax, [leaf]
+                emitBytes({0x8B, 0x8D}); emitUint32(static_cast<uint32_t>(subDisp)); // mov ecx, [subleaf]
+                emitBytes({0x0F, 0xA2}); // cpuid
+                if (inst->intVal == 1) emitBytes({0x89, 0xD8}); // mov eax, ebx
+                else if (inst->intVal == 2) emitBytes({0x89, 0xC8}); // mov eax, ecx
+                else if (inst->intVal == 3) emitBytes({0x89, 0xD0}); // mov eax, edx
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dstDisp));
+                break;
+            }
+            case ir::Op::CpuLidt: {
+                int addrDisp = -ctx.slotOffsets[inst->src1.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(addrDisp)); // mov rax, [idt]
+                emitBytes({0x0F, 0x01, 0x10}); // lidt [rax]
+                break;
+            }
+            case ir::Op::CpuIret: {
+                emitByte(0xCF); // iret
+                break;
+            }
             case ir::Op::RawLoad: {
                 int addrDisp = -ctx.slotOffsets[inst->src1.id];
                 int dstDisp = -ctx.slotOffsets[inst->dst.id];
@@ -741,6 +862,45 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 } else {
                     emitBytes({0x48, 0x89, 0x08}); // mov [rax], rcx
                 }
+                break;
+            }
+            case ir::Op::LoadGlobal: {
+                auto it = globalIndex_.find(inst->callName);
+                if (it == globalIndex_.end()) break;
+                int dstDisp = -ctx.slotOffsets[inst->dst.id];
+                if (inst->intVal == 1) {
+                    emitBytes({0x0F, 0xB6, 0x05}); // movzx eax, byte [rip+disp32]
+                } else {
+                    emitBytes({0x48, 0x8B, 0x05}); // mov rax, [rip+disp32]
+                }
+                size_t patch = codeLen();
+                emitUint32(0);
+                dataFixups_.push_back({it->second, patch, patch + 4});
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dstDisp));
+                break;
+            }
+            case ir::Op::StoreGlobal: {
+                auto it = globalIndex_.find(inst->callName);
+                if (it == globalIndex_.end()) break;
+                int valDisp = -ctx.slotOffsets[inst->src1.id];
+                emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(valDisp)); // mov rax, [val]
+                if (inst->intVal == 1) {
+                    emitBytes({0x88, 0x05}); // mov [rip+disp32], al
+                } else {
+                    emitBytes({0x48, 0x89, 0x05}); // mov [rip+disp32], rax
+                }
+                size_t patch = codeLen();
+                emitUint32(0);
+                dataFixups_.push_back({it->second, patch, patch + 4});
+                break;
+            }
+            case ir::Op::FuncAddr: {
+                int dstDisp = -ctx.slotOffsets[inst->dst.id];
+                emitBytes({0x48, 0x8D, 0x05}); // lea rax, [rip+disp32]
+                size_t patch = codeLen();
+                emitUint32(0);
+                funcCalls_.push_back({inst->callName, patch, patch + 4});
+                emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dstDisp));
                 break;
             }
             case ir::Op::Ret: {

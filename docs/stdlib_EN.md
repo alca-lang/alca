@@ -5,6 +5,8 @@ The Pawl Standard Library provides built-in modules designed for high-performanc
 > 📘 **Looking for comprehensive guides and usage examples?**  
 > See the [**English Handbook**](handbook_EN.md) or [**Русская методичка**](handbook_RU.md) for conceptual explanations, architectural patterns, and real-world examples.
 
+> 🔧 **Hardware/bare-metal modules** (`idt`, `pic`, `pit`, `vga`, `serial`, `pci`, `keyboard`, `fat32`, `iso9660`, `elf_loader`) are not catalogued here yet. Their actual capabilities and limits are documented in [Bare-metal / OS development](os_dev_EN.md).
+
 ## Table of Contents
 1. [Module Import & Sandboxing](#module-import--sandboxing)
 2. [Standard Library Modules](#modules)

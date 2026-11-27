@@ -1,0 +1,36 @@
+// Boot smoke test: exercises the whole freestanding path (Multiboot headers,
+// long-mode trampoline, hardware intrinsics, std.* module lowering, mutable
+// globals, function pointers and the freestanding print helper).
+// scripts/test_boot.sh checks the serial output.
+use std.cpu
+use std.idt
+use std.pic
+use std.pit
+
+ticks := 0
+
+func tick() {
+    ticks = ticks + 1
+}
+
+func kernel_main() {
+    println("ULANG_BOOT_OK")
+    f := tick
+    f()
+    f()
+    pic.remap(32, 40)
+    pit.init(100)
+    idt.write_gate(524288, 0, 4096, 8, 142)
+    idt.write_pointer(524288, 256, 524272)
+    idt.load(524272)
+    leaf := cpu.cpuid_eax(1, 0)
+    msr := cpu.rdmsr(3221225472)
+    if ticks == 2 {
+        println("IDT_PIC_PIT_CPUID_MSR_OK")
+    } else {
+        println("GLOBAL_FAIL")
+    }
+    loop {
+        cpu.hlt()
+    }
+}

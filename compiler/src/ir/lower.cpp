@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "ir/lower.h"
+#include <cctype>
+#include <functional>
+#include <iterator>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <stdexcept>
 #include <sstream>
@@ -10,6 +14,12 @@
 namespace ulang::ir {
 
 namespace {
+
+static int64_t typeTagHash(const std::string& s) {
+    uint64_t h = 1469598103934665603ull;
+    for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }
+    return static_cast<int64_t>(h & 0x7FFFFFFF);
+}
 
 struct StructLayout {
     std::string name;
@@ -36,6 +46,36 @@ public:
     Function* currentFn{nullptr};
     Block* currentBlock{nullptr};
     std::unordered_map<std::string, VReg> locals;
+
+    // Top-level `NAME := literal` declarations (mostly hardware constants in
+    // std/*.upp) are visible to the typechecker in the global scope, but IR
+    // locals are per-function.  Substitute their literals at each use site so
+    // module functions can reference them from any body.  Names that are ever
+    // assigned are deliberately excluded: those are mutable globals, which
+    // this backend does not support (see ADR-0004).
+    std::unordered_map<std::string, const ast::Expression*> moduleConsts;
+    std::unordered_map<std::string, int64_t> constexprValues;
+    std::unordered_set<std::string> assignedNames;
+    // Mutable top-level variables: name -> slot index in irProg->globals.
+    std::unordered_map<std::string, uint32_t> globalIndex;
+
+    // Generic functions and overloads are resolved at call sites and lowered
+    // on demand into mangled, monomorphized IR functions.
+    std::unordered_map<std::string, std::vector<const ast::FuncDeclaration*>> funcDecls;
+    std::unordered_map<std::string, std::string> typeSubst;
+    std::unordered_map<std::string, Function*> specializations;
+
+    // RAII: expressions registered by `defer`, replayed before every Ret.
+    std::vector<ast::ExpressionPtr> deferredExprs;
+    bool loweringDeferred{false};
+    // Implicit destructors: locals holding objects with `func ~Type(self)`.
+    std::unordered_map<std::string, const ast::FuncDeclaration*> destructors;
+    // One frame per lexical block; index 0 is the function body itself.
+    std::vector<std::vector<std::pair<std::string, std::string>>> destructibleScopes;
+    // Snapshot of active objects at each explicit/implicit Ret instruction.
+    std::unordered_map<const Instruction*, std::vector<std::pair<std::string, std::string>>> retDestructors;
+    std::vector<Block*> catchTargets;
+    std::unordered_map<Block*, int64_t> catchTypeHashes;
     int tmpCounter{0};
 
     std::vector<Block*> loopContinue;
@@ -56,12 +96,106 @@ public:
         return last == Op::Ret || last == Op::Jmp || last == Op::Branch;
     }
 
+    std::string applyTypeSubst(std::string s) const {
+        for (const auto& [from, to] : typeSubst) {
+            if (from.empty()) continue;
+            size_t pos = 0;
+            while ((pos = s.find(from, pos)) != std::string::npos) {
+                bool left = pos == 0 || !std::isalnum(static_cast<unsigned char>(s[pos - 1]));
+                size_t end = pos + from.size();
+                bool right = end >= s.size() || !std::isalnum(static_cast<unsigned char>(s[end]));
+                if (left && right) {
+                    s.replace(pos, from.size(), to);
+                    pos += to.size();
+                } else {
+                    pos = end;
+                }
+            }
+        }
+        return s;
+    }
+
     Type annotationToIR(const std::string& typeName) const {
-        if (typeName == "int") return Type::I64;
-        if (typeName == "float") return Type::F64;
-        if (typeName == "bool") return Type::I8;
-        if (typeName == "void") return Type::Void;
+        const std::string n = applyTypeSubst(typeName);
+        if (n == "int") return Type::I64;
+        if (n == "float") return Type::F64;
+        if (n == "bool") return Type::I8;
+        if (n == "void") return Type::Void;
         return Type::Ptr;
+    }
+
+    static std::string irTypeToName(Type t) {
+        if (t == Type::I64) return "int";
+        if (t == Type::F64) return "float";
+        if (t == Type::I8) return "bool";
+        if (t == Type::Void) return "void";
+        return "ptr";
+    }
+
+    // Resolve a call that is not a plain declared function: pick a matching
+    // overload/generic declaration, infer type arguments, and emit a mangled
+    // monomorphized copy of its body.
+    Function* resolveSpecialCall(const std::string& name, const std::vector<VReg>& args) {
+        auto it = funcDecls.find(name);
+        if (it == funcDecls.end()) return nullptr;
+        for (const ast::FuncDeclaration* decl : it->second) {
+            if (decl->params.size() != args.size()) continue;
+
+            std::unordered_map<std::string, std::string> saved = typeSubst;
+            for (size_t i = 0; i < decl->typeParams.size() && i < args.size(); ++i) {
+                typeSubst[decl->typeParams[i]] = irTypeToName(args[i].type);
+            }
+
+            bool match = true;
+            for (size_t i = 0; i < decl->params.size(); ++i) {
+                const auto& ann = decl->params[i]->typeAnnotation;
+                Type expected = ann && !ann->types.empty()
+                              ? annotationToIR(ann->types[0]) : Type::I64;
+                if (expected != args[i].type && expected != Type::Ptr) {
+                    match = false;
+                    break;
+                }
+            }
+            if (!match) {
+                typeSubst = saved;
+                continue;
+            }
+
+            std::vector<std::string> argNames;
+            for (const auto& a : args) argNames.push_back(irTypeToName(a.type));
+            std::string mangled = name;
+            for (const auto& n : argNames) mangled += "_" + n;
+            auto found = functions.find(mangled);
+            if (found != functions.end()) {
+                typeSubst = saved;
+                return found->second;
+            }
+            auto cached = specializations.find(mangled);
+            if (cached != specializations.end()) {
+                typeSubst = saved;
+                return cached->second;
+            }
+
+            declareFunc(mangled, decl->params, decl->returnType.get());
+            Function* fn = functions[mangled];
+            specializations[mangled] = fn;
+
+            Function* savedFn = currentFn;
+            Block* savedBlock = currentBlock;
+            auto savedLocals = locals;
+            auto savedContinue = loopContinue;
+            auto savedBreak = loopBreak;
+            lowerFunctionBody(fn, decl->params, decl->body ? decl->body->statements
+                                                          : std::vector<ast::StatementPtr>{}, false);
+            currentFn = savedFn;
+            currentBlock = savedBlock;
+            locals = std::move(savedLocals);
+            loopContinue = std::move(savedContinue);
+            loopBreak = std::move(savedBreak);
+            typeSubst = saved;
+            return fn;
+        }
+        return nullptr;
     }
 
     Type typeToIR(const std::shared_ptr<typecheck::Type>& t) const {
@@ -208,6 +342,13 @@ public:
     }
 
     void lowerFunctionBody(Function* irFn, const std::vector<std::shared_ptr<ast::FuncParam>>& params, const std::vector<ast::StatementPtr>& body, bool isMethod) {
+        auto savedDefers = deferredExprs;
+        auto savedScopes = destructibleScopes;
+        auto savedCatchTargets = catchTargets;
+        deferredExprs.clear();
+        catchTargets.clear();
+        destructibleScopes.clear();
+        destructibleScopes.push_back({}); // function-body frame
         currentFn = irFn;
         locals.clear();
 
@@ -230,17 +371,33 @@ public:
         }
 
         if (currentBlock && !isTerminated(currentBlock)) {
+            auto snapshot = snapshotActiveDestructors();
             if (irFn->returnType == Type::Void) {
-                emit(Instruction{Op::Ret, {}, VReg{-1, Type::Void}});
+                auto inst = std::make_unique<Instruction>(Instruction{Op::Ret, {}, VReg{-1, Type::Void}});
+                retDestructors[inst.get()] = std::move(snapshot);
+                emit(std::move(inst));
             } else {
                 VReg zero = irFn->newVReg(irFn->returnType);
                 emit(Instruction{Op::ConstInt, zero, {}, {}, 0});
-                emit(Instruction{Op::Ret, {}, zero});
+                auto inst = std::make_unique<Instruction>(Instruction{Op::Ret, {}, zero});
+                retDestructors[inst.get()] = std::move(snapshot);
+                emit(std::move(inst));
             }
         }
+        emitDeferredExits(irFn);
+        deferredExprs = std::move(savedDefers);
+        destructibleScopes = std::move(savedScopes);
+        catchTargets = std::move(savedCatchTargets);
     }
 
     void lowerStatement(const ast::Statement& stmt);
+    void emitDeferredExits(ir::Function* fn);
+    void emitDestructorCalls(const std::vector<std::pair<std::string, std::string>>& objects);
+    std::vector<std::pair<std::string, std::string>> snapshotActiveDestructors() const;
+    void collectModuleConstants(const ast::Program& prog);
+    static bool isConstInitializer(const ast::Expression& expr);
+    static int64_t evalLiteralInit(const ast::Expression& expr);
+    static int64_t evalConstExpr(const ast::Expression& expr, bool& ok);
     VReg lowerExpression(const ast::Expression& expr);
     void lowerIfStatement(const ast::IfStatement& s);
     void lowerWhileStatement(const ast::WhileStatement& s);
@@ -265,6 +422,161 @@ public:
 };
 
 void LoweringContext::lowerStatement(const ast::Statement& stmt) {
+    if (auto* th = dynamic_cast<const ast::ThrowStatement*>(&stmt)) {
+        VReg val = th->value ? lowerExpression(*th->value) : VReg{-1, Type::Void};
+        if (val.id >= 0) {
+            emit(Instruction{Op::SetErr, {}, val});
+            std::string typeName = "string";
+            auto it = checker.types().find(th->value.get());
+            if (it != checker.types().end()) typeName = it->second->toString();
+            Instruction tag;
+            tag.op = Op::SetErrType;
+            tag.intVal = typeTagHash(typeName);
+            emit(std::move(tag));
+        }
+        auto snapshot = snapshotActiveDestructors();
+        if (!catchTargets.empty()) {
+            emitDestructorCalls(snapshot);
+            Block* target = catchTargets.back();
+            auto thIt = catchTypeHashes.find(target);
+            if (thIt != catchTypeHashes.end()) {
+                VReg tag = currentFn->newVReg(Type::I64);
+                VReg want = currentFn->newVReg(Type::I64);
+                VReg match = currentFn->newVReg(Type::I8);
+                emit(Instruction{Op::GetErrType, tag});
+                emit(Instruction{Op::ConstInt, want, {}, {}, thIt->second});
+                emit(Instruction{Op::Eq, match, tag, want});
+                Instruction branch;
+                branch.op = Op::Branch;
+                branch.src1 = match;
+                branch.target = target;
+                branch.elseTgt = currentFn->newBlock("unhandled");
+                emit(std::move(branch));
+            } else {
+                Instruction jmp;
+                jmp.op = Op::Jmp;
+                jmp.target = target;
+                emit(std::move(jmp));
+            }
+        } else {
+            auto inst = std::make_unique<Instruction>(Instruction{Op::Ret, {}, VReg{-1, Type::Void}});
+            retDestructors[inst.get()] = std::move(snapshot);
+            emit(std::move(inst));
+        }
+        if (currentFn) currentBlock = currentFn->newBlock("after_throw");
+        return;
+    }
+    if (auto* tr = dynamic_cast<const ast::TryStatement*>(&stmt)) {
+        size_t firstTryBlock = currentFn->blocks.size();
+        Block* tryBlock = currentFn->newBlock("try_body");
+        Block* catchBlock = currentFn->newBlock("catch_body");
+        Block* endBlock = currentFn->newBlock("try_end");
+        Block* finallyBlock = tr->finallyBody ? currentFn->newBlock("finally_body") : nullptr;
+        Instruction enter;
+        enter.op = Op::Jmp;
+        enter.target = tryBlock;
+        emit(std::move(enter));
+
+        if (!tr->catchType.empty()) catchTypeHashes[catchBlock] = typeTagHash(tr->catchType);
+        catchTargets.push_back(catchBlock);
+        currentBlock = tryBlock;
+        if (tr->tryBody) lowerStatement(*tr->tryBody);
+        Block* afterTry = currentBlock;
+
+        // Insert an error check after every call made inside the try body.
+        std::unordered_map<Block*, Block*> tails;
+        for (size_t bi = firstTryBlock; bi < currentFn->blocks.size(); ++bi) {
+            Block* b = currentFn->blocks[bi].get();
+            if (b == catchBlock || b == endBlock || b == finallyBlock) continue;
+            auto old = std::move(b->instructions);
+            b->instructions.clear();
+            Block* tail = b;
+            for (auto& inst : old) {
+                bool isCall = inst && (inst->op == Op::Call || inst->op == Op::CallPtr);
+                tail->instructions.push_back(std::move(inst));
+                if (!isCall) continue;
+                VReg err = currentFn->newVReg(Type::I64);
+                VReg zero = currentFn->newVReg(Type::I64);
+                VReg cond = currentFn->newVReg(Type::I8);
+                tail->instructions.push_back(std::make_unique<Instruction>(Instruction{Op::GetErr, err}));
+                tail->instructions.push_back(std::make_unique<Instruction>(Instruction{Op::ConstInt, zero, {}, {}, 0}));
+                tail->instructions.push_back(std::make_unique<Instruction>(Instruction{Op::Ne, cond, err, zero}));
+                Block* cont = currentFn->newBlock("try_cont");
+                if (tr->catchType.empty()) {
+                    Instruction branch;
+                    branch.op = Op::Branch;
+                    branch.src1 = cond;
+                    branch.target = catchBlock;
+                    branch.elseTgt = cont;
+                    tail->instructions.push_back(std::make_unique<Instruction>(std::move(branch)));
+                } else {
+                    // Typed catch: only enter the handler when the stored tag
+                    // matches the declared exception type.
+                    Block* typeCheck = currentFn->newBlock("type_check");
+                    Instruction flagBranch;
+                    flagBranch.op = Op::Branch;
+                    flagBranch.src1 = cond;
+                    flagBranch.target = typeCheck;
+                    flagBranch.elseTgt = cont;
+                    tail->instructions.push_back(std::make_unique<Instruction>(std::move(flagBranch)));
+
+                    VReg tag = currentFn->newVReg(Type::I64);
+                    VReg want = currentFn->newVReg(Type::I64);
+                    VReg match = currentFn->newVReg(Type::I8);
+                    typeCheck->instructions.push_back(std::make_unique<Instruction>(Instruction{Op::GetErrType, tag}));
+                    typeCheck->instructions.push_back(std::make_unique<Instruction>(Instruction{Op::ConstInt, want, {}, {}, typeTagHash(tr->catchType)}));
+                    typeCheck->instructions.push_back(std::make_unique<Instruction>(Instruction{Op::Eq, match, tag, want}));
+                    Instruction typeBranch;
+                    typeBranch.op = Op::Branch;
+                    typeBranch.src1 = match;
+                    typeBranch.target = catchBlock;
+                    typeBranch.elseTgt = cont;
+                    typeCheck->instructions.push_back(std::make_unique<Instruction>(std::move(typeBranch)));
+                }
+                tail = cont;
+            }
+            tails[b] = tail;
+        }
+        if (auto it = tails.find(afterTry); it != tails.end()) afterTry = it->second;
+        currentBlock = afterTry;
+        Instruction toEnd;
+        toEnd.op = Op::Jmp;
+        toEnd.target = finallyBlock ? finallyBlock : endBlock;
+        emit(std::move(toEnd));
+
+        // Catch handler: consume the raised value and clear the error slot.
+        currentBlock = catchBlock;
+        emit(Instruction{Op::ClearErr});
+        if (!tr->catchParam.empty()) {
+            VReg err = currentFn->newVReg(Type::Ptr);
+            emit(Instruction{Op::GetErrValue, err});
+            locals[tr->catchParam] = err;
+        }
+        if (tr->catchBody) lowerStatement(*tr->catchBody);
+        catchTargets.pop_back();
+        if (currentBlock && !isTerminated(currentBlock)) {
+            Instruction je;
+            je.op = Op::Jmp;
+            je.target = finallyBlock ? finallyBlock : endBlock;
+            emit(std::move(je));
+        }
+        if (finallyBlock) {
+            currentBlock = finallyBlock;
+            if (tr->finallyBody) lowerStatement(*tr->finallyBody);
+            if (currentBlock && !isTerminated(currentBlock)) {
+                Instruction jf;
+                jf.op = Op::Jmp;
+                jf.target = endBlock;
+                emit(std::move(jf));
+            }
+        }
+        currentBlock = endBlock;
+        return;
+    }
+    if (auto* df = dynamic_cast<const ast::DeferStatement*>(&stmt)) {
+        if (df->expression && !loweringDeferred) deferredExprs.push_back(df->expression);
+        return;
+    }
     if (auto* s = dynamic_cast<const ast::VarDeclaration*>(&stmt)) {
         if (auto* se = dynamic_cast<ast::StreamExpression*>(s->value.get())) {
             if (se->op == ">>>" || se->op == "?>>>") {
@@ -300,12 +612,41 @@ void LoweringContext::lowerStatement(const ast::Statement& stmt) {
         VReg localReg = currentFn->newVReg(valReg.type);
         emit(Instruction{Op::Copy, localReg, valReg});
         locals[s->name->value] = localReg;
+
+        // Track locals whose type has a destructor, so they can be cleaned up
+        // on every exit path of the function.
+        if (s->name && s->value && !loweringDeferred) {
+            std::string typeName;
+            if (auto* si = dynamic_cast<ast::StructInstantiation*>(s->value.get())) {
+                typeName = si->name;
+            } else if (auto* ce = dynamic_cast<ast::CallExpression*>(s->value.get())) {
+                if (auto* id = dynamic_cast<ast::Identifier*>(ce->function.get())) {
+                    typeName = id->value;
+                }
+            }
+            if (typeName.empty()) {
+                auto it = checker.types().find(s->value.get());
+                if (it != checker.types().end()) {
+                    if (auto* st = dynamic_cast<typecheck::StructType*>(it->second.get())) {
+                        typeName = st->name;
+                    }
+                }
+            }
+            if (destructors.count(typeName) && !destructibleScopes.empty()) {
+                destructibleScopes.back().push_back({s->name->value, typeName});
+            }
+        }
     } else if (auto* s = dynamic_cast<const ast::ReturnStatement*>(&stmt)) {
+        auto snapshot = snapshotActiveDestructors();
         if (s->value) {
             VReg valReg = lowerExpression(*s->value);
-            emit(Instruction{Op::Ret, {}, valReg});
+            auto inst = std::make_unique<Instruction>(Instruction{Op::Ret, {}, valReg});
+            retDestructors[inst.get()] = std::move(snapshot);
+            emit(std::move(inst));
         } else {
-            emit(Instruction{Op::Ret, {}, VReg{-1, Type::Void}});
+            auto inst = std::make_unique<Instruction>(Instruction{Op::Ret, {}, VReg{-1, Type::Void}});
+            retDestructors[inst.get()] = std::move(snapshot);
+            emit(std::move(inst));
         }
     } else if (auto* s = dynamic_cast<const ast::ExpressionStatement*>(&stmt)) {
         if (auto* se = dynamic_cast<ast::StreamExpression*>(s->expression.get())) {
@@ -333,9 +674,15 @@ void LoweringContext::lowerStatement(const ast::Statement& stmt) {
 
         currentBlock = okBlock;
     } else if (auto* s = dynamic_cast<const ast::BlockStatement*>(&stmt)) {
+        destructibleScopes.push_back({});
         for (const auto& inner : s->statements) {
             lowerStatement(*inner);
         }
+        // Objects declared in this block are destroyed at its end, in reverse
+        // construction order (whether the block falls through or returns).
+        auto frame = std::move(destructibleScopes.back());
+        destructibleScopes.pop_back();
+        emitDestructorCalls(frame);
     } else if (auto* s = dynamic_cast<const ast::IfStatement*>(&stmt)) {
         lowerIfStatement(*s);
     } else if (auto* s = dynamic_cast<const ast::WhileStatement*>(&stmt)) {
@@ -1780,7 +2127,233 @@ VReg LoweringContext::lowerListEq(VReg left, VReg right, Type elemType, bool neg
     return inverted;
 }
 
+bool LoweringContext::isConstInitializer(const ast::Expression& e) {
+    if (dynamic_cast<const ast::IntegerLiteral*>(&e) ||
+        dynamic_cast<const ast::StringLiteral*>(&e)  ||
+        dynamic_cast<const ast::FloatLiteral*>(&e)   ||
+        dynamic_cast<const ast::BooleanLiteral*>(&e)) {
+        return true;
+    }
+    if (auto* p = dynamic_cast<const ast::PrefixExpression*>(&e)) {
+        return (p->op == "-" || p->op == "+") && p->right &&
+               isConstInitializer(*p->right);
+    }
+    if (auto* in = dynamic_cast<const ast::InfixExpression*>(&e)) {
+        return in->left && in->right &&
+               isConstInitializer(*in->left) && isConstInitializer(*in->right);
+    }
+    // Identifiers are intentionally rejected: no recursive substitution.
+    return false;
+}
+
+std::vector<std::pair<std::string, std::string>> LoweringContext::snapshotActiveDestructors() const {
+    std::vector<std::pair<std::string, std::string>> out;
+    for (auto frame = destructibleScopes.rbegin(); frame != destructibleScopes.rend(); ++frame) {
+        for (auto obj = frame->rbegin(); obj != frame->rend(); ++obj) {
+            out.push_back(*obj);
+        }
+    }
+    return out;
+}
+
+void LoweringContext::emitDestructorCalls(
+        const std::vector<std::pair<std::string, std::string>>& objects) {
+    for (const auto& [name, type] : objects) {
+        auto lit = locals.find(name);
+        if (lit == locals.end()) continue;
+        Instruction call;
+        call.op = Op::Call;
+        call.callName = type;
+        call.args = {lit->second};
+        emit(std::move(call));
+    }
+}
+
+void LoweringContext::emitDeferredExits(ir::Function* fn) {
+    if (deferredExprs.empty() && retDestructors.empty()) return;
+    for (auto& blockPtr : fn->blocks) {
+        Block* b = blockPtr.get();
+        for (size_t i = 0; i < b->instructions.size();) {
+            if (b->instructions[i]->op != Op::Ret) {
+                ++i;
+                continue;
+            }
+            Function* savedFn = currentFn;
+            Block* savedBlock = currentBlock;
+            Block temp;
+            currentFn = fn;
+            currentBlock = &temp;
+            loweringDeferred = true;
+            for (const auto& expr : deferredExprs) lowerExpression(*expr);
+            loweringDeferred = false;
+            // Objects alive at this return (innermost scope first), reversed.
+            auto rd = retDestructors.find(b->instructions[i].get());
+            if (rd != retDestructors.end()) emitDestructorCalls(rd->second);
+            currentFn = savedFn;
+            currentBlock = savedBlock;
+            size_t count = temp.instructions.size();
+            b->instructions.insert(
+                b->instructions.begin() + static_cast<long>(i),
+                std::make_move_iterator(temp.instructions.begin()),
+                std::make_move_iterator(temp.instructions.end()));
+            i += count + 1;
+        }
+    }
+}
+
+int64_t LoweringContext::evalConstExpr(const ast::Expression& e, bool& ok) {
+    if (auto* n = dynamic_cast<const ast::IntegerLiteral*>(&e)) return n->value;
+    if (auto* b = dynamic_cast<const ast::BooleanLiteral*>(&e)) return b->value ? 1 : 0;
+    if (auto* p = dynamic_cast<const ast::PrefixExpression*>(&e)) {
+        if (!p->right) { ok = false; return 0; }
+        int64_t v = evalConstExpr(*p->right, ok);
+        if (!ok) return 0;
+        if (p->op == "-") return -v;
+        if (p->op == "+") return v;
+        ok = false;
+        return 0;
+    }
+    if (auto* in = dynamic_cast<const ast::InfixExpression*>(&e)) {
+        if (!in->left || !in->right) { ok = false; return 0; }
+        int64_t l = evalConstExpr(*in->left, ok);
+        int64_t r = evalConstExpr(*in->right, ok);
+        if (!ok) return 0;
+        if (in->op == "+") return l + r;
+        if (in->op == "-") return l - r;
+        if (in->op == "*") return l * r;
+        if (in->op == "/" && r != 0) return l / r;
+        if (in->op == "%" && r != 0) return l % r;
+        ok = false;
+        return 0;
+    }
+    // Shifts are lexed as stream expressions when both operands are integers.
+    if (auto* se = dynamic_cast<const ast::StreamExpression*>(&e)) {
+        if (!se->source || !se->target ||
+            (se->op != "<<" && se->op != ">>")) { ok = false; return 0; }
+        int64_t l = evalConstExpr(*se->source, ok);
+        int64_t r = evalConstExpr(*se->target, ok);
+        if (!ok) return 0;
+        if (se->op == "<<") return static_cast<int64_t>(static_cast<uint64_t>(l) << (r & 63));
+        return static_cast<int64_t>(static_cast<uint64_t>(l) >> (r & 63));
+    }
+    ok = false;
+    return 0;
+}
+
+int64_t LoweringContext::evalLiteralInit(const ast::Expression& e) {
+    if (auto* n = dynamic_cast<const ast::IntegerLiteral*>(&e)) return n->value;
+    if (auto* b = dynamic_cast<const ast::BooleanLiteral*>(&e)) return b->value ? 1 : 0;
+    if (auto* p = dynamic_cast<const ast::PrefixExpression*>(&e)) {
+        if (p->right && p->op == "-") return -evalLiteralInit(*p->right);
+        return evalLiteralInit(*p->right);
+    }
+    if (auto* in = dynamic_cast<const ast::InfixExpression*>(&e)) {
+        if (!in->left || !in->right) return 0;
+        int64_t l = evalLiteralInit(*in->left);
+        int64_t r = evalLiteralInit(*in->right);
+        if (in->op == "+") return l + r;
+        if (in->op == "-") return l - r;
+        if (in->op == "*") return l * r;
+        if (in->op == "/" && r != 0) return l / r;
+        if (in->op == "%" && r != 0) return l % r;
+    }
+    return 0;
+}
+
+void LoweringContext::collectModuleConstants(const ast::Program& prog) {
+    // Pass 1: find names that are written anywhere.  Those are mutable state,
+    // not constants -- e.g. io.vga_row in std/io.upp.
+    std::function<void(const ast::Statement&)> scanAssigned =
+        [&](const ast::Statement& s) {
+        if (auto* es = dynamic_cast<const ast::ExpressionStatement*>(&s)) {
+            if (es->expression) {
+                if (auto* as = dynamic_cast<ast::AssignExpression*>(es->expression.get())) {
+                    if (as->target) {
+                        if (auto* id = dynamic_cast<ast::Identifier*>(as->target.get())) {
+                            assignedNames.insert(id->value);
+                        }
+                    }
+                }
+            }
+        } else if (auto* b = dynamic_cast<const ast::BlockStatement*>(&s)) {
+            for (const auto& st : b->statements) if (st) scanAssigned(*st);
+        } else if (auto* i = dynamic_cast<const ast::IfStatement*>(&s)) {
+            if (i->consequence) scanAssigned(*i->consequence);
+            for (const auto& a : i->alternatives) if (a && a->body) scanAssigned(*a->body);
+            if (i->elseBlock) scanAssigned(*i->elseBlock);
+        } else if (auto* w = dynamic_cast<const ast::WhileStatement*>(&s)) {
+            if (w->body) scanAssigned(*w->body);
+        } else if (auto* f = dynamic_cast<const ast::ForStatement*>(&s)) {
+            if (f->body) scanAssigned(*f->body);
+        } else if (auto* f = dynamic_cast<const ast::ForEachStatement*>(&s)) {
+            if (f->body) scanAssigned(*f->body);
+        } else if (auto* l = dynamic_cast<const ast::LoopStatement*>(&s)) {
+            if (l->body) scanAssigned(*l->body);
+        } else if (auto* m = dynamic_cast<const ast::MatchStatement*>(&s)) {
+            for (const auto& c : m->cases) if (c && c->body) scanAssigned(*c->body);
+            if (m->defaultCase) scanAssigned(*m->defaultCase);
+        } else if (auto* fn = dynamic_cast<const ast::FuncDeclaration*>(&s)) {
+            if (fn->body) {
+                for (const auto& st : fn->body->statements) if (st) scanAssigned(*st);
+            }
+        } else if (auto* cls = dynamic_cast<const ast::ClassDeclaration*>(&s)) {
+            for (const auto& m : cls->methods) {
+                if (m && m->func && m->func->body) {
+                    for (const auto& st : m->func->body->statements) if (st) scanAssigned(*st);
+                }
+            }
+        }
+    };
+    for (const auto& st : prog.statements) if (st) scanAssigned(*st);
+
+    // Pass 2: literal-only, never-assigned top-level declarations are inlined
+    // as constants.  Everything else becomes a real mutable global slot so it
+    // can be shared across functions (and have a static initial value).
+    for (const auto& st : prog.statements) {
+        auto* vd = dynamic_cast<ast::VarDeclaration*>(st.get());
+        if (!vd || !vd->name) continue;
+        if (vd->isConstexpr && vd->value) {
+            bool ok = true;
+            int64_t v = evalConstExpr(*vd->value, ok);
+            if (ok) {
+                constexprValues[vd->name->value] = v;
+                continue;
+            }
+        }
+        bool lit = vd->value && isConstInitializer(*vd->value);
+        if (lit && !assignedNames.count(vd->name->value)) {
+            moduleConsts[vd->name->value] = vd->value.get();
+            continue;
+        }
+        GlobalVar g;
+        g.name = vd->name->value;
+        g.initValue = lit ? static_cast<uint64_t>(evalLiteralInit(*vd->value)) : 0;
+        globalIndex[g.name] = static_cast<uint32_t>(irProg->globals.size());
+        irProg->globals.push_back(std::move(g));
+    }
+}
+
 VReg LoweringContext::lowerExpression(const ast::Expression& e) {
+    // `<<` / `>>` are lexed as stream operators.  When both operands are
+    // integers they are unambiguously bitwise shifts (used heavily by hardware
+    // register code); keep stream semantics for every other operand type.
+    if (auto* se = dynamic_cast<const ast::StreamExpression*>(&e)) {
+        if ((se->op == "<<" || se->op == ">>") && se->source && se->target) {
+            auto isInt = [&](const ast::Expression* x) {
+                auto it = checker.types().find(x);
+                if (it == checker.types().end()) return false;
+                auto* basic = dynamic_cast<typecheck::Basic*>(it->second.get());
+                return basic && basic->name() == "int";
+            };
+            if (isInt(se->source.get()) && isInt(se->target.get())) {
+                VReg left = lowerExpression(*se->source);
+                VReg right = lowerExpression(*se->target);
+                VReg dst = currentFn->newVReg(Type::I64);
+                emit(Instruction{se->op == "<<" ? Op::Shl : Op::Shr, dst, left, right});
+                return dst;
+            }
+        }
+    }
     if (auto* expr = dynamic_cast<const ast::IntegerLiteral*>(&e)) {
         VReg dst = currentFn->newVReg(Type::I64);
         emit(Instruction{Op::ConstInt, dst, {}, {}, expr->value});
@@ -1817,6 +2390,34 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
     if (auto* expr = dynamic_cast<const ast::Identifier*>(&e)) {
         auto it = locals.find(expr->value);
         if (it == locals.end()) {
+            auto cv = constexprValues.find(expr->value);
+            if (cv != constexprValues.end()) {
+                VReg dst = currentFn->newVReg(Type::I64);
+                emit(Instruction{Op::ConstInt, dst, {}, {}, cv->second});
+                return dst;
+            }
+            auto c = moduleConsts.find(expr->value);
+            if (c != moduleConsts.end()) return lowerExpression(*c->second);
+            if (functions.count(expr->value)) {
+                VReg dst = currentFn->newVReg(Type::Ptr);
+                Instruction in;
+                in.op = Op::FuncAddr;
+                in.dst = dst;
+                in.callName = expr->value;
+                emit(std::move(in));
+                return dst;
+            }
+            auto g = globalIndex.find(expr->value);
+            if (g != globalIndex.end()) {
+                VReg dst = currentFn->newVReg(Type::I64);
+                Instruction in;
+                in.op = Op::LoadGlobal;
+                in.dst = dst;
+                in.callName = expr->value;
+                in.intVal = 8;
+                emit(std::move(in));
+                return dst;
+            }
             throw std::runtime_error("undefined local variable " + expr->value);
         }
         return it->second;
@@ -1886,6 +2487,7 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
         VReg idxReg = lowerExpression(*expr->index);
 
         bool isMap = false;
+        bool isString = false;
         Type elemIRType = Type::I64;
 
         const auto& chkTypes = checker.types();
@@ -1893,11 +2495,18 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
         if (itColl != chkTypes.end()) {
             if (dynamic_cast<typecheck::MapType*>(itColl->second.get())) {
                 isMap = true;
+            } else if (auto* basic = dynamic_cast<typecheck::Basic*>(itColl->second.get())) {
+                if (basic->name() == "string") isString = true;
             }
         }
         auto itElem = chkTypes.find(&e);
         if (itElem != chkTypes.end()) {
             elemIRType = typeToIR(itElem->second);
+        }
+
+        if (isString) {
+            VReg resolved = emitResolveStr(leftReg);
+            return emitByteLoad(resolved, idxReg);
         }
 
         if (isMap) {
@@ -2083,6 +2692,15 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
         VReg valReg = lowerExpression(*expr->value);
 
         if (auto* tgt = dynamic_cast<ast::Identifier*>(expr->target.get())) {
+            if (globalIndex.count(tgt->value)) {
+                Instruction in;
+                in.op = Op::StoreGlobal;
+                in.src1 = valReg;
+                in.callName = tgt->value;
+                in.intVal = 8;
+                emit(std::move(in));
+                return valReg;
+            }
             auto it = locals.find(tgt->value);
             VReg localReg;
             if (it == locals.end()) {
@@ -2304,6 +2922,21 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
         VReg leftReg = lowerExpression(*expr->left);
         VReg rightReg = lowerExpression(*expr->right);
 
+        // User-defined operator: func +(a: Foo, b: Foo) -> Foo
+        if (funcDecls.count(expr->op) &&
+            (leftReg.type == Type::Ptr || rightReg.type == Type::Ptr)) {
+            if (Function* opFn = resolveSpecialCall(expr->op, {leftReg, rightReg})) {
+                VReg dst = currentFn->newVReg(opFn->returnType);
+                Instruction callInst;
+                callInst.op = Op::Call;
+                callInst.dst = dst;
+                callInst.callName = opFn->name;
+                callInst.args = {leftReg, rightReg};
+                emit(std::move(callInst));
+                return dst;
+            }
+        }
+
         if (expr->op == "in") {
             const auto& chkTypes = checker.types();
             auto itT = chkTypes.find(expr->right.get());
@@ -2492,6 +3125,10 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
             op = Op::Div;
         } else if (expr->op == "%") {
             op = Op::Mod;
+        } else if (expr->op == "<<") {
+            op = Op::Shl;
+        } else if (expr->op == ">>") {
+            op = Op::Shr;
         } else if (expr->op == "==" || expr->op == "===" || expr->op == "!=" || expr->op == "!==") {
             bool negate = expr->op == "!=" || expr->op == "!==";
             const auto& chkTypes = checker.types();
@@ -2646,12 +3283,82 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
                         emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
                         return nullReg;
                     }
+                    if (fnName == "rdmsr" && args.size() == 1) {
+                        VReg dst = currentFn->newVReg(Type::I64);
+                        Instruction inst;
+                        inst.op = Op::CpuRdmsr;
+                        inst.dst = dst;
+                        inst.src1 = args[0];
+                        emit(std::move(inst));
+                        return dst;
+                    }
+                    if (fnName == "wrmsr" && args.size() == 2) {
+                        Instruction inst;
+                        inst.op = Op::CpuWrmsr;
+                        inst.src1 = args[0];
+                        inst.src2 = args[1];
+                        emit(std::move(inst));
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
+                    if ((fnName == "cpuid" || fnName == "cpuid_eax" ||
+                         fnName == "cpuid_ebx" || fnName == "cpuid_ecx" ||
+                         fnName == "cpuid_edx") && args.size() == 2) {
+                        int outReg = (fnName == "cpuid_ebx") ? 1 :
+                                     ((fnName == "cpuid_ecx") ? 2 :
+                                     ((fnName == "cpuid_edx") ? 3 : 0));
+                        VReg dst = currentFn->newVReg(Type::I64);
+                        Instruction inst;
+                        inst.op = Op::CpuCpuid;
+                        inst.dst = dst;
+                        inst.src1 = args[0];
+                        inst.src2 = args[1];
+                        inst.intVal = outReg;
+                        emit(std::move(inst));
+                        return dst;
+                    }
+                    if (fnName == "lidt" && args.size() == 1) {
+                        Instruction inst;
+                        inst.op = Op::CpuLidt;
+                        inst.src1 = args[0];
+                        emit(std::move(inst));
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
+                    if (fnName == "iret") {
+                        emit(Instruction{Op::CpuIret});
+                        VReg nullReg = currentFn->newVReg(Type::I64);
+                        emit(Instruction{Op::ConstInt, nullReg, {}, {}, 0});
+                        return nullReg;
+                    }
                 }
 
                 if (modName == "mem") {
                     std::vector<VReg> args;
                     for (const auto& a : expr->arguments) {
                         args.push_back(lowerExpression(*a));
+                    }
+                    if (fnName == "free" && args.size() == 1) {
+                        Instruction callInst;
+                        callInst.op = Op::Call;
+                        callInst.callName = "ulang_free";
+                        callInst.args = {args[0]};
+                        emit(std::move(callInst));
+                        VReg done = currentFn->newVReg(Type::I8);
+                        emit(Instruction{Op::ConstBool, done, {}, {}, 1});
+                        return done;
+                    }
+                    if (fnName == "alloc" && args.size() == 1) {
+                        VReg dst = currentFn->newVReg(Type::Ptr);
+                        Instruction callInst;
+                        callInst.op = Op::Call;
+                        callInst.dst = dst;
+                        callInst.callName = "ulang_alloc";
+                        callInst.args = {args[0]};
+                        emit(std::move(callInst));
+                        return dst;
                     }
                     if (fnName == "read_u8" || fnName == "read_i8" ||
                         fnName == "read_u16" || fnName == "read_i16" ||
@@ -3075,6 +3782,22 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
             return dst;
         }
 
+        // Indirect call through any expression evaluating to a function
+        // address: table[i](), obj.callback(), etc.
+        if (!dynamic_cast<ast::Identifier*>(expr->function.get())) {
+            VReg fnPtr = lowerExpression(*expr->function);
+            std::vector<VReg> indArgs;
+            for (const auto& a : expr->arguments) indArgs.push_back(lowerExpression(*a));
+            VReg dst = currentFn->newVReg(Type::I64);
+            Instruction callInst;
+            callInst.op = Op::CallPtr;
+            callInst.src1 = fnPtr;
+            callInst.dst = dst;
+            callInst.args = std::move(indArgs);
+            emit(std::move(callInst));
+            return dst;
+        }
+
         // Direct function call
         auto* fnIdent = dynamic_cast<ast::Identifier*>(expr->function.get());
         if (!fnIdent) {
@@ -3144,17 +3867,23 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
         }
 
         if (fnName == "len" && args.size() == 1) {
-            int64_t offset = 0; // string len
+            int64_t offset = 0; // string len at header+0
+            VReg src = args[0];
             const auto& chkTypes = checker.types();
             auto itT = chkTypes.find(expr->arguments[0].get());
             if (itT != chkTypes.end()) {
                 if (dynamic_cast<typecheck::ListType*>(itT->second.get()) ||
                     dynamic_cast<typecheck::MapType*>(itT->second.get())) {
                     offset = 8;
+                } else if (auto* basic = dynamic_cast<typecheck::Basic*>(itT->second.get())) {
+                    if (basic->name() == "string") {
+                        src = emitResolveStr(src);
+                        offset = 0;
+                    }
                 }
             }
             VReg lenDst = currentFn->newVReg(Type::I64);
-            emit(Instruction{Op::Load, lenDst, args[0], {}, offset});
+            emit(Instruction{Op::Load, lenDst, src, {}, offset});
             return lenDst;
         }
 
@@ -3224,6 +3953,35 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
             return dst;
         }
 
+        // Indirect call through a function-valued local/global: f := bump; f()
+        if (!functions.count(fnName)) {
+            auto lit = locals.find(fnName);
+            if (lit != locals.end() && lit->second.type == Type::Ptr) {
+                VReg dst = currentFn->newVReg(Type::I64);
+                Instruction callInst;
+                callInst.op = Op::CallPtr;
+                callInst.src1 = lit->second;
+                callInst.dst = dst;
+                callInst.args = std::move(args);
+                emit(std::move(callInst));
+                return dst;
+            }
+        }
+
+        // Generic / overloaded call: infer a specialization from argument types.
+        if (!functions.count(fnName)) {
+            if (Function* sp = resolveSpecialCall(fnName, args)) {
+                VReg dst = currentFn->newVReg(sp->returnType);
+                Instruction callInst;
+                callInst.op = Op::Call;
+                callInst.dst = dst;
+                callInst.callName = sp->name;
+                callInst.args = args;
+                emit(std::move(callInst));
+                return dst;
+            }
+        }
+
         Type retType = Type::Void;
         auto fIt = functions.find(fnName);
         if (fIt != functions.end()) {
@@ -3281,11 +4039,24 @@ LowerResult lower(const std::shared_ptr<ast::Program>& prog, const typecheck::Ch
     try {
         LoweringContext ctx(checker);
         ctx.buildLayouts(*prog);
+        ctx.collectModuleConstants(*prog);
 
-        // 2. Declare top-level functions and class methods
+        // 2a. Collect function declarations.  Overloaded and generic functions
+        // are not declared eagerly; they are monomorphized at call sites.
         for (const auto& stmt : prog->statements) {
             if (auto* s = dynamic_cast<ast::FuncDeclaration*>(stmt.get())) {
-                ctx.declareFunc(s->name, s->params, s->returnType.get());
+                ctx.funcDecls[s->name].push_back(s);
+                if (s->isDestructor) ctx.destructors[s->name] = s;
+            }
+        }
+
+        // 2b. Declare plain functions and class methods
+        for (const auto& stmt : prog->statements) {
+            if (auto* s = dynamic_cast<ast::FuncDeclaration*>(stmt.get())) {
+                auto it = ctx.funcDecls.find(s->name);
+                if (it->second.size() == 1 && s->typeParams.empty()) {
+                    ctx.declareFunc(s->name, s->params, s->returnType.get());
+                }
             } else if (auto* s = dynamic_cast<ast::ClassDeclaration*>(stmt.get())) {
                 for (const auto& m : s->methods) {
                     if (m && m->func) {
@@ -3299,7 +4070,9 @@ LowerResult lower(const std::shared_ptr<ast::Program>& prog, const typecheck::Ch
         // 3. Lower top-level functions and class methods
         for (const auto& stmt : prog->statements) {
             if (auto* s = dynamic_cast<ast::FuncDeclaration*>(stmt.get())) {
-                Function* irFn = ctx.functions[s->name];
+                auto fIt = ctx.functions.find(s->name);
+                if (fIt == ctx.functions.end()) continue; // generic/overloaded
+                Function* irFn = fIt->second;
                 ctx.lowerFunctionBody(irFn, s->params, s->body->statements, false);
             } else if (auto* s = dynamic_cast<ast::ClassDeclaration*>(stmt.get())) {
                 for (const auto& m : s->methods) {
@@ -3312,11 +4085,16 @@ LowerResult lower(const std::shared_ptr<ast::Program>& prog, const typecheck::Ch
             }
         }
 
-        // 4. Entry point (main)
+        // 4. Entry point (main, or kernel_main for freestanding kernels)
         Function* userMain = nullptr;
         auto itMain = ctx.functions.find("main");
         if (itMain != ctx.functions.end()) {
             userMain = itMain->second;
+        } else {
+            auto itKernel = ctx.functions.find("kernel_main");
+            if (itKernel != ctx.functions.end()) {
+                userMain = itKernel->second;
+            }
         }
 
         auto entryFn = std::make_unique<Function>();
@@ -3334,6 +4112,24 @@ LowerResult lower(const std::shared_ptr<ast::Program>& prog, const typecheck::Ch
                 dynamic_cast<ast::ClassDeclaration*>(stmt.get()) ||
                 dynamic_cast<ast::StructDeclaration*>(stmt.get())) {
                 continue;
+            }
+            // Mutable globals live in the data section with their static
+            // initializer; do not also create an entry-only local for them.
+            if (auto* vd = dynamic_cast<ast::VarDeclaration*>(stmt.get())) {
+                if (vd->isConstexpr || (vd->name && ctx.globalIndex.count(vd->name->value))) {
+                    // Literal initializers are baked into the data section;
+                    // computed ones must still run in the entry block.
+                    if (vd->value && !LoweringContext::isConstInitializer(*vd->value)) {
+                        VReg val = ctx.lowerExpression(*vd->value);
+                        Instruction in;
+                        in.op = Op::StoreGlobal;
+                        in.src1 = val;
+                        in.callName = vd->name->value;
+                        in.intVal = 8;
+                        ctx.emit(std::move(in));
+                    }
+                    continue;
+                }
             }
             ctx.lowerStatement(*stmt);
         }

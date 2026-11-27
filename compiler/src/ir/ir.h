@@ -46,6 +46,8 @@ enum class Op {
     Mul,
     Div,
     Mod,
+    Shl,
+    Shr,
     // Negation
     Neg,
     // Bitwise / Logical
@@ -90,8 +92,20 @@ enum class Op {
     CpuReadCr,
     CpuWriteCr,
     CpuInvlpg,
+    CpuRdmsr,
+    CpuWrmsr,
+    CpuCpuid,
+    CpuLidt,
+    CpuIret,
     RawLoad,
-    RawStore
+    RawStore,
+    LoadGlobal,
+    StoreGlobal,
+    FuncAddr,
+    ClearErr,
+    GetErrValue,
+    SetErrType,
+    GetErrType
 };
 
 std::string_view opToString(Op op);
@@ -141,9 +155,17 @@ struct Function {
     std::string toString() const;
 };
 
+struct GlobalVar {
+    std::string name;
+    uint64_t initValue{0};
+};
+
 struct Program {
     std::vector<std::unique_ptr<Function>> functions;
     Function* entryFn{nullptr};
+    // Mutable top-level variables.  Each slot is 8 bytes in the emitted data
+    // section; callName on LoadGlobal/StoreGlobal refers to the slot by name.
+    std::vector<GlobalVar> globals;
 
     std::string toString() const;
 };

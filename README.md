@@ -6,15 +6,15 @@
 
 ## Key Features
 
-- **Self-Contained Pipeline**: Custom Lexer, Parser, Typechecker, SSA-like IR, x86-64 machine code generator, and direct PE32+ (Windows) / ELF64 (Linux & Multiboot) object writers.
-- **Bare-Metal & OS Capabilities**: Direct CPU intrinsics (`cpu.cli()`, `cpu.sti()`, `cpu.hlt()`, `cpu.in8()`, `cpu.out8()`), CR0/CR2/CR3 register access, MMIO physical memory drivers (`mem.write_u16`, `mem.read_u32`), Multiboot 1/2 ELF headers and raw flat binaries.
-- **Memory Safety & Runtime**: Capability-based sandbox, built-in Mark-Sweep Garbage Collector, M:N cooperative fibers / green-threads async runtime.
-- **Rich Standard Library (`std/`)**: Over 79 fully native modules covering crypto, async/event loop, files, POSIX/Win32 OS APIs, networking (Ethernet, ARP, ICMP, TCP/UDP sockets), data formats (JSON, XML, HTML, CSV, INI), archives (ZIP, TAR, GZ, ZSTD, LZMA, BZ2), databases (SQLite3), and hardware drivers (VGA, PIC, PIT, IDT, PCI, Serial UART).
+- **Self-Contained Pipeline**: Custom Lexer, Parser, Typechecker, SSA-like IR, x86-64 machine code generator, and direct PE32+ (Windows) / ELF64 (Linux) image writers. There is **no separate linker**: no object files, symbol tables or relocations yet.
+- **Bare-Metal & OS Capabilities (x86-64 only)**: Ring-0 intrinsics (`cpu.cli/sti/hlt/pause`, `in8/16/32`, `out8/16/32`, `read/write_cr0/cr2/cr3`, `invlpg`, `rdmsr/wrmsr`, `cpuid`, `lidt`, `iret`) and raw MMIO (`mem.read_u*/write_u*`). `--target freestanding-elf` emits a Multiboot 1+2 ELF32 image with GDT, identity page tables and a 32→64-bit trampoline; `kernel_main` is used as the entry point. See [the bare-metal notes](docs/os_dev_EN.md) for exactly what works.
+- **Runtime**: bump allocation in generated binaries. The mark-sweep GC and green-thread scheduler in `compiler/src/runtime/` are **not linked into generated programs** yet.
+- **Standard Library (`std/`)**: ~79 modules. Hosted-side modules (formats, crypto, networking, archives, SQLite3) have mixed coverage; the hardware modules (`idt`, `pic`, `pit`, `vga`, `serial`, `pci`, `keyboard`, `fat32`, `iso9660`, `elf_loader`) are low-level primitives — mostly register/MMIO helpers and header parsers, not complete drivers or filesystems.
 - **Extensible Module System**:
-  - `use mylib.al`
-  - `use "./../../mylib.al" as custom_name`
+  - `use mylib.upp`
+  - `use "./../../mylib.upp" as custom_name`
   - Global packages in `ProgramData/ULangLibs/libs` (Windows) / `/var/lib/ULangLibs/libs` (Linux).
-- **Dynamic Linking (DLL/SO)**: Create and consume shared libraries with Win64 ABI export tables (`ulang++ build --target dll`).
+- **Dynamic Linking (DLL/SO)**: consuming DLLs is supported on Windows. Generating a DLL with a Win64 export directory is **not implemented** yet.
 
 ---
 
@@ -37,7 +37,7 @@ chmod +x ./install.sh
 
 ### Building & Running Programs
 
-Create `main.al`:
+Create `main.upp`:
 ```ulang
 func main() {
     println("Hello from ULang++!")
@@ -48,13 +48,13 @@ func main() {
 
 Compile directly to native binary:
 ```powershell
-ulang++ build main.al
+ulang++ build main.upp
 .\main.exe
 ```
 
 Or compile and run immediately:
 ```powershell
-ulang++ run main.al
+ulang++ run main.upp
 ```
 
 ### Compiler Commands
@@ -68,3 +68,49 @@ ulang++ run main.al
 | `parse` | `ulang++ parse <file>` | Parses and displays AST |
 | `lex` | `ulang++ lex <file>` | Tokenizes source code |
 | `version` | `ulang++ version` | Displays toolchain version |
+
+### Building a kernel (verified path)
+
+```ulang
+// kernel.upp
+use std.cpu
+use std.idt
+
+func kernel_main() {
+    println("Hello from ring 0")
+    idt.write_gate(524288, 0, 4096, 8, 142)
+    idt.write_pointer(524288, 256, 524272)
+    idt.load(524272)
+    loop {
+        cpu.hlt()
+    }
+}
+```
+
+```powershell
+ulang++ build --target freestanding-elf -o kernel.elf kernel.upp
+qemu-system-x86_64 -kernel kernel.elf -display none -serial stdio
+```
+
+`println()` in freestanding mode writes to both the VGA text buffer and COM1.
+Automated smoke test: `bash scripts/test_boot.sh` (needs `g++` and QEMU).
+
+Mutable globals live in a real data section, and functions can be passed
+around (`f := bump; f()`), which is enough for manual dispatch tables.
+
+Generic functions (`func identity[T](x: T) -> T`) and function overloading are
+monomorphized at call sites into mangled specializations such as `identity_int`.
+`mem.alloc`/`mem.free` use a first-fit free-list allocator (freed blocks are
+reused). `defer expr` runs on every exit path, and `func ~Foo(self: Foo)` is an
+implicit destructor called for every local `Foo` when its block/function exits.
+`throw value` and `try { ... } catch (e) { ... }` propagate exceptions through a
+memory-backed error slot and unwind destructors on the way out.
+
+**Still missing:** IDT handler dispatch (ISR stubs/interrupt gates at runtime),
+preemptive scheduling, virtual memory management, real filesystems, syscalls,
+user mode (ring 3), separate object files/relocations, rethrow/nested typed
+handlers, coroutines/atomics, value semantics (`T&`) and
+`float`/struct values in `println()`. Operator overloading
+(`func +(a: Vec, b: Vec)`) and `const` reassignment checks now work.
+Details: [docs/os_dev_EN.md](docs/os_dev_EN.md).
+

@@ -333,10 +333,31 @@ void Checker::stmt(const ast::StatementPtr& s, const std::shared_ptr<Scope>& sc)
         loop_--;
     } else if (auto as = std::dynamic_pointer_cast<ast::AssertStatement>(s)) {
         condition(as->condition, sc);
+    } else if (auto df = std::dynamic_pointer_cast<ast::DeferStatement>(s)) {
+        if (df->expression) expr(df->expression, sc);
+    } else if (auto th = std::dynamic_pointer_cast<ast::ThrowStatement>(s)) {
+        if (th->value) expr(th->value, sc);
+    } else if (auto tr = std::dynamic_pointer_cast<ast::TryStatement>(s)) {
+        if (tr->tryBody) {
+            auto inner = std::make_shared<Scope>(sc);
+            block(tr->tryBody, inner);
+        }
+        if (tr->catchBody) {
+            auto inner = std::make_shared<Scope>(sc);
+            if (!tr->catchParam.empty()) {
+                auto sym = std::make_shared<Symbol>();
+                sym->typ = getString();
+                inner->syms[tr->catchParam] = sym;
+            }
+            block(tr->catchBody, inner);
+        }
+        if (tr->finallyBody) block(tr->finallyBody, sc);
     } else if (auto ret = std::dynamic_pointer_cast<ast::ReturnStatement>(s)) {
         TypePtr valT = ret->value ? expr(ret->value, sc) : getVoid();
         if (fn_) {
-            if (!assignable(fn_->ret, valT)) {
+            // Identical named types (e.g. a generic parameter T) are accepted
+            // even when the checker has no concrete layout for them yet.
+            if (!assignable(fn_->ret, valT) && fn_->ret->toString() != valT->toString()) {
                 addError(ret->token, "cannot return " + valT->toString() + " from function returning " + fn_->ret->toString(),
                          "change the return value or the function return type");
             }
@@ -359,8 +380,29 @@ void Checker::stmt(const ast::StatementPtr& s, const std::shared_ptr<Scope>& sc)
     }
 }
 
+static bool isCompileTimeExpr(const ast::Expression& e) {
+    if (dynamic_cast<const ast::IntegerLiteral*>(&e) ||
+        dynamic_cast<const ast::BooleanLiteral*>(&e)) return true;
+    if (auto* p = dynamic_cast<const ast::PrefixExpression*>(&e)) {
+        return p->right && isCompileTimeExpr(*p->right);
+    }
+    if (auto* in = dynamic_cast<const ast::InfixExpression*>(&e)) {
+        return in->left && in->right &&
+               isCompileTimeExpr(*in->left) && isCompileTimeExpr(*in->right);
+    }
+    if (auto* se = dynamic_cast<const ast::StreamExpression*>(&e)) {
+        return se->source && se->target &&
+               isCompileTimeExpr(*se->source) && isCompileTimeExpr(*se->target);
+    }
+    return false;
+}
+
 void Checker::varDecl(const std::shared_ptr<ast::VarDeclaration>& vd, const std::shared_ptr<Scope>& sc) {
     if (!vd || !vd->name) return;
+    if (vd->isConstexpr && vd->value && !isCompileTimeExpr(*vd->value)) {
+        addError(vd->token, "constexpr initializer must be a compile-time constant",
+                 "use literals and arithmetic only");
+    }
     std::string name = vd->name->value;
 
     TypePtr declT;
@@ -542,6 +584,13 @@ TypePtr Checker::evalInfix(const std::shared_ptr<ast::InfixExpression>& in, cons
 }
 
 TypePtr Checker::evalAssign(const std::shared_ptr<ast::AssignExpression>& as, const std::shared_ptr<Scope>& sc) {
+    if (auto id = std::dynamic_pointer_cast<ast::Identifier>(as->target)) {
+        auto sym = sc->lookupLocalChain(id->value);
+        if (sym && sym->isConst) {
+            addError(as->token, "cannot assign to const '" + id->value + "'",
+                     "remove 'const' or assign a different variable");
+        }
+    }
     auto lt = expr(as->target, sc);
     auto rt = expr(as->value, sc);
     if (!assignable(lt, rt)) {
@@ -598,6 +647,20 @@ TypePtr Checker::evalCall(const std::shared_ptr<ast::CallExpression>& call, cons
         expr(pair.second, sc);
     }
     if (auto f = std::dynamic_pointer_cast<FuncType>(fnT)) {
+        // Empty param lists are also used for unresolved/unknown callees in
+        // this checker; do not produce false errors for those.
+        if (!f->variadic && !f->params.empty()) {
+            size_t required = 0;
+            for (const auto& p : f->params) if (!p.optional) ++required;
+            size_t given = call->arguments.size() + call->kwargs.size();
+            if (given < required || given > f->params.size()) {
+                addError(call->token,
+                         "function expects " + std::to_string(required) + "-" +
+                         std::to_string(f->params.size()) + " arguments, got " +
+                         std::to_string(given),
+                         "check the call arguments");
+            }
+        }
         return f->ret ? f->ret : getVoid();
     }
     if (auto s = std::dynamic_pointer_cast<StructType>(fnT)) {

@@ -155,6 +155,7 @@ public:
     ExpressionPtr value;
     std::string visibility; // "", "public" or "private"
     bool isConst = false;
+    bool isConstexpr = false;
 
     void statementNode() override {}
     std::string tokenLiteral() const override { return token.literal; }
@@ -192,7 +193,12 @@ public:
     std::vector<std::shared_ptr<Decorator>> decorators;
     bool isPublic = false;
     bool isAsync = false;
+    // func ~Foo(self: Foo) - destructor invoked when a local Foo leaves scope.
+    bool isDestructor = false;
+    bool isOperator = false;
     std::string name;
+    // Type parameters for generic functions: func max[T](a: T, b: T) -> T
+    std::vector<std::string> typeParams;
     std::vector<std::shared_ptr<FuncParam>> params;
     std::shared_ptr<TypeAnnotation> returnType;
     std::shared_ptr<BlockStatement> body;
@@ -498,6 +504,43 @@ public:
     void statementNode() override {}
     std::string tokenLiteral() const override { return token.literal; }
     std::string toString() const override;
+};
+
+// DeferStatement schedules an expression to run on function exit (RAII).
+class DeferStatement : public Statement {
+public:
+    token::Token token;
+    ExpressionPtr expression;
+
+    void statementNode() override {}
+    std::string tokenLiteral() const override { return token.literal; }
+    std::string toString() const override { return "defer " + (expression ? expression->toString() : ""); }
+};
+
+// ThrowStatement raises a value into the global error slot (r14).
+class ThrowStatement : public Statement {
+public:
+    token::Token token;
+    ExpressionPtr value;
+
+    void statementNode() override {}
+    std::string tokenLiteral() const override { return token.literal; }
+    std::string toString() const override { return "throw " + (value ? value->toString() : ""); }
+};
+
+// TryStatement catches a raised value and clears the error slot.
+class TryStatement : public Statement {
+public:
+    token::Token token;
+    std::shared_ptr<BlockStatement> tryBody;
+    std::shared_ptr<BlockStatement> catchBody;
+    std::string catchParam;
+    std::string catchType;
+    std::shared_ptr<BlockStatement> finallyBody;
+
+    void statementNode() override {}
+    std::string tokenLiteral() const override { return token.literal; }
+    std::string toString() const override { return "try/catch"; }
 };
 
 // MatchCase represents a case clause inside a match statement.

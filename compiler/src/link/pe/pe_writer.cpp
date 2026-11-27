@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "link/pe/pe_writer.h"
+#include "link/heap_helpers.h"
 #include <fstream>
 #include <vector>
 #include <cstring>
@@ -287,9 +288,13 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
     constexpr uint32_t textVirtReserve = 0x100000;
     uint32_t rdataRVA = textRVA + textVirtReserve;
     uint32_t constRVA = rdataRVA + hdrArea;
-    uint32_t bssRVA = rdataRVA + alignUp(hdrArea + static_cast<uint32_t>(rdata.size()), peSectAlign);
+    uint32_t dataRVA = rdataRVA + alignUp(hdrArea + static_cast<uint32_t>(rdata.size()), peSectAlign);
+    const bool hasData = !art.globals.empty();
+    const uint32_t dataSize = static_cast<uint32_t>(art.globals.size() * 8);
+    uint32_t bssRVA = dataRVA + (hasData ? alignUp(dataSize, peSectAlign) : 0);
     uint32_t hStdoutRVA = bssRVA;
     uint32_t allocPtrRVA = bssRVA + 8;
+    uint32_t freeHeadRVA = bssRVA + 16;
 
     std::map<std::string, uint32_t> iatMap;
     for (size_t i = 0; i < imports.size(); ++i) {
@@ -398,20 +403,54 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
 
     while (text.size() % 16 != 0) text.push_back(0x90);
 
-    // 4. ulang_alloc(size in RCX) -> RAX
+    // 4. ulang_alloc(size in RCX) -> RAX.  Win64 passes the first argument in
+    // RCX, the shared heap helper expects RDI, so use a tiny argument stub.
     uint32_t allocOff = static_cast<uint32_t>(text.size());
-    text.insert(text.end(), {0x48, 0x83, 0xC1, 0x0F}); // add rcx, 15
-    text.insert(text.end(), {0x48, 0x83, 0xE1, 0xF0}); // and rcx, -16
-    curPos = textRVA + static_cast<uint32_t>(text.size()) + 7;
-    int32_t dispAllocRead = static_cast<int32_t>(allocPtrRVA) - static_cast<int32_t>(curPos);
-    text.insert(text.end(), {0x48, 0x8B, 0x05});
-    put32(text, static_cast<uint32_t>(dispAllocRead));
-    text.insert(text.end(), {0x48, 0x8D, 0x14, 0x08}); // lea rdx, [rax + rcx]
-    curPos = textRVA + static_cast<uint32_t>(text.size()) + 7;
-    int32_t dispAllocWrite = static_cast<int32_t>(allocPtrRVA) - static_cast<int32_t>(curPos);
-    text.insert(text.end(), {0x48, 0x89, 0x15});
-    put32(text, static_cast<uint32_t>(dispAllocWrite));
+    text.push_back(0x57);                         // push rdi (callee-saved on Win64)
+    text.insert(text.end(), {0x48, 0x89, 0xCF}); // mov rdi, rcx
+    text.insert(text.end(), {0x4C, 0x8D, 0x05}); // lea r8, [rip+disp32] -> heap slots
+    size_t allocLeaPatch = text.size();
+    put32(text, 0);
+    int32_t allocLeaDisp = static_cast<int32_t>(allocPtrRVA) -
+                           static_cast<int32_t>(textRVA + allocLeaPatch + 4);
+    std::memcpy(&text[allocLeaPatch], &allocLeaDisp, 4);
+    text.push_back(0xE8);
+    size_t allocCallPatch = text.size();
+    put32(text, 0);
+    text.push_back(0x5F); // pop rdi
     text.push_back(0xC3);
+    while (text.size() % 16 != 0) text.push_back(0x90);
+    uint32_t allocBody = static_cast<uint32_t>(text.size());
+    auto allocBytes = emitHeapAllocHelperSlotReg();
+    text.insert(text.end(), allocBytes.begin(), allocBytes.end());
+    int32_t allocRel = static_cast<int32_t>(allocBody) -
+                       static_cast<int32_t>(allocCallPatch + 4);
+    std::memcpy(&text[allocCallPatch], &allocRel, 4);
+
+    while (text.size() % 16 != 0) text.push_back(0x90);
+
+    // 4b. ulang_free(ptr in RCX)
+    uint32_t freeOff = static_cast<uint32_t>(text.size());
+    text.push_back(0x57);                         // push rdi
+    text.insert(text.end(), {0x48, 0x89, 0xCF}); // mov rdi, rcx
+    text.insert(text.end(), {0x4C, 0x8D, 0x05}); // lea r8, [rip+disp32] -> heap slots
+    size_t freeLeaPatch = text.size();
+    put32(text, 0);
+    int32_t freeLeaDisp = static_cast<int32_t>(allocPtrRVA) -
+                          static_cast<int32_t>(textRVA + freeLeaPatch + 4);
+    std::memcpy(&text[freeLeaPatch], &freeLeaDisp, 4);
+    text.push_back(0xE8);
+    size_t freeCallPatch = text.size();
+    put32(text, 0);
+    text.push_back(0x5F); // pop rdi
+    text.push_back(0xC3);
+    while (text.size() % 16 != 0) text.push_back(0x90);
+    uint32_t freeBody = static_cast<uint32_t>(text.size());
+    auto freeBytes = emitHeapFreeHelperSlotReg();
+    text.insert(text.end(), freeBytes.begin(), freeBytes.end());
+    int32_t freeRel = static_cast<int32_t>(freeBody) -
+                      static_cast<int32_t>(freeCallPatch + 4);
+    std::memcpy(&text[freeCallPatch], &freeRel, 4);
 
     while (text.size() % 16 != 0) text.push_back(0x90);
 
@@ -473,6 +512,7 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
         if (fix.funcName == "ulang_print") targetHelper = printOff;
         else if (fix.funcName == "ulang_println") targetHelper = printlnOff;
         else if (fix.funcName == "ulang_alloc") targetHelper = allocOff;
+        else if (fix.funcName == "ulang_free") targetHelper = freeOff;
         else if (fix.funcName == "ulang_concat_str") targetHelper = concatOff;
         else if (fix.funcName == "ulang_str_eq") targetHelper = strEqOff;
         else if (fix.funcName == "ulang_str_ptr") targetHelper = strPtrOff;
@@ -486,6 +526,12 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
         uint32_t absCallSite = userCodeStart + static_cast<uint32_t>(fix.insEnd);
         int32_t rel32 = static_cast<int32_t>(targetHelper) - static_cast<int32_t>(absCallSite);
         std::memcpy(&userCodeCopy[fix.patchOffset], &rel32, 4);
+    }
+    for (const auto& fix : art.dataFixups) {
+        if (fix.globalIndex >= art.globals.size()) return false;
+        int32_t disp = static_cast<int32_t>(dataRVA + 8u * fix.globalIndex) -
+                       static_cast<int32_t>(textRVA + userCodeStart + fix.insEnd);
+        std::memcpy(&userCodeCopy[fix.patchOffset], &disp, 4);
     }
     text.insert(text.end(), userCodeCopy.begin(), userCodeCopy.end());
 
@@ -531,6 +577,8 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
     uint32_t rdataRawLen = alignUp(static_cast<uint32_t>(rdataSection.size()), peFileAlign);
     uint32_t rdataVirtLen = alignUp(static_cast<uint32_t>(rdataSection.size()), peSectAlign);
     uint32_t bssVirtLen = 0x200000; // 2MB
+    uint32_t dataVirtLen = hasData ? alignUp(dataSize, peSectAlign) : 0;
+    uint32_t dataRawLen = hasData ? alignUp(dataSize, peFileAlign) : 0;
 
     // Full file assembly
     std::vector<uint8_t> pe;
@@ -545,7 +593,7 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
 
     // COFF Header (20 bytes)
     put16(pe, 0x8664); // AMD64
-    put16(pe, 3);      // 3 sections (.text, .rdata, .bss)
+    put16(pe, hasData ? 4 : 3); // sections (.text, .rdata, optional .data, .bss)
     put32(pe, 0);      // TimeDateStamp
     put32(pe, 0);      // PointerToSymbolTable
     put32(pe, 0);      // NumberOfSymbols
@@ -572,7 +620,8 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
     put32(pe, 0x400);           // SizeOfHeaders
     put32(pe, 0);               // CheckSum
     put16(pe, noConsole ? 2 : 3); // Subsystem: 2=GUI, 3=CUI
-    put16(pe, 0x8160);          // DllCharacteristics: HIGH_ENTROPY_VA | DYNAMIC_BASE | NX_COMPAT | TERMINAL_SERVER_AWARE
+    // Absolute heap slot addresses require a fixed image base (no ASLR).
+    put16(pe, 0x0160);          // DllCharacteristics: NX_COMPAT | TERMINAL_SERVER_AWARE
     put64(pe, 0x100000);        // SizeOfStackReserve (1MB)
     put64(pe, 0x10000);         // SizeOfStackCommit (64KB)
     put64(pe, 0x100000);        // SizeOfHeapReserve
@@ -615,7 +664,19 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
     put32(pe, 0); put32(pe, 0); put16(pe, 0); put16(pe, 0);
     put32(pe, 0x40000040); // CNT_INITIALIZED_DATA | MEM_READ
 
-    // 3. .bss
+    // 3. .data (initialized mutable globals) - must precede .bss by RVA
+    if (hasData) {
+        for (char c : ".data") pe.push_back(static_cast<uint8_t>(c));
+        while (pe.size() % 40 != (0x40 + 4 + 20 + 0xF0 + 80 + 8) % 40) pe.push_back(0);
+        put32(pe, dataVirtLen);
+        put32(pe, dataRVA);
+        put32(pe, dataRawLen);
+        put32(pe, 0x400 + textRawLen + rdataRawLen);
+        put32(pe, 0); put32(pe, 0); put16(pe, 0); put16(pe, 0);
+        put32(pe, 0xC0000040); // CNT_INITIALIZED_DATA | MEM_READ | MEM_WRITE
+    }
+
+    // 4. .bss
     for (char c : ".bss") pe.push_back(static_cast<uint8_t>(c));
     while (pe.size() % 40 != (0x40 + 4 + 20 + 0xF0 + 80 + 8) % 40) pe.push_back(0);
     put32(pe, bssVirtLen);
@@ -635,6 +696,12 @@ bool linkPE(const codegen::x64::CompiledArtifact& art, const std::string& output
     // .rdata section
     pe.insert(pe.end(), rdataSection.begin(), rdataSection.end());
     while (pe.size() < 0x400 + textRawLen + rdataRawLen) pe.push_back(0);
+
+    // .data section
+    if (hasData) {
+        for (const auto& g : art.globals) put64(pe, g.initValue);
+        while (pe.size() < 0x400 + textRawLen + rdataRawLen + dataRawLen) pe.push_back(0);
+    }
 
     // Write file
     std::ofstream out(outputPath, std::ios::binary);

@@ -76,6 +76,21 @@ MT_TEST(typecheck, type_mismatch_detected) {
     MT_CHECK(errs.size() > 0u);
 }
 
+MT_TEST(typecheck, const_reassignment_rejected) {
+    auto errs = check("const x := 5\nx = 6\n");
+    MT_CHECK(errs.size() > 0u);
+}
+
+MT_TEST(typecheck, mutable_reassignment_allowed) {
+    auto errs = check("x := 5\nx = 6\n");
+    MT_CHECK_EQ(errs.size(), 0u);
+}
+
+MT_TEST(typecheck, constexpr_requires_constant_initializer) {
+    auto errs = check("x := 5\nconstexpr N := x + 1\n");
+    MT_CHECK(errs.size() > 0u);
+}
+
 MT_TEST(typecheck, undefined_variable_detected) {
     const std::string src =
         "println(unknown_var)\n";

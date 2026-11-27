@@ -22,12 +22,20 @@ struct CallFixup {
     size_t insEnd{0};
 };
 
+struct DataFixup {
+    uint32_t globalIndex{0};
+    size_t patchOffset{0};  // offset of the 4-byte RIP displacement
+    size_t insEnd{0};       // patchOffset + 4 - RIP reference point
+};
+
 struct CompiledArtifact {
     std::vector<uint8_t> code;
     std::vector<uint8_t> readOnlyData;
     std::unordered_map<std::string, uint32_t> functionRVAs;
     uint32_t entryOffset{0};
     std::vector<CallFixup> callFixups;
+    std::vector<ir::GlobalVar> globals;
+    std::vector<DataFixup> dataFixups;
 };
 
 class CodeGenerator {
@@ -44,6 +52,11 @@ private:
     std::unordered_map<std::string, size_t> funcOffsets_;
     std::unordered_map<std::string, uint32_t> funcRVAs_;
     std::vector<CallFixup> funcCalls_;
+    std::unordered_map<std::string, uint32_t> globalIndex_;
+    std::vector<DataFixup> dataFixups_;
+    uint32_t errGlobal_{0};
+    uint32_t errFlagGlobal_{0};
+    uint32_t errTypeGlobal_{0};
     uint32_t entryOffset_{0};
 
     int32_t internString(const std::string& s);

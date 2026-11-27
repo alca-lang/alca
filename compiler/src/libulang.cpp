@@ -53,7 +53,7 @@ int usage() {
         << "usage: " << gExeName << " <command> [options]\n"
         << "\n"
         << "commands:\n"
-        << "  build [-o <out>] [--target <t>] <file> compile a .upp file directly to native binary\n"
+        << "  build [-o <out>] [--target <t>] [--arch x86_64|x86_32] <file>  compile a .upp file\n"
         << "  run <file>                            compile and run a .upp file\n"
         << "  lex [--dump] <file>                   tokenize a .upp file\n"
         << "  parse <file>                          parse and print AST of a .upp file\n"
@@ -215,6 +215,11 @@ int handleCheck(const std::vector<std::string>& args) {
         std::cerr << p.diagnosticReport(path, source, false);
         return 1;
     }
+
+    std::unordered_set<std::string> loadedFiles;
+    loadedFiles.insert(path);
+    loadImportedModules(prog, path, loadedFiles);
+
     ulang::typecheck::Checker c(path, source);
     auto errs = c.check(prog);
     if (!errs.empty()) {
@@ -254,6 +259,11 @@ int handleIR(const std::vector<std::string>& args) {
         std::cerr << p.diagnosticReport(path, source, false);
         return 1;
     }
+
+    std::unordered_set<std::string> loadedFiles;
+    loadedFiles.insert(path);
+    loadImportedModules(prog, path, loadedFiles);
+
     ulang::typecheck::Checker c(path, source);
     auto errs = c.check(prog);
     if (!errs.empty()) {
@@ -275,6 +285,7 @@ int handleBuild(const std::vector<std::string>& args) {
     std::string path;
     std::string outPath;
     std::string target = "windows/amd64";
+    std::string arch = "x86_64";
 #ifndef _WIN32
     target = "linux/amd64";
 #endif
@@ -287,6 +298,8 @@ int handleBuild(const std::vector<std::string>& args) {
             outPath = args[++i];
         } else if (args[i] == "--target" && i + 1 < args.size()) {
             target = args[++i];
+        } else if (args[i] == "--arch" && i + 1 < args.size()) {
+            arch = args[++i];
         } else if (!args[i].empty() && args[i][0] == '-' && args[i] != "-") {
             std::cerr << "ulang++ build: unknown option '" << args[i] << "'\n";
             return 2;
@@ -362,7 +375,7 @@ int handleBuild(const std::vector<std::string>& args) {
         if (isRawBin) {
             ok = ulang::link::elf::linkRawBinary(art, outPath);
         } else {
-            ok = ulang::link::elf::linkMultibootELF(art, outPath);
+            ok = ulang::link::elf::linkMultibootELF(art, outPath, arch);
         }
     } else if (isWin) {
         ok = ulang::link::pe::linkPE(art, outPath, false);

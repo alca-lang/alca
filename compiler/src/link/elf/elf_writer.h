@@ -10,6 +10,8 @@ namespace ulang::link::elf {
 
 bool linkELF(const codegen::x64::CompiledArtifact& art, const std::string& outputPath);
 bool linkRawBinary(const codegen::x64::CompiledArtifact& art, const std::string& outputPath);
-bool linkMultibootELF(const codegen::x64::CompiledArtifact& art, const std::string& outputPath);
+// Freestanding Multiboot2 ELF. arch: "x86_64" (default, 32-bit trampoline -> long mode) or "x86_32" (not yet).
+bool linkMultibootELF(const codegen::x64::CompiledArtifact& art, const std::string& outputPath,
+                      const std::string& arch = "x86_64");
 
 } // namespace ulang::link::elf

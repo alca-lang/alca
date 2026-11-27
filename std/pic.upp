@@ -30,7 +30,7 @@ pub func remap(offset1: int, offset2: int) {
     cpu.out8(PIC1_DATA, 1)
     cpu.out8(PIC2_DATA, 1)
 
-    // Mask all by default (0xFF)
+    // Unmask all lines by default so IRQ 0..15 can be serviced.
     cpu.out8(PIC1_DATA, 0)
     cpu.out8(PIC2_DATA, 0)
 }
@@ -52,4 +52,17 @@ pub func mask_irq(irq: int) {
     }
     mask := cpu.in8(port)
     cpu.out8(port, (mask + (1 << curIrq)) % 256)
+}
+
+// Re-enables a previously masked IRQ line.
+pub func unmask_irq(irq: int) {
+    port := PIC1_DATA
+    curIrq := irq
+    if curIrq >= 8 {
+        port = PIC2_DATA
+        curIrq = curIrq - 8
+    }
+    mask := cpu.in8(port)
+    bit := (1 << curIrq) % 256
+    cpu.out8(port, (mask - bit + 256) % 256)
 }

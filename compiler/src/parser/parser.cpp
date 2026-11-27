@@ -486,6 +486,7 @@ ast::StatementPtr Parser::parseStatement() {
 }
 
 ast::StatementPtr Parser::parseStatementInternal() {
+    constexprModifier_ = false;
     std::vector<std::shared_ptr<ast::Decorator>> decorators;
     while (curTokenIs(token::AT)) {
         if (peekTokenIs(token::BA)) {
@@ -585,6 +586,55 @@ ast::StatementPtr Parser::parseStatementInternal() {
         return parseWaitStatement();
     case token::ASSERT:
         return parseAssertStatement();
+    case token::THROW: {
+        auto tok = curToken_;
+        nextToken();
+        auto value = parseExpression(LOWEST);
+        auto s = std::make_shared<ast::ThrowStatement>();
+        s->token = tok;
+        s->value = value;
+        consumeStatementEnd();
+        return s;
+    }
+    case token::TRY: {
+        auto tok = curToken_;
+        if (!expectPeek(token::LBRACE)) return nullptr;
+        auto s = std::make_shared<ast::TryStatement>();
+        s->token = tok;
+        s->tryBody = parseBraceBlockStatement();
+        if (curTokenIs(token::CATCH)) {
+            if (peekTokenIs(token::LPAREN)) {
+                nextToken(); // (
+                if (peekTokenIs(token::IDENT)) {
+                    nextToken();
+                    s->catchParam = curToken_.literal;
+                    if (peekTokenIs(token::COLON)) {
+                        nextToken(); // ':'
+                        nextToken(); // type name
+                        s->catchType = curToken_.literal;
+                    }
+                }
+                if (!expectPeek(token::RPAREN)) return nullptr;
+            }
+            if (!expectPeek(token::LBRACE)) return nullptr;
+            s->catchBody = parseBraceBlockStatement();
+        }
+        if (curTokenIs(token::FINALLY)) {
+            if (!expectPeek(token::LBRACE)) return nullptr;
+            s->finallyBody = parseBraceBlockStatement();
+        }
+        return s;
+    }
+    case token::DEFER: {
+        auto tok = curToken_;
+        nextToken();
+        auto expr = parseExpression(LOWEST);
+        auto d = std::make_shared<ast::DeferStatement>();
+        d->token = tok;
+        d->expression = expr;
+        consumeStatementEnd();
+        return d;
+    }
     case token::MATCH:
         return parseMatchStatement();
     case token::IDENT:
@@ -614,6 +664,7 @@ ast::StatementPtr Parser::parseStatementInternal() {
             if (vd) {
                 vd->visibility = visibility;
                 vd->isConst = isConst;
+                vd->isConstexpr = constexprModifier_;
             }
             return vd;
         }
@@ -657,6 +708,11 @@ void Parser::parseVarModifiers(std::string& visibility, bool& isConst) {
             if (isConst) {
                 reportAt(curToken_, "remove the duplicate 'const'", "duplicate 'const' modifier");
             }
+            isConst = true;
+            nextToken();
+            break;
+        case token::CONSTEXPR:
+            constexprModifier_ = true;
             isConst = true;
             nextToken();
             break;
@@ -792,6 +848,7 @@ std::shared_ptr<ast::VarDeclaration> Parser::parseTypedVarDeclaration(const std:
     vd->decorators = decorators;
     vd->visibility = visibility;
     vd->isConst = isConst;
+    vd->isConstexpr = constexprModifier_;
     return vd;
 }
 
@@ -803,12 +860,30 @@ std::shared_ptr<ast::FuncDeclaration> Parser::parseFuncDeclaration(bool isPublic
     if (isVoidPrefix && curTokenIs(token::FUNC)) {
         nextToken();
     }
-    if (!curTokenIs(token::IDENT) && !token::isTypeKeyword(curToken_.type)) {
+    bool isDestructor = false;
+    if (curTokenIs(token::TILDE)) {
+        isDestructor = true;
+        nextToken();
+    }
+    bool isOperator = token::isOperatorKind(curToken_.type);
+    if (!curTokenIs(token::IDENT) && !token::isTypeKeyword(curToken_.type) && !isOperator) {
         reportAt(curToken_, "provide a valid function name, e.g. 'func calculate():'",
                  "expected function name after '" + tok.literal + "', got \"" + curToken_.literal + "\"");
         return nullptr;
     }
     std::string name = curToken_.literal;
+
+    // Optional generic type parameters: func identity[T](x: T) -> T
+    std::vector<std::string> typeParams;
+    if (peekTokenIs(token::LBRACKET)) {
+        nextToken(); // '[' becomes current
+        nextToken(); // first type parameter
+        while (!curTokenIs(token::RBRACKET) && !curTokenIs(token::EOF_TOKEN)) {
+            if (curTokenIs(token::IDENT)) typeParams.push_back(curToken_.literal);
+            nextToken();
+            if (curTokenIs(token::COMMA)) nextToken();
+        }
+    }
 
     if (!expectPeek(token::LPAREN)) {
         return nullptr;
@@ -871,6 +946,9 @@ std::shared_ptr<ast::FuncDeclaration> Parser::parseFuncDeclaration(bool isPublic
     auto fn = std::make_shared<ast::FuncDeclaration>();
     fn->token = tok;
     fn->name = name;
+    fn->isDestructor = isDestructor;
+    fn->isOperator = isOperator;
+    fn->typeParams = std::move(typeParams);
     fn->params = params;
     fn->returnType = returnType;
     fn->body = body;

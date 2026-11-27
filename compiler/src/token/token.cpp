@@ -55,6 +55,12 @@ constexpr KeywordEntry kKeywords[] = {
     {"test", TEST},
     {"mock", MOCK},
     {"assert", ASSERT},
+    {"defer", DEFER},
+    {"constexpr", CONSTEXPR},
+    {"try", TRY},
+    {"catch", CATCH},
+    {"finally", FINALLY},
+    {"throw", THROW},
     {"tx", TX},
     {"match", MATCH},
     {"case", CASE},
@@ -166,6 +172,12 @@ constexpr KeywordEntry kKeywords[] = {
     case Kind::Test: return "test";
     case Kind::Mock: return "mock";
     case Kind::Assert: return "assert";
+    case Kind::Defer: return "defer";
+    case Kind::Constexpr: return "constexpr";
+    case Kind::Try: return "try";
+    case Kind::Catch: return "catch";
+    case Kind::Finally: return "finally";
+    case Kind::Throw: return "throw";
     case Kind::Tx: return "tx";
     case Kind::Match: return "match";
     case Kind::Case: return "case";
@@ -258,6 +270,16 @@ bool isTypeKeyword(Kind kind) {
     case TYPE_STRING: case TYPE_INT: case TYPE_FLOAT: case TYPE_BOOL:
     case TYPE_LIST: case TYPE_MAP: case TYPE_BLOB: case TYPE_SECRET:
     case TYPE_JSON: case TYPE_VOID:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool isOperatorKind(Kind kind) {
+    switch (kind) {
+    case PLUS: case MINUS: case ASTERISK: case SLASH: case PERCENT:
+    case EQ: case NOT_EQ: case LT: case GT: case LT_EQ: case GT_EQ:
         return true;
     default:
         return false;

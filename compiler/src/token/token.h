@@ -116,6 +116,12 @@ enum class Kind : std::uint16_t {
     Test,
     Mock,
     Assert,
+    Defer,
+    Constexpr,
+    Try,
+    Catch,
+    Finally,
+    Throw,
     Tx,
     Match,
     Case,
@@ -237,6 +243,12 @@ inline constexpr Kind WATCH = Kind::Watch;
 inline constexpr Kind TEST = Kind::Test;
 inline constexpr Kind MOCK = Kind::Mock;
 inline constexpr Kind ASSERT = Kind::Assert;
+inline constexpr Kind DEFER = Kind::Defer;
+inline constexpr Kind CONSTEXPR = Kind::Constexpr;
+inline constexpr Kind TRY = Kind::Try;
+inline constexpr Kind CATCH = Kind::Catch;
+inline constexpr Kind FINALLY = Kind::Finally;
+inline constexpr Kind THROW = Kind::Throw;
 inline constexpr Kind TX = Kind::Tx;
 inline constexpr Kind MATCH = Kind::Match;
 inline constexpr Kind CASE = Kind::Case;
@@ -286,6 +298,7 @@ struct Token {
 
 [[nodiscard]] bool isKeyword(Kind kind);
 [[nodiscard]] bool isTypeKeyword(Kind kind);
+[[nodiscard]] bool isOperatorKind(Kind kind);
 
 // Sorted names, for editor tooling / completion parity with the Go package.
 [[nodiscard]] std::vector<std::string_view> keywordNames();

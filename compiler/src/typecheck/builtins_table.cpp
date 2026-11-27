@@ -94,6 +94,13 @@ const std::unordered_map<std::string, std::unordered_map<std::string, std::strin
             {"invlpg", "(int)->null"},
             {"wrmsr", "(int,int)->null"},
             {"rdmsr", "(int)->int"},
+            {"cpuid", "(int,int)->int"},
+            {"cpuid_eax", "(int,int)->int"},
+            {"cpuid_ebx", "(int,int)->int"},
+            {"cpuid_ecx", "(int,int)->int"},
+            {"cpuid_edx", "(int,int)->int"},
+            {"lidt", "(int)->null"},
+            {"iret", "()->null"},
         }},
         {"crypto", {
             {"adler32", "(int,int)->int"},

@@ -148,6 +148,7 @@ private:
     token::Token peekToken_;
     std::vector<std::string> errors_;
     std::vector<std::shared_ptr<diag::SyntaxError>> syntaxErrors_;
+    bool constexprModifier_ = false;
     int continuationDedents_ = 0;
 
     std::map<token::Kind, PrefixParseFn> prefixParseFns_;

@@ -2,6 +2,8 @@
 
 [English](README_EN.md) | [Русский](README_RU.md)
 
+> **Legacy document (Pawl-era branding).** For the current ULang++ toolchain see [README.md](../README.md) and [docs/os_dev_EN.md](docs/os_dev_EN.md). The feature list below overstates what the native backend currently supports.
+
 **Pawl** is a high-performance, statically-typed systems programming language designed for bare-metal operating system development, low-level tooling, and standalone native applications.
 
 ### Key Capabilities:
@@ -13,7 +15,7 @@
 - ⚡ **Advanced Memory Management**: Mark-Sweep Garbage Collector alongside fast Bump Allocation.
 - 🧵 **Async & Green Threads**: M:N cooperative fiber scheduler.
 
-Programs use the `.al` extension.
+Programs use the `.upp` extension (legacy `.al` files are still accepted — this document is from the Pawl era; prefer [README.md](README.md) and the current `.upp` examples).
 
 ```pawl
 use std.cpu

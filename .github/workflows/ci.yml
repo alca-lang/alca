@@ -46,3 +46,24 @@ jobs:
       - name: Run Tests (Windows)
         run: go test -v ./...
         if: runner.os == 'Windows'
+
+  native-boot:
+    name: Native AOT + freestanding boot smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Install QEMU
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86
+
+      - name: Build compiler and boot kernel
+        run: bash scripts/test_boot.sh
+
+      - name: Native compiler unit tests
+        run: |
+          g++ -std=c++17 -O1 -Icompiler/src -Icompiler/third_party \
+            $(find compiler/src -name '*.cpp' ! -path '*/runtime/*' ! -name 'main_runner.cpp' ! -path '*/cli/*') \
+            $(find compiler/tests -name '*.cpp' ! -name 'test_runtime.cpp') \
+            -o /tmp/pawl_tests
+          /tmp/pawl_tests
