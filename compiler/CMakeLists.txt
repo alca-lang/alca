@@ -26,6 +26,7 @@ add_library(pawl_core STATIC
   src/ir/lower.cpp
   src/codegen/x64/codegen.cpp
   src/link/pe/pe_writer.cpp
+  src/link/pe/efi_writer.cpp
   src/link/elf/elf_writer.cpp
 )
 target_include_directories(pawl_core PUBLIC src)

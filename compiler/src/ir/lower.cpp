@@ -3956,7 +3956,8 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
         // Indirect call through a function-valued local/global: f := bump; f()
         if (!functions.count(fnName)) {
             auto lit = locals.find(fnName);
-            if (lit != locals.end() && lit->second.type == Type::Ptr) {
+            if (lit != locals.end() &&
+                (lit->second.type == Type::Ptr || lit->second.type == Type::I64)) {
                 VReg dst = currentFn->newVReg(Type::I64);
                 Instruction callInst;
                 callInst.op = Op::CallPtr;

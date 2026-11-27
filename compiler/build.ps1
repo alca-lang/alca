@@ -21,6 +21,7 @@ $core = @(
   "src/ir/lower.cpp",
   "src/codegen/x64/codegen.cpp",
   "src/link/pe/pe_writer.cpp",
+  "src/link/pe/efi_writer.cpp",
   "src/link/elf/elf_writer.cpp"
 )
 

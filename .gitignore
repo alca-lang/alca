@@ -23,5 +23,11 @@
 *.tar.gz
 *.zip
 
+# Generated UEFI OS artifacts
+/os/ulang++
+/os/std
+/os/esp/
+/os/BOOTX64.EFI
+
 # Local runtime data & caches
 /data/

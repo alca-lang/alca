@@ -1,0 +1,146 @@
+// Minimal ULang++ UEFI terminal OS.
+// Boots as EFI_APPLICATION (PE32+) and talks to the firmware console through
+// EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL / EFI_SIMPLE_TEXT_INPUT_PROTOCOL.
+//
+// Layout of EFI_SYSTEM_TABLE used here:
+//   +48  ConIn  (EFI_SIMPLE_TEXT_INPUT_PROTOCOL*)
+//   +64  ConOut (EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL*)
+//
+// EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL:
+//   +0   Reset
+//   +8   OutputString (this, CHAR16*)
+//   +48  ClearScreen (this)
+// EFI_SIMPLE_TEXT_INPUT_PROTOCOL:
+//   +0   ReadKeyStroke (this, EFI_INPUT_KEY*)
+// EFI_INPUT_KEY: +0 UnicodeChar (u16), +2 ScanCode (u16)
+
+use std.mem
+
+const CONIN_OFFSET   := 48
+const CONOUT_OFFSET  := 64
+const OUT_STRING     := 8
+const CLEAR_SCREEN   := 48
+const READ_KEY       := 0
+
+const CR    := 13
+const LF    := 10
+const BS    := 8
+const SPACE := 32
+const DEL   := 127
+
+func putbuf16(conout: int, buf: int, n: int) {
+    utf := mem.alloc((n + 1) * 2)
+    i := 0
+    while i < n {
+        ch := mem.read_u8(buf, i)
+        mem.write_u16(utf, ch, i * 2)
+        i = i + 1
+    }
+    mem.write_u16(utf, 0, n * 2)
+    outfn := mem.read_u64(conout, OUT_STRING)
+    outfn(conout, utf)
+    mem.free(utf)
+}
+
+func puts16(conout: int, s: string) {
+    n := len(s)
+    tmp := mem.alloc(n)
+    i := 0
+    while i < n {
+        mem.write_u8(tmp, s[i], i)
+        i = i + 1
+    }
+    putbuf16(conout, tmp, n)
+    mem.free(tmp)
+}
+
+func putchar16(conout: int, ch: int) {
+    c := mem.alloc(2)
+    mem.write_u16(c, ch, 0)
+    mem.write_u16(c, 0, 2)
+    outfn := mem.read_u64(conout, OUT_STRING)
+    outfn(conout, c)
+    mem.free(c)
+}
+
+func newline(conout: int) {
+    putchar16(conout, CR)
+    putchar16(conout, LF)
+}
+
+func matches(buf: int, n: int, cmd: string) -> bool {
+    m := len(cmd)
+    if n != m {
+        return false
+    }
+    i := 0
+    while i < m {
+        if mem.read_u8(buf, i) != cmd[i] {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+func runCommand(conout: int, line: int, n: int) {
+    if matches(line, n, "help") {
+        puts16(conout, "Commands: help, clear, echo <text>")
+        newline(conout)
+        return
+    }
+    if matches(line, n, "clear") {
+        clr := mem.read_u64(conout, CLEAR_SCREEN)
+        clr(conout)
+        return
+    }
+    if n > 0 {
+        puts16(conout, "echo: ")
+        putbuf16(conout, line, n)
+        newline(conout)
+    }
+}
+
+func efi_main(image: int, systable: int) -> int {
+    conin := mem.read_u64(systable, CONIN_OFFSET)
+    conout := mem.read_u64(systable, CONOUT_OFFSET)
+
+    puts16(conout, "ULang++ UEFI Terminal")
+    newline(conout)
+    puts16(conout, "Type text and press Enter. Commands: help, clear.")
+    newline(conout)
+
+    line := mem.alloc(256)
+    key := mem.alloc(8)
+    n := 0
+
+    loop {
+        readfn := mem.read_u64(conin, READ_KEY)
+        readfn(conin, key)
+        ch := mem.read_u16(key, 0)
+
+        if ch == CR {
+            newline(conout)
+            runCommand(conout, line, n)
+            n = 0
+        } else {
+            if ch == BS {
+                if n > 0 {
+                    n = n - 1
+                    putchar16(conout, BS)
+                    putchar16(conout, SPACE)
+                    putchar16(conout, BS)
+                }
+            } else {
+                if ch >= SPACE and ch < DEL {
+                    if n < 255 {
+                        mem.write_u8(line, ch, n)
+                        n = n + 1
+                        putchar16(conout, ch)
+                    }
+                }
+            }
+        }
+    }
+    return 0
+}

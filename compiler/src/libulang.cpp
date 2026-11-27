@@ -23,6 +23,7 @@
 #include "lexer/lexer.h"
 #include "link/elf/elf_writer.h"
 #include "link/pe/pe_writer.h"
+#include "link/pe/efi_writer.h"
 #include "parser/parser.h"
 #include "token/token.h"
 #include "typecheck/typecheck.h"
@@ -361,17 +362,20 @@ int handleBuild(const std::vector<std::string>& args) {
         return 1;
     }
 
+    bool isEfi = (target.find("efi") != std::string::npos || target.find("uefi") != std::string::npos);
     bool isWin = (target.find("windows") != std::string::npos || target.find("dll") != std::string::npos);
     bool isDll = (target.find("dll") != std::string::npos);
     bool isFreestanding = (target.find("baremetal") != std::string::npos || target.find("freestanding") != std::string::npos || target.find("kernel") != std::string::npos);
     bool isRawBin = (target.find("raw") != std::string::npos || target.find("bin") != std::string::npos);
 
-    ulang::codegen::x64::ABI abi = isWin ? ulang::codegen::x64::ABI::Win64 : ulang::codegen::x64::ABI::SysV;
+    ulang::codegen::x64::ABI abi = (isWin || isEfi) ? ulang::codegen::x64::ABI::Win64 : ulang::codegen::x64::ABI::SysV;
     ulang::codegen::x64::CodeGenerator cg(abi);
     auto art = cg.generate(*irRes.program);
 
     bool ok = false;
-    if (isFreestanding) {
+    if (isEfi) {
+        ok = ulang::link::efi::linkEFIApp(art, outPath);
+    } else if (isFreestanding) {
         if (isRawBin) {
             ok = ulang::link::elf::linkRawBinary(art, outPath);
         } else {
