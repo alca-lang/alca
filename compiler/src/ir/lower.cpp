@@ -3111,7 +3111,13 @@ VReg LoweringContext::lowerExpression(const ast::Expression& e) {
                 Type elemType = listL ? typeToIR(listL->elem()) : typeToIR(listR->elem());
                 return lowerListConcat(leftReg, rightReg, elemType);
             }
-            if (leftReg.type == Type::Ptr || rightReg.type == Type::Ptr) {
+            auto isStringType = [&](const typecheck::TypePtr& t) {
+                auto* basic = t ? dynamic_cast<typecheck::Basic*>(t.get()) : nullptr;
+                return basic && basic->name() == "string";
+            };
+            bool strings = (itL != chkTypes.end() && isStringType(itL->second)) ||
+                           (itR != chkTypes.end() && isStringType(itR->second));
+            if (strings) {
                 op = Op::ConcatStr;
                 resType = Type::Ptr;
             } else {

@@ -416,6 +416,7 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 break;
             }
             case ir::Op::Call: {
+                if (abi_ == ABI::Win64) emitBytes({0x48, 0x83, 0xEC, 0x28}); // sub rsp, 40 (shadows + align)
                 for (size_t i = 0; i < inst->args.size(); ++i) {
                     int aDisp = -ctx.slotOffsets[inst->args[i].id];
                     if (i < numParamRegs) {
@@ -435,6 +436,7 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 size_t patch = codeLen();
                 emitUint32(0);
                 funcCalls_.push_back({inst->callName, patch, patch + 4});
+                if (abi_ == ABI::Win64) emitBytes({0x48, 0x83, 0xC4, 0x28}); // add rsp, 40
 
                 if (inst->dst.type != ir::Type::Void && inst->dst.id >= 0) {
                     int dDisp = -ctx.slotOffsets[inst->dst.id];
@@ -637,6 +639,9 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 break;
             }
             case ir::Op::CallPtr: {
+                // Microsoft x64 (and therefore UEFI) callees may spill register
+                // arguments into the caller's 32-byte shadow space.
+                if (abi_ == ABI::Win64) emitBytes({0x48, 0x83, 0xEC, 0x28}); // sub rsp, 40 (shadows + align)
                 for (size_t i = 0; i < inst->args.size(); ++i) {
                     int aDisp = -ctx.slotOffsets[inst->args[i].id];
                     if (i < numParamRegs) {
@@ -654,6 +659,7 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
                 int pDisp = -ctx.slotOffsets[inst->src1.id];
                 emitBytes({0x48, 0x8B, 0x85}); emitUint32(static_cast<uint32_t>(pDisp)); // mov rax, [pDisp]
                 emitBytes({0xFF, 0xD0}); // call rax
+                if (abi_ == ABI::Win64) emitBytes({0x48, 0x83, 0xC4, 0x28}); // add rsp, 40
                 if (inst->dst.type != ir::Type::Void && inst->dst.id >= 0) {
                     int dDisp = -ctx.slotOffsets[inst->dst.id];
                     emitBytes({0x48, 0x89, 0x85}); emitUint32(static_cast<uint32_t>(dDisp));
@@ -929,3 +935,4 @@ void CodeGenerator::compileFunction(const ir::Function& fn) {
 }
 
 } // namespace ulang::codegen::x64
+

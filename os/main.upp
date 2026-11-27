@@ -1,143 +1,68 @@
-// Minimal ULang++ UEFI terminal OS.
-// Boots as EFI_APPLICATION (PE32+) and talks to the firmware console through
-// EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL / EFI_SIMPLE_TEXT_INPUT_PROTOCOL.
-//
-// Layout of EFI_SYSTEM_TABLE used here:
-//   +48  ConIn  (EFI_SIMPLE_TEXT_INPUT_PROTOCOL*)
-//   +64  ConOut (EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL*)
-//
-// EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL:
-//   +0   Reset
-//   +8   OutputString (this, CHAR16*)
-//   +48  ClearScreen (this)
-// EFI_SIMPLE_TEXT_INPUT_PROTOCOL:
-//   +0   ReadKeyStroke (this, EFI_INPUT_KEY*)
-// EFI_INPUT_KEY: +0 UnicodeChar (u16), +2 ScanCode (u16)
-
+// Minimal ULang++ UEFI terminal: echo keyboard input through the firmware
+// console.  Everything uses raw protocol pointers and a bump buffer carved
+// out of the image's own .bss, so it stays valid when firmware relocates the
+// PE image.  No heap, no strings, no runtime helpers.
 use std.mem
 
-const CONIN_OFFSET   := 48
-const CONOUT_OFFSET  := 64
-const OUT_STRING     := 8
-const CLEAR_SCREEN   := 48
-const READ_KEY       := 0
-
-const CR    := 13
-const LF    := 10
-const BS    := 8
-const SPACE := 32
-const DEL   := 127
-
-func putbuf16(conout: int, buf: int, n: int) {
-    utf := mem.alloc((n + 1) * 2)
-    i := 0
-    while i < n {
-        ch := mem.read_u8(buf, i)
-        mem.write_u16(utf, ch, i * 2)
-        i = i + 1
-    }
-    mem.write_u16(utf, 0, n * 2)
-    outfn := mem.read_u64(conout, OUT_STRING)
-    outfn(conout, utf)
-    mem.free(utf)
-}
-
-func puts16(conout: int, s: string) {
-    n := len(s)
-    tmp := mem.alloc(n)
-    i := 0
-    while i < n {
-        mem.write_u8(tmp, s[i], i)
-        i = i + 1
-    }
-    putbuf16(conout, tmp, n)
-    mem.free(tmp)
-}
-
-func putchar16(conout: int, ch: int) {
-    c := mem.alloc(2)
-    mem.write_u16(c, ch, 0)
-    mem.write_u16(c, 0, 2)
-    outfn := mem.read_u64(conout, OUT_STRING)
-    outfn(conout, c)
-    mem.free(c)
-}
-
-func newline(conout: int) {
-    putchar16(conout, CR)
-    putchar16(conout, LF)
-}
-
-func matches(buf: int, n: int, cmd: string) -> bool {
-    m := len(cmd)
-    if n != m {
-        return false
-    }
-    i := 0
-    while i < m {
-        if mem.read_u8(buf, i) != cmd[i] {
-            return false
-        }
-        i = i + 1
-    }
-    return true
-}
-
-func runCommand(conout: int, line: int, n: int) {
-    if matches(line, n, "help") {
-        puts16(conout, "Commands: help, clear, echo <text>")
-        newline(conout)
-        return
-    }
-    if matches(line, n, "clear") {
-        clr := mem.read_u64(conout, CLEAR_SCREEN)
-        clr(conout)
-        return
-    }
-    if n > 0 {
-        puts16(conout, "echo: ")
-        putbuf16(conout, line, n)
-        newline(conout)
-    }
-}
-
 func efi_main(image: int, systable: int) -> int {
-    conin := mem.read_u64(systable, CONIN_OFFSET)
-    conout := mem.read_u64(systable, CONOUT_OFFSET)
+    conin := mem.read_u64(systable, 48)
+    conout := mem.read_u64(systable, 64)
 
-    puts16(conout, "ULang++ UEFI Terminal")
-    newline(conout)
-    puts16(conout, "Type text and press Enter. Commands: help, clear.")
-    newline(conout)
+    self := efi_main
+    buf := self + 16384
+    keybuf := self + 16896
 
-    line := mem.alloc(256)
-    key := mem.alloc(8)
-    n := 0
+    outfn := mem.read_u64(conout, 8)
+    readfn := mem.read_u64(conin, 0)
+
+    // Banner: "ULANG UEFI" as UTF-16.
+    mem.write_u16(buf, 85, 0)
+    mem.write_u16(buf, 76, 2)
+    mem.write_u16(buf, 65, 4)
+    mem.write_u16(buf, 78, 6)
+    mem.write_u16(buf, 71, 8)
+    mem.write_u16(buf, 32, 10)
+    mem.write_u16(buf, 85, 12)
+    mem.write_u16(buf, 69, 14)
+    mem.write_u16(buf, 70, 16)
+    mem.write_u16(buf, 73, 18)
+    mem.write_u16(buf, 0, 20)
+    outfn(conout, buf)
+
+    mem.write_u16(buf, 32, 0)
+    mem.write_u16(buf, 84, 2)
+    mem.write_u16(buf, 89, 4)
+    mem.write_u16(buf, 80, 6)
+    mem.write_u16(buf, 69, 8)
+    mem.write_u16(buf, 0, 10)
+    outfn(conout, buf)
+
+    mem.write_u16(buf, 0, 0)
+    mem.write_u16(buf, 13, 2)
+    mem.write_u16(buf, 10, 4)
+    outfn(conout, buf)
 
     loop {
-        readfn := mem.read_u64(conin, READ_KEY)
-        readfn(conin, key)
-        ch := mem.read_u16(key, 0)
+        readfn(conin, keybuf)
+        ch := mem.read_u16(keybuf, 0)
 
-        if ch == CR {
-            newline(conout)
-            runCommand(conout, line, n)
-            n = 0
+        if ch == 13 {
+            mem.write_u16(buf, 13, 0)
+            mem.write_u16(buf, 10, 2)
+            mem.write_u16(buf, 0, 4)
+            outfn(conout, buf)
         } else {
-            if ch == BS {
-                if n > 0 {
-                    n = n - 1
-                    putchar16(conout, BS)
-                    putchar16(conout, SPACE)
-                    putchar16(conout, BS)
-                }
+            if ch == 8 {
+                mem.write_u16(buf, 8, 0)
+                mem.write_u16(buf, 32, 2)
+                mem.write_u16(buf, 8, 4)
+                mem.write_u16(buf, 0, 6)
+                outfn(conout, buf)
             } else {
-                if ch >= SPACE and ch < DEL {
-                    if n < 255 {
-                        mem.write_u8(line, ch, n)
-                        n = n + 1
-                        putchar16(conout, ch)
-                    }
+                if ch >= 32 and ch < 127 {
+                    mem.write_u16(buf, ch, 0)
+                    mem.write_u16(buf, 0, 2)
+                    outfn(conout, buf)
                 }
             }
         }

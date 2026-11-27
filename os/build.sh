@@ -11,7 +11,7 @@ echo "[1/3] Building native compiler..."
 SRCS=()
 while IFS= read -r f; do
     case "$f" in
-        */runtime/*|*/main_runner.cpp|*/cli/*) continue ;;
+        */runtime/*|*/main_runner.cpp|*/libulang.cpp) continue ;;
     esac
     SRCS+=("$f")
 done < <(find "$ROOT/compiler/src" -name '*.cpp' -type f)
@@ -21,7 +21,8 @@ done < <(find "$ROOT/compiler/src" -name '*.cpp' -type f)
 echo "[2/3] Compiling EFI application..."
 mkdir -p "$ESP"
 # Source files import std.* next to the compiler executable.
-ln -sfn "$ROOT/std" "$OS_DIR/std"
+rm -rf "$OS_DIR/std"
+ln -s "$ROOT/std" "$OS_DIR/std"
 "$OS_DIR/ulang++" build --target efi-app \
     -o "$ESP/BOOTX64.EFI" "$OS_DIR/main.upp"
 

@@ -570,6 +570,8 @@ TypePtr Checker::evalInfix(const std::shared_ptr<ast::InfixExpression>& in, cons
     if (op == "and" || op == "or") return getBool();
 
     if (op == "+") {
+        // Function-address arithmetic produces a raw integer pointer.
+        if (std::dynamic_pointer_cast<FuncType>(lt)) return getInt();
         if (lt == getString() && rt == getString()) return getString();
         if (lt == getFloat() && rt == getFloat()) return getFloat();
         if (lt == getInt() && rt == getInt()) return getInt();
