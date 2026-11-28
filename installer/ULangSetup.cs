@@ -89,6 +89,7 @@ internal sealed class SetupForm : Form
 
         _status.Location = new Point(x, 276);
         _status.Size = new Size(w, 24);
+        _status.AutoSize = false;
         _status.ForeColor = White;
         Controls.Add(_status);
 
@@ -108,8 +109,8 @@ internal sealed class SetupForm : Form
         Controls.Add(_installButton);
 
         // Finish view — black panel, white frame and text.
-        _finishPanel.Location = new Point(x, 176);
-        _finishPanel.Size = new Size(w, 300);
+        _finishPanel.Location = new Point(x, 44);
+        _finishPanel.Size = new Size(w, 470);
         _finishPanel.BackColor = Black;
         _finishPanel.BorderStyle = BorderStyle.FixedSingle;
         _finishPanel.Visible = false;
@@ -119,6 +120,7 @@ internal sealed class SetupForm : Form
         {
             Location = new Point(20, 78),
             Size = new Size(w - 40, 200),
+            AutoSize = false,
             ForeColor = White,
             Font = new Font("Consolas", 11F),
             Text = "u++ / upp — в консоли — это компилятор.\n\n" +
@@ -166,6 +168,7 @@ internal sealed class SetupForm : Form
             Text = text,
             Location = new Point(x, y),
             Size = new Size(w, h),
+            AutoSize = false,
             ForeColor = color,
             Font = new Font("Segoe UI", size, bold ? FontStyle.Bold : FontStyle.Regular)
         };
