@@ -6,6 +6,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -35,6 +36,14 @@ internal sealed class SetupForm : Form
     private const string Product = "ULANG++";
     private const string Version = "2.4";
     private const string DefaultDir = @"C:\Program Files\ULang++ 2.4";
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, UIntPtr wParam,
+        string lParam, uint flags, uint timeout, out UIntPtr result);
+    [DllImport("shell32.dll")]
+    private static extern void SHChangeNotify(int eventId, uint flags, IntPtr item1, IntPtr item2);
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr handle);
 
     private static readonly Color Black = Color.FromArgb(8, 8, 8);
     private static readonly Color Panel = Color.FromArgb(18, 18, 18);
@@ -278,12 +287,32 @@ internal sealed class SetupForm : Form
         report(20, "Unpacking compiler and standard library…");
         ExtractPayload(target);
         string ico = Path.Combine(target, "ULang++_FILE-ICO.ico");
+        GenerateFileIcon(ico);
 
         report(88, "Registering .upp association…");
         RegisterAssociation(target, ico);
         AddToUserPath(target);
 
         report(100, "Finishing…");
+    }
+
+    private static void GenerateFileIcon(string path)
+    {
+        using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("FileIcon"))
+        {
+            if (stream == null) return;
+            using (var img = Image.FromStream(stream))
+            using (var bmp = new Bitmap(img, new Size(256, 256)))
+            {
+                IntPtr h = bmp.GetHicon();
+                using (var icon = Icon.FromHandle(h))
+                using (var fs = File.Create(path))
+                {
+                    icon.Save(fs);
+                }
+                DestroyIcon(h);
+            }
+        }
     }
 
     private static void ExtractPayload(string target)
@@ -319,26 +348,71 @@ internal sealed class SetupForm : Form
 
     private static void RegisterAssociation(string target, string ico)
     {
-        using (var cls = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\.upp"))
+        string exe = Path.Combine(target, "u++.exe");
+        foreach (var root in new[] { Microsoft.Win32.Registry.CurrentUser, Microsoft.Win32.Registry.LocalMachine })
         {
-            cls.SetValue("", "ULang++.Source");
-            using (var icon = cls.CreateSubKey("DefaultIcon"))
-                icon.SetValue("", "\"" + ico + "\",0");
-            using (var cmd = cls.CreateSubKey(@"shell\check\command"))
-                cmd.SetValue("", "\"" + Path.Combine(target, "u++.exe") + "\" check \"%1\"");
+            try
+            {
+                using (var cls = root.CreateSubKey(@"Software\Classes\.upp"))
+                {
+                    cls.SetValue("", "ULang++.Source");
+                    cls.SetValue("Content Type", "text/plain");
+                    using (var icon = cls.CreateSubKey("DefaultIcon"))
+                        icon.SetValue("", "\"" + ico + "\",0");
+                    using (var cmd = cls.CreateSubKey(@"shell\open\command"))
+                        cmd.SetValue("", "\"" + exe + "\" check \"%1\"");
+                    using (var check = cls.CreateSubKey(@"shell\check\command"))
+                        check.SetValue("", "\"" + exe + "\" check \"%1\"");
+                }
+                using (var prog = root.CreateSubKey(@"Software\Classes\ULang++.Source"))
+                {
+                    prog.SetValue("", "ULang++ source file");
+                    using (var icon = prog.CreateSubKey("DefaultIcon"))
+                        icon.SetValue("", "\"" + ico + "\",0");
+                }
+            }
+            catch (UnauthorizedAccessException) { }
+            catch (System.Security.SecurityException) { }
         }
-        using (var prog = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Classes\ULang++.Source"))
-            prog.SetValue("", "ULang++ source file");
+        // Force Explorer to reload file associations.
+        SHChangeNotify(0x08000000, 0x0000, IntPtr.Zero, IntPtr.Zero);
     }
 
     private static void AddToUserPath(string target)
     {
-        using (var env = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Environment", true))
+        bool changed = false;
+        // Elevation can run under a different account, so HKCU is unreliable.
+        // The machine PATH is visible to every user.
+        try
         {
-            if (env == null) return;
-            string path = env.GetValue("Path", "") as string ?? "";
-            if (path.IndexOf(target, StringComparison.OrdinalIgnoreCase) < 0)
-                env.SetValue("Path", path.TrimEnd(';') + ";" + target, Microsoft.Win32.RegistryValueKind.ExpandString);
+            string machine = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.Machine) ?? "";
+            if (machine.IndexOf(target, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                Environment.SetEnvironmentVariable("Path", machine.TrimEnd(';') + ";" + target,
+                                                    EnvironmentVariableTarget.Machine);
+                changed = true;
+            }
+        }
+        catch (UnauthorizedAccessException) { }
+        catch (System.Security.SecurityException) { }
+
+        try
+        {
+            string user = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
+            if (user.IndexOf(target, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                Environment.SetEnvironmentVariable("Path", user.TrimEnd(';') + ";" + target,
+                                                    EnvironmentVariableTarget.User);
+                changed = true;
+            }
+        }
+        catch (UnauthorizedAccessException) { }
+        catch (System.Security.SecurityException) { }
+
+        if (changed)
+        {
+            UIntPtr result;
+            SendMessageTimeout(new IntPtr(0xffff), 0x001A, UIntPtr.Zero, "Path", 0x0002, 5000, out result);
         }
     }
 }

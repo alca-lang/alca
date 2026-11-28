@@ -89,7 +89,9 @@ private:
     void flushLine() {
         if (line_.empty() || !sink_) return;
         const char* color = nullptr;
-        if (line_.find("warning") != std::string::npos ||
+        if (line_.find("FATAL: no input file") != std::string::npos) {
+            // Exact no-argument message stays plain text.
+        } else if (line_.find("warning") != std::string::npos ||
             line_.find("Warning") != std::string::npos) {
             color = kYellow;
         } else if (line_.find("[OK]") != std::string::npos ||

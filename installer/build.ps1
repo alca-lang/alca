@@ -28,6 +28,7 @@ $resultDir = Join-Path $repo "result"
 if (Test-Path (Join-Path $resultDir "ulang++.exe")) {
     Copy-Item (Join-Path $resultDir "ulang++.exe") (Join-Path $payloadDir "ulang++.exe")
     Copy-Item (Join-Path $resultDir "ulang++.exe") (Join-Path $payloadDir "u++.exe")
+    Copy-Item (Join-Path $resultDir "ulang++.exe") (Join-Path $payloadDir "upp.exe")
 }
 Get-ChildItem $resultDir -Filter "*.dll" -File -ErrorAction SilentlyContinue | ForEach-Object {
     Copy-Item $_.FullName (Join-Path $payloadDir $_.Name)
@@ -52,6 +53,7 @@ if (-not (Test-Path $csc)) { throw "csc.exe not found (.NET Framework required)"
 
 $manifest = Join-Path $installerDir "app.manifest"
 $logo = Join-Path $repo "ULang++_Logo.png"
+$fileIcon = Join-Path $repo "ULang++_FILE-ICO.png"
 $source = Join-Path $installerDir "ULangSetup.cs"
 $output = Join-Path $repo "ULangSetup.exe"
 
@@ -59,6 +61,7 @@ $output = Join-Path $repo "ULangSetup.exe"
     "/r:System.IO.Compression.dll" "/r:System.IO.Compression.FileSystem.dll" `
     "/win32manifest:$manifest" `
     "/resource:$logo,ULangLogo" `
+    "/resource:$fileIcon,FileIcon" `
     "/resource:$zip,Payload" `
     "/out:$output" `
     $source
