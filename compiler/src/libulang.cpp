@@ -28,10 +28,11 @@
 #include "token/token.h"
 #include "typecheck/typecheck.h"
 #include "mod/mod.h"
+#include "cli/colors.h"
 
 namespace {
 
-constexpr std::string_view kVersion = "ULang++ 2.1";
+constexpr std::string_view kVersion = "ULang++ 2.4";
 static std::string gExeName = "ulang++";
 
 std::string extractProgramName(const char* argv0) {
@@ -426,12 +427,15 @@ ULANG_API const char* ulang_version() {
 }
 
 ULANG_API int ulang_main(int argc, char** argv) {
+    ulang::cli::installColors();
     if (argc > 0 && argv && argv[0]) {
         gExeName = extractProgramName(argv[0]);
     }
     std::vector<std::string> args(argv + 1, argv + argc);
     if (args.empty()) {
-        return usage();
+        std::cout << "ULang++ Compiler v2.4\n\n";
+        std::cerr << "FATAL: no input file\n";
+        return 1;
     }
     const std::string& command = args[0];
     if (command == "-h" || command == "--help" || command == "help") {

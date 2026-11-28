@@ -1,5 +1,22 @@
 # Changelog
 
+## ULang++ 2.4: installer and CLI
+
+- Removed the old installer scripts (`install.ps1`, `install.sh`,
+  `rebuild_installer.ps1`, `ulang.ico`, pre-built `ULangSetup.exe`); photos were
+  kept.
+- New graphical installer in `installer/` (WinForms, C#, built by
+  `installer/build.ps1`): strict black-and-white design, embedded
+  `ULang++_Logo.png` (rendered in grayscale), install destination
+  `C:\Program Files\ULang++ 2.4`, `.upp` file icon generated from
+  `ULang++_FILE-ICO.png`, registry association and PATH update.
+- Finish screen states: `u++ / upp — в консоли — это компилятор.`
+- Version updated to **2.4** across the compiler (`ULang++ 2.4`), CLI
+  (`version`), docs and spec.
+- CLI colours: errors red, warnings yellow, successful compilation green.
+- Running the compiler with no arguments now prints:
+  `ULang++ Compiler v2.4`, a blank line, then `FATAL: no input file`.
+
 This file describes the work contained in the three commits following
 `35dd058` (Release ULang++ 2.1): `cf3074f`, `b00ce4f`, `51e59a9`.
 
@@ -89,7 +106,7 @@ QEMU boot smoke test.
 69 passed, 0 failed                       (native unit tests)
 bash scripts/test_boot.sh            → PASS (Multiboot/QEMU)
 QEMU + edk2-x86_64-code.fd           → "ULANG UEFI TYPE", no exception
-result/ulang++.exe                   → ULang++ 2.1 (rebuilt, *.exe ignored)
+result/ulang++.exe                   → ULang++ 2.4 (rebuilt, *.exe ignored)
 ```
 
 ## Known limitations
@@ -99,3 +116,4 @@ result/ulang++.exe                   → ULang++ 2.1 (rebuilt, *.exe ignored)
 - Rethrow and multiple sequential typed handlers are not implemented.
 - Value semantics (`T&`), coroutines/atomics and a real cross-module object
   linker with relocations remain future work.
+

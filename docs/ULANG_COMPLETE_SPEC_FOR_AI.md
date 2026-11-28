@@ -1,7 +1,7 @@
-# ULang++ 2.1 Complete Language & Architecture Specification (LLM Reference)
+# ULang++ 2.4 Complete Language & Architecture Specification (LLM Reference)
 
 > **Target Audience: Large Language Models (LLMs), AI code assistants, compiler engineers.**
-> **Language Name:** ULang++ (version 2.1)
+> **Language Name:** ULang++ (version 2.4)
 > **Primary Executable:** `u++` (alias `ulang++`)
 > **Source File Extension:** `.upp`
 > **Dynamic Library Extension:** `.dll` (PE x64 on Windows) / `.so` (ELF on Linux)
@@ -53,7 +53,7 @@ u++ check <file.upp>                                 # Typecheck and validate AS
 u++ parse <file.upp>                                 # Dump AST structure
 u++ lex <file.upp>                                   # Tokenize input
 u++ ir <file.upp>                                    # Emit low-level intermediate representation
-u++ version                                          # Output "ULang++ 2.1"
+u++ version                                          # Output "ULang++ 2.4"
 ```
 
 ---
@@ -3423,3 +3423,4 @@ off by default and not required for parity.
 2. **JIT in memory** — rejected for v1: more attack surface, harder debugging,
    and unnecessary for correctness; remains an optional future mode.
 3. **Pipe source to a hidden VM** — forbidden.
+

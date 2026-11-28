@@ -21,6 +21,7 @@
 #include "link/elf/elf_writer.h"
 #include "link/pe/pe_writer.h"
 #include "link/pe/efi_writer.h"
+#include "cli/colors.h"
 #include "parser/parser.h"
 #include "token/token.h"
 #include "typecheck/typecheck.h"
@@ -56,7 +57,7 @@ void loadImportedModules(std::shared_ptr<ulang::ast::Program> prog, const std::s
     }
 }
 
-constexpr std::string_view kVersion = "0.1.0-native (ULang++)";
+constexpr std::string_view kVersion = "ULang++ 2.4";
 
 int usage() {
     std::cerr
@@ -427,14 +428,17 @@ int handleRun(const std::vector<std::string>& args) {
 } // namespace
 
 int main(int argc, char** argv) {
+    ulang::cli::installColors();
     std::vector<std::string> args(argv + 1, argv + argc);
     if (args.empty()) {
-        return usage();
+        std::cout << "ULang++ Compiler v2.4\n\n";
+        std::cerr << "FATAL: no input file\n";
+        return 1;
     }
 
     const std::string command = args[0];
     if (command == "version" || command == "--version") {
-        std::cout << "ulang++ " << kVersion << '\n';
+        std::cout << kVersion << '\n';
         return 0;
     }
     if (command == "-h" || command == "--help" || command == "help") {

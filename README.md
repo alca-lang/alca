@@ -20,20 +20,18 @@
 
 ## Quick Start
 
-### Installation
+### Installation (Windows)
 
-Run the automated installer:
+Build and run the graphical installer (requires administrator rights):
 
-**Windows (PowerShell):**
 ```powershell
-.\install.ps1
+powershell -ExecutionPolicy Bypass -File installer/build.ps1
+Start-Process .\ULangSetup.exe -Verb RunAs
 ```
 
-**Linux / macOS:**
-```bash
-chmod +x ./install.sh
-./install.sh
-```
+It installs into `C:\Program Files\ULang++ 2.4`, registers the `.upp` file icon
+from `ULang++_FILE-ICO.png`, and adds the folder to your PATH. After setup, open
+a **new** terminal and type `u++` or `upp` — that is the compiler.
 
 ### Building & Running Programs
 
