@@ -23,8 +23,10 @@
 *.tar.gz
 *.zip
 
-# Generated installer icon (built by installer/build.ps1 from the PNG)
+# Generated installer artifacts (built by installer/build.ps1)
 /ULang++_FILE-ICO.ico
+/installer/payload/
+/installer/payload.zip
 
 # Generated UEFI OS artifacts
 /os/ulang++

@@ -4,6 +4,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.IO.Compression;
 using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
@@ -13,6 +14,16 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        foreach (string arg in Environment.GetCommandLineArgs())
+        {
+            if (arg.StartsWith("/DIR:", StringComparison.OrdinalIgnoreCase))
+            {
+                string dir = arg.Substring(5);
+                string log = Path.Combine(Path.GetTempPath(), "ulang-setup.log");
+                SetupForm.SilentInstall(dir, log);
+                return;
+            }
+        }
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new SetupForm());
@@ -38,12 +49,10 @@ internal sealed class SetupForm : Form
     private readonly Label _status = new Label();
     private readonly Panel _finishPanel = new Panel();
     private readonly Label _finishText = new Label();
-    private string _source;
+    private readonly ProgressBar _finishProgress = new ProgressBar();
 
     public SetupForm()
     {
-        _source = AppDomain.CurrentDomain.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
-
         Text = "ULang++ " + Version + " Setup";
         ClientSize = new Size(920, 600);
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -123,13 +132,20 @@ internal sealed class SetupForm : Form
             AutoSize = false,
             ForeColor = White,
             Font = new Font("Consolas", 11F),
-            Text = "u++ / upp — в консоли — это компилятор.\n\n" +
+            Text = "u++ / upp is the compiler. Type it in a console.\n\n" +
                    "  u++ build main.upp\n" +
                    "  u++ run main.upp\n" +
                    "  u++ version\n\n" +
-                   "Откройте новое окно терминала, чтобы подхватить PATH."
+                   "Open a new terminal to pick up PATH."
         };
         _finishPanel.Controls.Add(_finishText);
+
+        _finishProgress.Location = new Point(20, 300);
+        _finishProgress.Size = new Size(w - 40, 14);
+        _finishProgress.BackColor = Color.FromArgb(30, 30, 30);
+        _finishProgress.ForeColor = White;
+        _finishProgress.Style = ProgressBarStyle.Continuous;
+        _finishPanel.Controls.Add(_finishProgress);
         Controls.Add(_finishPanel);
 
         var close = new Button { Text = "CLOSE", Location = new Point(x + w - 108, 548), Size = new Size(108, 34) };
@@ -223,6 +239,7 @@ internal sealed class SetupForm : Form
         _finishPanel.BringToFront();
         _finishPanel.Visible = true;
         _progress.Value = 100;
+        _finishProgress.Value = 100;
         _status.Text = "DONE.";
     }
 
@@ -230,58 +247,67 @@ internal sealed class SetupForm : Form
     {
         try
         {
-            SetStatus(5, "Creating directories…");
-            Directory.CreateDirectory(target);
-            Directory.CreateDirectory(Path.Combine(target, "std"));
-
-            SetStatus(20, "Installing compiler…");
-            Copy(Path.Combine(_source, "result", "ulang++.exe"), Path.Combine(target, "ulang++.exe"), true);
-            Copy(Path.Combine(_source, "result", "ulang++.exe"), Path.Combine(target, "u++.exe"), true);
-            Copy(Path.Combine(_source, "result", "libulang.dll"), Path.Combine(target, "libulang.dll"), true);
-
-            SetStatus(45, "Installing runtime libraries…");
-            string resultDir = Path.Combine(_source, "result");
-            if (Directory.Exists(resultDir))
-            {
-                foreach (var f in Directory.GetFiles(resultDir, "*.dll"))
-                    Copy(f, Path.Combine(target, Path.GetFileName(f)), true);
-            }
-
-            SetStatus(65, "Installing standard library…");
-            string stdSource = Path.Combine(_source, "std");
-            if (Directory.Exists(stdSource))
-            {
-                foreach (var f in Directory.GetFiles(stdSource, "*.upp", SearchOption.AllDirectories))
-                {
-                    string rel = f.Substring(stdSource.Length).TrimStart(Path.DirectorySeparatorChar);
-                    string dst = Path.Combine(target, "std", rel);
-                    Directory.CreateDirectory(Path.GetDirectoryName(dst));
-                    Copy(f, dst, true);
-                }
-            }
-
-            SetStatus(78, "Installing documentation…");
-            foreach (var name in new[] { "LICENSE", "NOTICE", "README.md", "CHANGELOG.md" })
-            {
-                string src = Path.Combine(_source, name);
-                if (File.Exists(src)) Copy(src, Path.Combine(target, name), true);
-            }
-
-            string ico = Path.Combine(target, "ULang++_FILE-ICO.ico");
-            string icoSrc = Path.Combine(_source, "ULang++_FILE-ICO.ico");
-            if (File.Exists(icoSrc)) Copy(icoSrc, ico, true);
-
-            SetStatus(88, "Registering .upp association…");
-            RegisterAssociation(target, ico);
-            AddToUserPath(target);
-
-            SetStatus(100, "Finishing…");
+            PerformInstall(target, SetStatus);
             ShowFinish();
         }
         catch (Exception ex)
         {
             SetStatus(0, "FAILED: " + ex.Message);
             BeginInvoke(new Action(() => MessageBox.Show(this, ex.Message, "ULang++ setup", MessageBoxButtons.OK, MessageBoxIcon.Error)));
+        }
+    }
+
+    internal static void SilentInstall(string target, string log)
+    {
+        try
+        {
+            PerformInstall(target, (p, s) => File.AppendAllText(log, p + "% " + s + Environment.NewLine));
+            File.AppendAllText(log, "DONE" + Environment.NewLine);
+        }
+        catch (Exception ex)
+        {
+            File.AppendAllText(log, "FAILED: " + ex + Environment.NewLine);
+        }
+    }
+
+    private static void PerformInstall(string target, Action<int, string> report)
+    {
+        report(5, "Creating directories…");
+        Directory.CreateDirectory(target);
+
+        report(20, "Unpacking compiler and standard library…");
+        ExtractPayload(target);
+        string ico = Path.Combine(target, "ULang++_FILE-ICO.ico");
+
+        report(88, "Registering .upp association…");
+        RegisterAssociation(target, ico);
+        AddToUserPath(target);
+
+        report(100, "Finishing…");
+    }
+
+    private static void ExtractPayload(string target)
+    {
+        using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Payload"))
+        {
+            if (stream == null) throw new InvalidOperationException("Embedded payload is missing");
+            using (var zip = new ZipArchive(stream, ZipArchiveMode.Read))
+            {
+                foreach (var entry in zip.Entries)
+                {
+                    string rel = entry.FullName.Replace('/', Path.DirectorySeparatorChar);
+                    if (rel.Contains("..")) continue;
+                    if (rel.EndsWith(Path.DirectorySeparatorChar.ToString())) continue;
+                    string dst = Path.Combine(target, rel);
+                    string dir = Path.GetDirectoryName(dst);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                    using (var input = entry.Open())
+                    using (var output = File.Create(dst))
+                    {
+                        input.CopyTo(output);
+                    }
+                }
+            }
         }
     }
 
